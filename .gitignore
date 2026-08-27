@@ -1,5 +1,5 @@
 .env
-serverToBuild
 __pycache__
 mappool.json
 raw_bancho_client.py
+server/build
