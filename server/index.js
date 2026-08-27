@@ -29,7 +29,7 @@ function formatLogTime(date = new Date()) {
 
 const app = express();
 const httpServer = http.createServer(app);
-const publicDirectory = path.join(__dirname, "src", "public");
+const publicDirectory = path.join(__dirname, "..", "src", "public");
 const webSocketServer = new WebSocketServer({
   server: httpServer,
   path: "/ws",

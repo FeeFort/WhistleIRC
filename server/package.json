@@ -1,14 +1,36 @@
 {
-  "name": "whistleirc-server",
+  "name": "WhistleIRC",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.1.0-alpha",
   "description": "WhistleIRC WebSocket and Bancho IRC bridge",
   "main": "index.js",
+  "bin": "dist/bundle.js",
   "scripts": {
-    "start": "node index.js"
+    "start": "node index.js",
+    "bundle": "esbuild index.js --bundle --platform=node --outfile=dist/bundle.js",
+    "build": "node build.js"
   },
   "dependencies": {
     "express": "^5.1.0",
     "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@yao-pkg/pkg": "^6.22.0",
+    "esbuild": "^0.24.0",
+    "resedit-cli": "^3.1.0"
+  },
+  "pkg": {
+    "assets": [
+      "src/public/**/*"
+    ],
+    "targets": [
+      "node22-win-x64",
+      "node22-win-arm64",
+      "node22-macos-x64",
+      "node22-macos-arm64",
+      "node22-linux-x64",
+      "node22-linux-arm64"
+    ],
+    "outputPath": "build"
   }
 }
