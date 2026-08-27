@@ -164,6 +164,9 @@ To build:
 ```powershell
 cd client
 npm run build
+
+cd ..\server
+npm run build
 ```
 
 The built files go directly into `build` directory.
