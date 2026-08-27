@@ -333,7 +333,8 @@ function clearImportedPool() {
   color: var(--app-red) !important;
 }
 
-.mappool-card__toolbar-actions :deep(.p-button.p-button-danger:hover:not(:disabled)) {
+.mappool-card__toolbar-actions
+  :deep(.p-button.p-button-danger:hover:not(:disabled)) {
   background: rgba(255, 109, 120, 0.12) !important;
   color: var(--app-red) !important;
 }
