@@ -18,6 +18,10 @@ It connects to osu!bancho IRC and gives you the things you actually need during 
 - Customize the theme, accent color, nickname colors, timestamps, and chat behavior.
 - Save your settings locally so you do not have to set everything up again next time.
 
+## How to download?
+
+Check the [Releases](https://github.com/FeeFort/WhistleIRC/releases) section and download the latest version for your OS and architecture! After that, move to the [First-time setup](#first-time-setup).
+
 ## First-time setup
 
 ### 1. Add your osu! app credentials
