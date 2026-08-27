@@ -1,0 +1,24 @@
+"area:backend":
+  - changed-files:
+    - any-glob-to-any-file:
+      - 'server/**'
+
+"area:frontend":
+  - changed-files:
+    - any-glob-to-any-file:
+      - 'client/**'
+
+"area:ci-cd":
+  - changed-files:
+    - any-glob-to-any-file:
+      - '.github/**'
+
+"area:assets":
+  - changed-files:
+    - any-glob-to-any-file:
+      - 'assets/**'
+
+"area:root":
+  - changed-files:
+    - any-glob-to-any-file:
+      - '*'
