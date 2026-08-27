@@ -99,7 +99,7 @@ WhistleIRC tracks team scores and match progress automatically. When a map or ma
 
 ### Settings
 
-The settings menu contains the usual customization options: theme, accent color, nickname colors, timestamp style, chat behavior, saved lobby messages, and shortcuts. These settings stay in your browser.
+The settings menu contains the usual customization options: theme, accent color, nickname colors, timestamp style, chat behavior, and saved lobby messages. These settings stay in your browser.
 
 ![Settings screen](assets/settings.png)
 
