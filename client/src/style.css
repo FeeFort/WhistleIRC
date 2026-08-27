@@ -1,22 +1,762 @@
+@import url("https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&family=Nunito:wght@700;800&display=swap");
+
 :root {
-  color-scheme: light dark;
+  color-scheme: dark;
   font:
-    16px/1.5 system-ui,
-    "Segoe UI",
-    Roboto,
+    16px/1.5 "Manrope",
     sans-serif;
+  --app-bg: #070910;
+  --app-surface: #0d1019;
+  --app-surface-raised: #111521;
+  --app-surface-hover: #171c2b;
+  --app-control: rgba(14, 17, 27, 0.8);
+  --app-panel-gradient: linear-gradient(
+    145deg,
+    rgba(17, 21, 33, 0.92),
+    var(--app-surface)
+  );
+  --app-log-background: radial-gradient(
+    circle at 50% 20%,
+    rgba(106, 82, 173, 0.05),
+    transparent 44%
+  );
+  --app-step-background: rgba(255, 255, 255, 0.04);
+  --app-border: rgba(148, 163, 184, 0.16);
+  --app-border-strong: rgba(148, 163, 184, 0.25);
+  --app-text: #f5f7ff;
+  --app-muted: #858da0;
+  --app-message-text: #e7e9f2;
+  --app-primary: #a970ff;
+  --app-primary-bright: #c28cff;
+  --app-primary-dark: #781eff;
+  --app-primary-rgb: 169, 112, 255;
+  --app-primary-bright-rgb: 194, 140, 255;
+  --app-scrollbar-thumb: rgba(var(--app-primary-bright-rgb), 0.42);
+  --app-scrollbar-thumb-hover: rgba(var(--app-primary-bright-rgb), 0.7);
+  --app-purple: var(--app-primary);
+  --app-purple-bright: var(--app-primary-bright);
+  --app-green: #54d596;
+  --app-red: #ff6d78;
+  --app-amber: #f2b84b;
+  --app-theme-duration: 220ms;
+  --app-theme-easing: ease;
 }
 
 * {
   box-sizing: border-box;
+  scrollbar-color: var(--app-scrollbar-thumb) transparent;
+  scrollbar-width: thin;
+}
+
+*::-webkit-scrollbar {
+  width: 0.4rem;
+  height: 0.4rem;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+  margin: 0.25rem 0;
+}
+
+*::-webkit-scrollbar-thumb {
+  border: 0.1rem solid transparent;
+  border-radius: 999px;
+  background: var(--app-scrollbar-thumb);
+  background-clip: padding-box;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--app-scrollbar-thumb-hover);
+  background-clip: padding-box;
 }
 
 html,
 body {
   height: 100%;
   margin: 0;
+  background-color: var(--app-bg);
+  color: var(--app-text);
 }
 
 #app {
+  position: relative;
+  isolation: isolate;
   height: 100%;
+  background-color: transparent;
+  color: var(--app-text);
+}
+
+#app::before,
+#app::after {
+  position: fixed;
+  z-index: 0;
+  inset: 0;
+  pointer-events: none;
+  content: "";
+  background:
+    radial-gradient(
+      circle at 18% -10%,
+      rgba(117, 68, 206, 0.14),
+      transparent 32rem
+    ),
+    radial-gradient(
+      circle at 88% 115%,
+      rgba(66, 112, 176, 0.1),
+      transparent 28rem
+    );
+  opacity: 1;
+  transition: opacity var(--app-theme-duration) var(--app-theme-easing);
+}
+
+#app::after {
+  background:
+    radial-gradient(
+      circle at 18% -10%,
+      rgba(117, 68, 206, 0.08),
+      transparent 32rem
+    ),
+    radial-gradient(
+      circle at 88% 115%,
+      rgba(66, 112, 176, 0.08),
+      transparent 28rem
+    );
+  opacity: 0;
+}
+
+html.app-light {
+  --app-bg: #eef2f8;
+  --app-surface: #f8faff;
+  --app-surface-raised: #ffffff;
+  --app-surface-hover: #e9eef7;
+  --app-control: rgba(255, 255, 255, 0.86);
+  --app-border: rgba(74, 89, 117, 0.18);
+  --app-border-strong: rgba(74, 89, 117, 0.28);
+  --app-text: #172033;
+  --app-muted: #68738a;
+  --app-message-text: #2b3548;
+  --app-panel-gradient: var(--app-surface);
+  --app-log-background: var(--app-surface);
+  --app-step-background: rgba(23, 32, 51, 0.04);
+}
+
+/* The Sidebar component ships its own background design tokens which,
+   by default, don't match the app's surface. Blending them to
+   transparent lets the shared body background (gradient + --app-bg)
+   show through everywhere - one continuous canvas instead of a
+   visibly different panel behind the sidebar/main area. */
+:root,
+.app-dark {
+  --p-sidebar-layout-background: var(--app-bg);
+  --p-sidebar-panel-background: var(--app-bg);
+  --p-sidebar-main-background: var(--app-bg);
+}
+
+.p-sidebar-layout,
+.p-sidebar,
+.p-sidebar-aside,
+.p-sidebar-panel,
+.p-sidebar-main,
+.p-menu {
+  background: var(--app-bg) !important;
+}
+
+html.app-light body,
+html.app-light #app {
+  background-color: var(--app-bg);
+}
+
+html.app-light #app::before {
+  opacity: 0;
+}
+
+html.app-light #app::after {
+  opacity: 0;
+}
+
+html.app-light .app-sidebar-layout .p-sidebar-panel,
+html.app-light .chat-window {
+  box-shadow: none;
+}
+
+#app > * {
+  position: relative;
+  z-index: 1;
+}
+
+html.app-theme-transition body,
+html.app-theme-transition #app,
+html.app-theme-transition .p-sidebar-layout,
+html.app-theme-transition .p-sidebar,
+html.app-theme-transition .p-sidebar-aside,
+html.app-theme-transition .p-sidebar-main,
+html.app-theme-transition .app-sidebar-layout .p-sidebar-panel,
+html.app-theme-transition .app-sidebar-layout .p-sidebar-aside,
+html.app-theme-transition .app-sidebar-layout .p-sidebar-menu-button,
+html.app-theme-transition .app-sidebar__avatar,
+html.app-theme-transition .chat-window,
+html.app-theme-transition .chat-log,
+html.app-theme-transition .chat-input,
+html.app-theme-transition .chat-header,
+html.app-theme-transition .chat-line__nick,
+html.app-theme-transition .chat-line__text,
+html.app-theme-transition .chat-line__time,
+html.app-theme-transition .chat-input__field,
+html.app-theme-transition .chat-input__send,
+html.app-theme-transition .room-info,
+html.app-theme-transition .room-info__title,
+html.app-theme-transition .room-info__label,
+html.app-theme-transition .room-info__value,
+html.app-theme-transition .command-bar,
+html.app-theme-transition .command-bar__title,
+html.app-theme-transition .command-bar__btn,
+html.app-theme-transition .timer-control__input,
+html.app-theme-transition .timer-control__step,
+html.app-theme-transition .timer-control__value,
+html.app-theme-transition .player-list,
+html.app-theme-transition .player-list__heading,
+html.app-theme-transition .player-list__count,
+html.app-theme-transition .player-row,
+html.app-theme-transition .player-row__name,
+html.app-theme-transition .player-row__mod,
+html.app-theme-transition .player-row__ready,
+html.app-theme-transition .p-component {
+  transition:
+    background var(--app-theme-duration) var(--app-theme-easing),
+    background-color var(--app-theme-duration) var(--app-theme-easing),
+    border-color var(--app-theme-duration) var(--app-theme-easing),
+    box-shadow var(--app-theme-duration) var(--app-theme-easing),
+    color var(--app-theme-duration) var(--app-theme-easing) !important;
+}
+
+html.app-theme-transition .app-sidebar-layout .p-sidebar-panel,
+html.app-theme-transition .app-sidebar-layout .p-sidebar-aside,
+html.app-theme-transition .app-sidebar-layout .p-sidebar-menu-button,
+html.app-theme-transition .chat-line__nick,
+html.app-theme-transition .player-row__ready {
+  transition-property:
+    background, background-color, border-color, box-shadow, color !important;
+  transition-duration: var(--app-theme-duration) !important;
+  transition-timing-function: var(--app-theme-easing) !important;
+  transition-delay: 0ms !important;
+}
+
+html.app-theme-transition *,
+html.app-theme-transition *::before,
+html.app-theme-transition *::after {
+  transition-property:
+    background, background-color, background-image, border-color, box-shadow,
+    color, fill, stroke !important;
+  transition-duration: var(--app-theme-duration) !important;
+  transition-timing-function: var(--app-theme-easing) !important;
+  transition-delay: 0ms !important;
+}
+
+@supports (view-transition-name: root) {
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
+    animation-duration: var(--app-theme-duration);
+    animation-timing-function: var(--app-theme-easing);
+    mix-blend-mode: normal;
+  }
+
+  ::view-transition-old(root) {
+    animation-name: app-theme-view-transition-old;
+  }
+
+  ::view-transition-new(root) {
+    animation-name: app-theme-view-transition-new;
+  }
+}
+
+@keyframes app-theme-view-transition-old {
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes app-theme-view-transition-new {
+  from {
+    opacity: 0;
+  }
+}
+
+.p-textarea,
+.p-inputtext,
+.p-button {
+  color: var(--app-text);
+}
+
+.p-textarea,
+.p-inputtext {
+  background: var(--app-control);
+}
+
+.app-dialog-mask {
+  --app-dialog-mask-background: rgba(7, 9, 16, 0.72);
+  background: var(--app-dialog-mask-background);
+  backdrop-filter: blur(0.25rem);
+  -webkit-backdrop-filter: blur(0.25rem);
+}
+
+.app-dialog-mask.p-overlay-mask-enter-active {
+  animation: app-dialog-mask-enter 300ms cubic-bezier(0.19, 1, 0.22, 1) forwards;
+}
+
+.app-dialog-mask.p-overlay-mask-leave-active {
+  animation: app-dialog-mask-leave 300ms cubic-bezier(0.19, 1, 0.22, 1) forwards;
+}
+
+html.app-light .app-dialog-mask {
+  --app-dialog-mask-background: rgba(37, 48, 69, 0.24);
+}
+
+@keyframes app-dialog-mask-enter {
+  from {
+    background: transparent;
+    backdrop-filter: blur(0);
+    -webkit-backdrop-filter: blur(0);
+  }
+
+  to {
+    background: var(--app-dialog-mask-background);
+    backdrop-filter: blur(0.25rem);
+    -webkit-backdrop-filter: blur(0.25rem);
+  }
+}
+
+@keyframes app-dialog-mask-leave {
+  from {
+    background: var(--app-dialog-mask-background);
+    backdrop-filter: blur(0.25rem);
+    -webkit-backdrop-filter: blur(0.25rem);
+  }
+
+  to {
+    background: transparent;
+    backdrop-filter: blur(0);
+    -webkit-backdrop-filter: blur(0);
+  }
+}
+
+.shortcut-dialog-modal,
+.builtin-dialog-modal,
+.lobby-messages-dialog,
+.create-lobby-dialog,
+.add-channel-dialog,
+.lobby-settings-dialog,
+.command-confirm-dialog {
+  overflow: hidden;
+  border: 1px solid var(--app-border) !important;
+  border-radius: 0.85rem !important;
+  background: var(--app-panel-gradient) !important;
+  box-shadow: 0 1.25rem 3rem rgba(0, 0, 0, 0.35) !important;
+  color: var(--app-text) !important;
+}
+
+.command-confirm-dialog {
+  width: 28rem;
+}
+
+.command-confirm-dialog .p-dialog-header {
+  display: none;
+}
+
+.shortcut-dialog-modal .p-dialog-header,
+.shortcut-dialog-modal .p-dialog-content,
+.shortcut-dialog-modal .p-dialog-footer,
+.builtin-dialog-modal .p-dialog-header,
+.builtin-dialog-modal .p-dialog-content,
+.builtin-dialog-modal .p-dialog-footer,
+.lobby-messages-dialog .p-dialog-header,
+.lobby-messages-dialog .p-dialog-content,
+.lobby-messages-dialog .p-dialog-footer,
+.create-lobby-dialog .p-dialog-header,
+.create-lobby-dialog .p-dialog-content,
+.create-lobby-dialog .p-dialog-footer,
+.add-channel-dialog .p-dialog-header,
+.add-channel-dialog .p-dialog-content,
+.add-channel-dialog .p-dialog-footer,
+.lobby-settings-dialog .p-dialog-header,
+.lobby-settings-dialog .p-dialog-content,
+.lobby-settings-dialog .p-dialog-footer {
+  background: transparent !important;
+  color: var(--app-text) !important;
+}
+
+.shortcut-dialog-modal .p-dialog-header,
+.builtin-dialog-modal .p-dialog-header,
+.lobby-messages-dialog .p-dialog-header,
+.create-lobby-dialog .p-dialog-header,
+.add-channel-dialog .p-dialog-header,
+.lobby-settings-dialog .p-dialog-header {
+  padding: 1.1rem 1.25rem 0.9rem !important;
+  border-bottom: 1px solid var(--app-border) !important;
+}
+
+.shortcut-dialog-modal .p-dialog-title,
+.builtin-dialog-modal .p-dialog-title,
+.lobby-messages-dialog .p-dialog-title,
+.create-lobby-dialog .p-dialog-title,
+.add-channel-dialog .p-dialog-title,
+.lobby-settings-dialog .p-dialog-title {
+  color: var(--app-text) !important;
+  font-size: 1rem;
+  font-weight: 800;
+}
+
+.shortcut-dialog-modal .p-dialog-content,
+.builtin-dialog-modal .p-dialog-content,
+.lobby-messages-dialog .p-dialog-content,
+.create-lobby-dialog .p-dialog-content,
+.add-channel-dialog .p-dialog-content,
+.lobby-settings-dialog .p-dialog-content {
+  padding: 1.15rem 1.25rem !important;
+}
+
+.shortcut-dialog-modal .p-dialog-footer,
+.builtin-dialog-modal .p-dialog-footer,
+.lobby-messages-dialog .p-dialog-footer,
+.create-lobby-dialog .p-dialog-footer,
+.add-channel-dialog .p-dialog-footer,
+.lobby-settings-dialog .p-dialog-footer {
+  display: flex;
+  gap: 0.55rem;
+  padding: 0.9rem 1.25rem 1.1rem !important;
+  border-top: 1px solid var(--app-border) !important;
+}
+
+.command-confirm-dialog .p-dialog-content {
+  padding: 1.15rem 1.25rem !important;
+}
+
+.command-confirm-dialog .p-dialog-footer {
+  display: flex;
+  gap: 0.55rem;
+  padding: 0.9rem 1.25rem 1.1rem !important;
+  border-top: 1px solid var(--app-border) !important;
+}
+
+.command-confirm-message {
+  width: 100%;
+  margin: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  outline: none !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  color: var(--app-text) !important;
+}
+
+.command-confirm-message.p-message-enter-active,
+.command-confirm-message.p-message-leave-active {
+  animation: none !important;
+}
+
+.command-confirm-message .p-message-content {
+  align-items: flex-start;
+  gap: 0.75rem;
+}
+
+.command-confirm-message .p-message-icon,
+.command-confirm-message__icon {
+  margin-top: 0.1rem;
+  color: var(--app-amber) !important;
+}
+
+.command-confirm-message__content {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.command-confirm-message__content strong {
+  color: var(--app-text);
+  font-size: 0.9rem;
+  font-weight: 800;
+}
+
+.command-confirm-message__content span {
+  color: var(--app-muted);
+  font-size: 0.78rem;
+}
+
+.command-confirm-message__content code {
+  display: block;
+  overflow-wrap: anywhere;
+  margin-top: 0.15rem;
+  padding: 0.55rem 0.65rem;
+  border: 1px solid var(--app-border);
+  border-radius: 0.45rem;
+  background: var(--app-control);
+  color: var(--app-primary-bright);
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 0.78rem;
+}
+
+.command-confirm-dialog .p-button:not(.p-button-text) {
+  border-color: var(--app-primary) !important;
+  border-radius: 0.6rem !important;
+  background: var(--app-primary) !important;
+  color: #ffffff !important;
+}
+
+.command-confirm-dialog .p-button:not(.p-button-text):hover:not(:disabled) {
+  border-color: var(--app-primary-bright) !important;
+  background: var(--app-primary-bright) !important;
+}
+
+.command-confirm-dialog .p-button.p-button-text {
+  border-color: transparent !important;
+  background: transparent !important;
+  color: var(--app-muted) !important;
+}
+
+.command-confirm-dialog .p-button.p-button-text:hover:not(:disabled) {
+  border-color: transparent !important;
+  background: rgba(var(--app-primary-rgb), 0.12) !important;
+  color: var(--app-primary-bright) !important;
+}
+
+.shortcut-dialog-modal .p-dialog-close-button,
+.builtin-dialog-modal .p-dialog-close-button,
+.lobby-messages-dialog .p-dialog-close-button,
+.create-lobby-dialog .p-dialog-close-button,
+.add-channel-dialog .p-dialog-close-button,
+.lobby-settings-dialog .p-dialog-close-button {
+  color: var(--app-muted) !important;
+  border-radius: 0.5rem !important;
+}
+
+.shortcut-dialog-modal .p-dialog-close-button:hover,
+.builtin-dialog-modal .p-dialog-close-button:hover,
+.lobby-messages-dialog .p-dialog-close-button:hover,
+.create-lobby-dialog .p-dialog-close-button:hover,
+.add-channel-dialog .p-dialog-close-button:hover,
+.lobby-settings-dialog .p-dialog-close-button:hover {
+  color: var(--app-primary-bright) !important;
+  background: rgba(var(--app-primary-rgb), 0.12) !important;
+}
+
+.shortcut-dialog-modal .p-inputtext,
+.shortcut-dialog-modal .p-textarea,
+.builtin-dialog-modal .p-inputtext,
+.builtin-dialog-modal .p-inputnumber-input,
+.lobby-messages-dialog .p-inputtext,
+.lobby-messages-dialog .p-textarea,
+.create-lobby-dialog .p-inputtext,
+.create-lobby-dialog .p-textarea,
+.add-channel-dialog .p-inputtext,
+.add-channel-dialog .p-textarea,
+.lobby-settings-dialog .p-inputtext,
+.lobby-settings-dialog .p-inputnumber-input {
+  border: 1px solid var(--app-border) !important;
+  border-radius: 0.6rem !important;
+  background: var(--app-control) !important;
+  color: var(--app-text) !important;
+  box-shadow: none !important;
+}
+
+.shortcut-dialog-modal .p-inputtext:hover,
+.shortcut-dialog-modal .p-textarea:hover,
+.builtin-dialog-modal .p-inputtext:hover,
+.builtin-dialog-modal .p-inputnumber-input:hover,
+.lobby-messages-dialog .p-inputtext:hover,
+.lobby-messages-dialog .p-textarea:hover,
+.create-lobby-dialog .p-inputtext:hover,
+.create-lobby-dialog .p-textarea:hover,
+.add-channel-dialog .p-inputtext:hover,
+.add-channel-dialog .p-textarea:hover,
+.lobby-settings-dialog .p-inputtext:hover,
+.lobby-settings-dialog .p-inputnumber-input:hover {
+  border-color: var(--app-border-strong) !important;
+}
+
+.shortcut-dialog-modal .p-inputtext:focus,
+.shortcut-dialog-modal .p-textarea:focus,
+.builtin-dialog-modal .p-inputtext:focus,
+.builtin-dialog-modal .p-inputnumber-input:focus,
+.lobby-messages-dialog .p-inputtext:focus,
+.lobby-messages-dialog .p-textarea:focus,
+.create-lobby-dialog .p-inputtext:focus,
+.create-lobby-dialog .p-textarea:focus,
+.add-channel-dialog .p-inputtext:focus,
+.add-channel-dialog .p-textarea:focus,
+.lobby-settings-dialog .p-inputtext:focus,
+.lobby-settings-dialog .p-inputnumber-input:focus {
+  border-color: var(--app-primary-bright) !important;
+  box-shadow: 0 0 0 0.15rem rgba(var(--app-primary-rgb), 0.16) !important;
+}
+
+.shortcut-dialog-modal .p-inputtext::placeholder,
+.shortcut-dialog-modal .p-textarea::placeholder,
+.builtin-dialog-modal .p-inputtext::placeholder,
+.lobby-messages-dialog .p-inputtext::placeholder,
+.lobby-messages-dialog .p-textarea::placeholder,
+.create-lobby-dialog .p-inputtext::placeholder,
+.create-lobby-dialog .p-textarea::placeholder,
+.add-channel-dialog .p-inputtext::placeholder,
+.add-channel-dialog .p-textarea::placeholder,
+.lobby-settings-dialog .p-inputtext::placeholder,
+.lobby-settings-dialog .p-inputnumber-input::placeholder {
+  color: var(--app-muted) !important;
+  opacity: 0.8;
+}
+
+.shortcut-dialog-modal .p-button:not(.p-button-text),
+.builtin-dialog-modal .p-button:not(.p-button-text),
+.lobby-messages-dialog .p-button:not(.p-button-text),
+.create-lobby-dialog .p-button:not(.p-button-text),
+.add-channel-dialog .p-button:not(.p-button-text),
+.lobby-settings-dialog .p-button:not(.p-button-text) {
+  border-color: var(--app-primary) !important;
+  border-radius: 0.6rem !important;
+  background: var(--app-primary) !important;
+  color: #ffffff !important;
+}
+
+.shortcut-dialog-modal .p-button:not(.p-button-text):hover:not(:disabled),
+.builtin-dialog-modal .p-button:not(.p-button-text):hover:not(:disabled),
+.lobby-messages-dialog .p-button:not(.p-button-text):hover:not(:disabled),
+.create-lobby-dialog .p-button:not(.p-button-text):hover:not(:disabled),
+.add-channel-dialog .p-button:not(.p-button-text):hover:not(:disabled),
+.lobby-settings-dialog .p-button:not(.p-button-text):hover:not(:disabled) {
+  border-color: var(--app-primary-bright) !important;
+  background: var(--app-primary-bright) !important;
+}
+
+.shortcut-dialog-modal .p-button.p-button-text,
+.builtin-dialog-modal .p-button.p-button-text,
+.lobby-messages-dialog .p-button.p-button-text,
+.create-lobby-dialog .p-button.p-button-text,
+.add-channel-dialog .p-button.p-button-text,
+.lobby-settings-dialog .p-button.p-button-text {
+  border-color: transparent !important;
+  background: transparent !important;
+  color: var(--app-muted) !important;
+}
+
+.shortcut-dialog-modal .p-button.p-button-text:hover:not(:disabled),
+.builtin-dialog-modal .p-button.p-button-text:hover:not(:disabled),
+.lobby-messages-dialog .p-button.p-button-text:hover:not(:disabled),
+.create-lobby-dialog .p-button.p-button-text:hover:not(:disabled),
+.add-channel-dialog .p-button.p-button-text:hover:not(:disabled),
+.lobby-settings-dialog .p-button.p-button-text:hover:not(:disabled) {
+  border-color: transparent !important;
+  background: rgba(var(--app-primary-rgb), 0.12) !important;
+  color: var(--app-primary-bright) !important;
+}
+
+.lobby-settings-dialog .p-selectbutton {
+  display: flex;
+  width: 100%;
+}
+
+.lobby-settings-dialog .p-selectbutton .p-togglebutton {
+  flex: 1 1 0;
+  border-color: var(--app-border) !important;
+  background: var(--app-control) !important;
+  color: var(--app-muted) !important;
+  font-size: 0.74rem;
+}
+
+.lobby-settings-dialog .p-selectbutton .p-togglebutton .p-togglebutton-content {
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.lobby-settings-dialog .p-selectbutton .p-togglebutton.p-togglebutton-checked {
+  border-color: rgba(var(--app-primary-rgb), 0.5) !important;
+  background: rgba(var(--app-primary-rgb), 0.16) !important;
+  color: var(--app-primary-bright) !important;
+}
+
+.shortcut-dialog-modal .p-button.p-button-danger,
+.builtin-dialog-modal .p-button.p-button-danger,
+.lobby-messages-dialog .p-button.p-button-danger {
+  color: var(--app-red) !important;
+}
+
+.shortcut-dialog-modal .p-colorpicker-preview {
+  width: 2.55rem;
+  height: 2.55rem;
+  border: 1px solid var(--app-border) !important;
+  border-radius: 0.6rem !important;
+  box-shadow: inset 0 0 0 0.15rem var(--app-surface-raised) !important;
+}
+
+.shortcut-dialog-modal .p-colorpicker-panel {
+  overflow: hidden;
+  border: 1px solid var(--app-border) !important;
+  border-radius: 0.7rem !important;
+  background: var(--app-surface-raised) !important;
+  box-shadow: 0 0.8rem 2rem rgba(0, 0, 0, 0.35) !important;
+}
+
+.shortcut-dialog-modal .p-colorpicker-color-selector,
+.shortcut-dialog-modal .p-colorpicker-hue {
+  border-radius: 0.35rem;
+}
+
+.shortcut-dialog-modal .p-colorpicker-color-handle,
+.shortcut-dialog-modal .p-colorpicker-hue-handle {
+  border-color: var(--app-primary-bright) !important;
+}
+
+.builtin-dialog-modal .p-inputnumber-button {
+  border-color: var(--app-border) !important;
+  background: var(--app-step-background) !important;
+  color: var(--app-muted) !important;
+}
+
+.builtin-dialog-modal .p-inputnumber-input {
+  border-radius: 0 !important;
+}
+
+.builtin-dialog-modal .p-inputnumber-button:hover {
+  border-color: var(--app-primary) !important;
+  background: rgba(var(--app-primary-rgb), 0.12) !important;
+  color: var(--app-primary-bright) !important;
+}
+
+/* One solid switch treatment shared by settings and every shortcut dialog. */
+.app-solid-switch {
+  width: 2.6rem !important;
+  height: 1.45rem !important;
+}
+
+.app-solid-switch .p-toggleswitch-slider {
+  border: 1px solid var(--app-border-strong) !important;
+  border-radius: 999px !important;
+  background: var(--app-control) !important;
+  box-shadow: none !important;
+}
+
+.app-solid-switch .p-toggleswitch-handle {
+  position: absolute !important;
+  inset-inline-start: 0.2rem !important;
+  width: 1rem !important;
+  height: 1rem !important;
+  margin-top: -0.5rem !important;
+  margin-left: 0 !important;
+  margin-inline-start: 0 !important;
+  border: 0 !important;
+  background: var(--app-muted) !important;
+  box-shadow: none !important;
+}
+
+.app-solid-switch.p-toggleswitch-checked .p-toggleswitch-slider {
+  border-color: var(--app-primary) !important;
+  background: var(--app-primary) !important;
+}
+
+.app-solid-switch.p-toggleswitch-checked .p-toggleswitch-handle {
+  inset-inline-start: calc(100% - 1.2rem) !important;
+  background: var(--app-bg) !important;
+}
+
+.app-solid-switch:not(.p-disabled):has(.p-toggleswitch-input:focus-visible)
+  .p-toggleswitch-slider {
+  outline: 2px solid rgba(var(--app-primary-rgb), 0.45);
+  outline-offset: 2px;
 }

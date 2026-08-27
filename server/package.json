@@ -1,0 +1,14 @@
+{
+  "name": "whistleirc-server",
+  "private": true,
+  "version": "0.1.0",
+  "description": "WhistleIRC WebSocket and Bancho IRC bridge",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "express": "^5.1.0",
+    "ws": "^8.18.0"
+  }
+}

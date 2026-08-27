@@ -1,5 +1,12 @@
 <script setup>
-import { Hash, Timer, ClipboardCheck, Flag, Gamepad2 } from "@lucide/vue";
+import {
+  Hash,
+  Timer,
+  ClipboardCheck,
+  Flag,
+  Gamepad2,
+  Users,
+} from "@lucide/vue";
 
 const props = defineProps({
   size: { type: Number, default: 16 },
@@ -17,7 +24,10 @@ const timerLabel = props.timerActive
 
 <template>
   <div class="room-info">
-    <span class="room-info__title">Room</span>
+    <div class="room-info__heading">
+      <Users :size="18" class="room-info__heading-icon" />
+      <span class="room-info__title">Room</span>
+    </div>
 
     <ul class="room-info__stats">
       <li class="room-info__stat">
@@ -53,17 +63,27 @@ const timerLabel = props.timerActive
 .room-info {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
-  padding: 0.75rem 0.9rem;
-  border: 1px solid var(--p-content-border-color);
-  border-radius: var(--p-content-border-radius);
-  background: var(--p-content-background);
+  gap: 0.8rem;
+  padding: 1.1rem 1.2rem;
+  border: 1px solid var(--app-border);
+  border-radius: 0.85rem;
+  background: var(--app-panel-gradient);
+}
+
+.room-info__heading {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.room-info__heading-icon {
+  color: var(--app-purple-bright);
 }
 
 .room-info__title {
-  font-size: 0.78rem;
-  font-weight: 600;
-  color: var(--p-text-muted-color);
+  font-size: 0.82rem;
+  font-weight: 800;
+  color: var(--app-text);
   text-transform: uppercase;
   letter-spacing: 0.03em;
 }
@@ -74,29 +94,29 @@ const timerLabel = props.timerActive
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 0.35rem;
+  gap: 0.65rem;
 }
 
 .room-info__stat {
   display: flex;
   align-items: center;
   gap: 0.45rem;
-  font-size: 0.8rem;
+  font-size: 0.78rem;
 }
 
 .room-info__icon {
   flex-shrink: 0;
-  color: var(--p-text-muted-color);
+  color: var(--app-muted);
 }
 
 .room-info__label {
-  color: var(--p-text-muted-color);
+  color: var(--app-muted);
   flex: 1 1 auto;
 }
 
 .room-info__value {
-  color: var(--p-text-color);
-  font-weight: 500;
+  color: var(--app-text);
+  font-weight: 700;
   text-align: right;
 }
 </style>

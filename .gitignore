@@ -1,0 +1,4 @@
+.env
+serverToBuild
+__pycache__
+mappool.json
