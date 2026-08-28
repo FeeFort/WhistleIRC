@@ -171,8 +171,31 @@ def format_seconds(seconds) -> str:
     return f"{minutes}:{remainder:02d}"
 
 
-def show_beatmap(beatmap: dict) -> None:
+def fetch_creator(token: str, user_id) -> dict | None:
+    """Look up the mapper's own profile via Get User (GET /users/{user})."""
+    if not user_id or user_id == "?":
+        return None
+    try:
+        return request_json(
+            f"{API_URL}/users/{user_id}?key=id",
+            headers={
+                "Accept": "application/json",
+                "Authorization": f"Bearer {token}",
+            },
+        )
+    except ApiError as error:
+        print(f"(could not fetch creator profile: {error})")
+        return None
+
+
+def show_beatmap(beatmap: dict, token: str) -> dict | None:
+    creator_id = beatmap.get("user_id", "?")
+    creator = fetch_creator(token, creator_id)
+
     beatmapset = beatmap.get("beatmapset") or {}
+    host_name = beatmapset.get("creator", "?")
+    diff_owner_name = creator.get("username") if creator else host_name
+
     mode = beatmap.get("mode") or "unknown"
     ruleset_name = KNOWN_RULESETS.get(mode, mode)
     print("\n" + "=" * 64)
@@ -183,7 +206,10 @@ def show_beatmap(beatmap: dict) -> None:
     print(f"Title:       {beatmapset.get('title', '?')}")
     print(f"Artist:      {beatmapset.get('artist', '?')}")
     print(f"Difficulty:  {beatmap.get('version', '?')}")
-    print(f"Creator:     {beatmap.get('creator', '?')}")
+    if diff_owner_name and diff_owner_name != host_name:
+        print(f"Diff owner:  {diff_owner_name}  (guest diff, set host: {host_name})")
+    else:
+        print(f"Creator:     {diff_owner_name}")
     print(f"Ruleset:     {ruleset_name} ({mode})")
     print(f"Status:      {beatmap.get('status', '?')}")
     print(f"Stars:       {beatmap.get('difficulty_rating', '?')}")
@@ -194,15 +220,23 @@ def show_beatmap(beatmap: dict) -> None:
           f"{beatmap.get('accuracy', '?')} / {beatmap.get('drain', '?')}")
     print(f"Max combo:   {beatmap.get('max_combo', '?')}")
     print("=" * 64)
+    return creator
 
 
-def map_from_api(beatmap: dict, slot: str, mods: list[str], commands: list[str]) -> dict:
+def map_from_api(
+    beatmap: dict,
+    slot: str,
+    mods: list[str],
+    commands: list[str],
+    creator: dict | None = None,
+) -> dict:
     beatmapset = beatmap.get("beatmapset") or {}
+    author = (creator or {}).get("username") or beatmapset.get("creator") or "Unknown creator"
     return {
         "id": beatmap["id"],
         "name": str(beatmapset.get("title") or "Unknown title"),
         "diff": str(beatmap.get("version") or "Unknown difficulty"),
-        "author": str(beatmap.get("creator") or "Unknown creator"),
+        "author": str(author),
         "mods": mods,
         "additionalCommands": commands,
     }
@@ -227,7 +261,7 @@ def save_json(document: dict) -> Path:
 
 
 def build_mappool() -> dict:
-    print("osu! Mappool JSON Builder")
+    print("osu! Mappool JSON Builder for WhistleIRC app.")
     print("Enter map slots like NM1, HD2, HR3. Leave slot empty when finished.\n")
 
     tournament = ask("Tournament name")
@@ -261,14 +295,14 @@ def build_mappool() -> dict:
                 continue
             break
 
-        show_beatmap(beatmap)
+        creator = show_beatmap(beatmap, token)
         if not ask_yes_no("Is this the correct map, ruleset and difficulty?", True):
             print("Map skipped.")
             continue
 
         mods = parse_mods(ask("Additional mods (example: HD, HR; or none)", "none"))
         commands = ask_commands(f"Personal commands for {slot}")
-        maps[slot] = map_from_api(beatmap, slot, mods, commands)
+        maps[slot] = map_from_api(beatmap, slot, mods, commands, creator)
         print(f"Added {slot}: {maps[slot]['name']} [{maps[slot]['diff']}]")
 
     if not maps:
