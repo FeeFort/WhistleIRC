@@ -70,6 +70,7 @@ async function main() {
       run(
         `npx resedit "${fullPath}" "${tmpPath}" ` +
           `--icon 1,"${path.join(__dirname, "icon.ico")}" ` +
+          `--company-name "FeeFort" ` +
           `--product-name "${appName}" ` +
           `--file-description "${appName} osu! referee client" ` +
           `--file-version ${fourPartVersion} ` +
