@@ -33,6 +33,13 @@ API_URL = "https://osu.ppy.sh/api/v2"
 DEFAULT_OUTPUT = "mappool.json"
 
 KNOWN_RULESETS = {
+    "0": "osu!",
+    "1": "osu!taiko",
+    "2": "osu!catch",
+    "3": "osu!mania",
+}
+
+API_RULESETS = {
     "osu": "osu!standard",
     "taiko": "osu!taiko",
     "fruits": "osu!catch",
@@ -197,7 +204,7 @@ def show_beatmap(beatmap: dict, token: str) -> dict | None:
     diff_owner_name = creator.get("username") if creator else host_name
 
     mode = beatmap.get("mode") or "unknown"
-    ruleset_name = KNOWN_RULESETS.get(mode, mode)
+    ruleset_name = API_RULESETS.get(mode, mode)
     print("\n" + "=" * 64)
     print("FOUND BEATMAP")
     print("=" * 64)
@@ -247,6 +254,18 @@ def safe_filename(value: str) -> str:
     return value or DEFAULT_OUTPUT
 
 
+def ask_ruleset() -> str:
+    print("\nRuleset:")
+    for value, name in KNOWN_RULESETS.items():
+        print(f"  {value} - {name}")
+
+    while True:
+        ruleset = ask("Ruleset number", "0")
+        if ruleset in KNOWN_RULESETS:
+            return ruleset
+        print("Please choose one of: 0, 1, 2, or 3.")
+
+
 def save_json(document: dict) -> Path:
     requested = ask("Output filename", DEFAULT_OUTPUT)
     filename = safe_filename(requested)
@@ -266,6 +285,7 @@ def build_mappool() -> dict:
 
     tournament = ask("Tournament name")
     stage = ask("Stage")
+    ruleset = ask_ruleset()
     general_commands = ask_commands("General commands for every map/action")
     token = get_access_token()
     maps = {}
@@ -311,6 +331,7 @@ def build_mappool() -> dict:
     return {
         "tournament": tournament,
         "stage": stage,
+        "ruleset": int(ruleset),
         "generalAdditionalCommands": general_commands,
         "maps": maps,
     }

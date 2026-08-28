@@ -3,6 +3,7 @@ import { ref, watch } from "vue";
 const STORAGE_KEY = "feeirc-mappool";
 
 const MOD_ORDER = ["NM", "HD", "HR", "DT", "HT", "FM", "TB", "Other"];
+const DEFAULT_RULESET = 0;
 
 function readStoredState() {
   try {
@@ -118,6 +119,12 @@ export function parseMappool(input) {
   return {
     tournament: String(source.tournament || "Untitled tournament").trim(),
     stage: String(source.stage || "Unspecified stage").trim(),
+    ruleset:
+      Number.isInteger(Number(source.ruleset)) &&
+      Number(source.ruleset) >= 0 &&
+      Number(source.ruleset) <= 3
+        ? Number(source.ruleset)
+        : DEFAULT_RULESET,
     generalAdditionalCommands: normalizeCommands(
       source.generalAdditionalCommands,
     ),
