@@ -106,7 +106,7 @@ function runAction(map, action) {
   }
 
   const commands = [
-    `!mp map ${map.id}`,
+    `!mp map ${map.id} ${pool.value?.ruleset ?? 0}`,
     map.mods.length ? `!mp mods ${map.mods.join(" ")}` : "!mp mods",
     ...map.additionalCommands,
     ...(pool.value?.generalAdditionalCommands || []),
