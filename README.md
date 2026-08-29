@@ -26,9 +26,9 @@ Check the [Releases](https://github.com/FeeFort/WhistleIRC/releases) section and
 
 ### 1. Add your osu! app credentials
 
-Open your [osu! account settings](https://osu.ppy.sh/home/account/edit#oauth) and create an OAuth application. Name of the application is not mportant, but if you're unsure what to put in there, you can use `WhistleIRC`.
+Open your [osu! account settings](https://osu.ppy.sh/home/account/edit#oauth) and create an OAuth application. Name of the application is not important, but if you're unsure what to put in there, you can use `WhistleIRC`.
 
-Copy the application's **Client ID** and **Client Secret** into WhistleIRC. They are saved only in your browser's local IndexedDB storage together with the rest of the saved WhistleIRC authorization data.
+Copy the application's **Client ID** and **Client Secret** into WhistleIRC. They are saved only in your browser's local storage together with the rest of the WhistleIRC authorization data.
 
 osu! will also ask for a callback URL. Use the exact address shown in WhistleIRC's yellow notice:
 
@@ -113,7 +113,7 @@ This is the list of variables used to show dynamic data. They can be used in sho
 | :---: | :--- |
 | `{{beatmapWinner}}` | Holds the winner of recent beatmap. Will hold an `—` placeholder if no beatmap is played yet. |
 | `{{beatmap}}` | Holds current beatmap. Will hold an `—` placeholder if no beatmap is set yet. |
-| `{{beatmapTeamRedScore}}` | Holds team red's score on the recent beatmap. Will hold an `—` placeholder f no beatmap is played yet. |
+| `{{beatmapTeamRedScore}}` | Holds team red's score on the recent beatmap. Will hold an `—` placeholder if no beatmap is played yet. |
 | `{{beatmapTeamBlueScore}}` | Holds team blue's score on the recent beatmap. Will hold an `—` placeholder if no beatmap is played yet. |
 | `{{scoreDifference}}` | Holds difference between both teams' scores. Will be zero if no beatmap is played yet. |
 | `{{teamRedName}}` | Holds the name of the team red. |
@@ -249,4 +249,4 @@ This project is licensed under the [MIT license](https://opensource.org/license/
 
 ## Afterword
 
-Contact `@dr1ma` or `@tracexr` on [Discord](https://discord.com/) if you have any questions regarding this project or if you've noticed a bug. Alternatively, you can open an issue on [GitHub](https://github.com/FeeFort/WhistleIRC/issues).
+This project right now is in **early state** and **active development**. Expect bugs, missing functionality and frequent updates. Please contact `@dr1ma` or `@tracexr` on [Discord](https://discord.com/) if you have any questions or suggestions regarding this project or if you've noticed a bug. Alternatively, you can open an issue on [GitHub](https://github.com/FeeFort/WhistleIRC/issues).
