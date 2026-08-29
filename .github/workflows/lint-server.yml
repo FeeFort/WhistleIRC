@@ -1,21 +1,21 @@
-name: Lint & Format (client)
+name: Lint & Format (server)
 
 on:
   pull_request:
     branches: [main]
     paths:
-      - 'client/**'
+      - 'server/**'
   push:
     branches: [main]
     paths:
-      - 'client/**'
+      - 'server/**'
 
 jobs:
   lint:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: client
+        working-directory: server
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -32,5 +32,5 @@ jobs:
         run: npm run lint
 
       - name: Check Prettier formatting
-        run: npx prettier --check .
+        run: npx prettier --check . --ignore-path ../.prettierignore
         

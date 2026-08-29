@@ -8,7 +8,9 @@
   "scripts": {
     "start": "node src/index.js",
     "bundle": "esbuild src/index.js --bundle --platform=node --outfile=dist/bundle.js",
-    "build": "node build.js"
+    "build": "node build.js",
+    "lint": "eslint .",
+    "format": "prettier --write . --ignore-path ../.prettierignore"
   },
   "dependencies": {
     "express": "^5.1.0",
@@ -16,7 +18,12 @@
   },
   "devDependencies": {
     "@yao-pkg/pkg": "^6.22.0",
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.9.1",
+    "eslint-config-prettier": "^10.1.8",
     "esbuild": "^0.28.2",
+    "globals": "^17.11.0",
+    "prettier": "^3.9.6",
     "resedit-cli": "^3.1.0"
   },
   "pkg": {

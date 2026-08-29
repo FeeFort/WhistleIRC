@@ -21,7 +21,6 @@ function toFourPartVersion(version) {
 
 async function main() {
   const buildDir = path.join(__dirname, "build");
-  const staticDir = path.join(__dirname, "static");
 
   // Wipe leftovers from previous runs so stale files never mix in with fresh output.
   if (fs.existsSync(buildDir)) {
@@ -38,10 +37,7 @@ async function main() {
 
   // Cross-platform/cross-arch targets: the host can't execute these binaries to
   // generate V8 bytecode, so we skip that step to avoid "spawn UNKNOWN".
-  run(
-    "npx pkg . --targets node22-win-arm64,node22-macos-x64,node22-macos-arm64,node22-linux-x64,node22-linux-arm64 " +
-      '--no-bytecode --public-packages "*" --public --compress GZip',
-  );
+  run("npx pkg . --targets node22-win-arm64,node22-macos-x64,node22-macos-arm64,node22-linux-x64,node22-linux-arm64 " + '--no-bytecode --public-packages "*" --public --compress GZip');
 
   const baseName = pkgJson.name;
 
