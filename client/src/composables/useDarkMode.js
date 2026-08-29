@@ -5,9 +5,7 @@ export const THEME_TRANSITION_DURATION = 220;
 const THEME_TRANSITION_CLEANUP_BUFFER = 32;
 const storedTheme = localStorage.getItem("feeirc-theme");
 const isDark = ref(storedTheme !== "light");
-const primaryColor = ref(
-  localStorage.getItem("feeirc-primary") || DEFAULT_PRIMARY_COLOR,
-);
+const primaryColor = ref(localStorage.getItem("feeirc-primary") || DEFAULT_PRIMARY_COLOR);
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
@@ -66,18 +64,7 @@ function hslToHex({ hue, saturation, lightness }) {
   const chroma = (1 - Math.abs(2 * l - 1)) * s;
   const x = chroma * (1 - Math.abs(((hue / 60) % 2) - 1));
   const match = l - chroma / 2;
-  const channels =
-    hue < 60
-      ? [chroma, x, 0]
-      : hue < 120
-        ? [x, chroma, 0]
-        : hue < 180
-          ? [0, chroma, x]
-          : hue < 240
-            ? [0, x, chroma]
-            : hue < 300
-              ? [x, 0, chroma]
-              : [chroma, 0, x];
+  const channels = hue < 60 ? [chroma, x, 0] : hue < 120 ? [x, chroma, 0] : hue < 180 ? [0, chroma, x] : hue < 240 ? [0, x, chroma] : hue < 300 ? [x, 0, chroma] : [chroma, 0, x];
   return `#${channels
     .map((channel) =>
       Math.round((channel + match) * 255)
@@ -98,14 +85,8 @@ function applyTheme(nextIsDark = isDark.value) {
   root.style.colorScheme = nextIsDark ? "dark" : "light";
 
   set("--app-primary", primaryColor.value);
-  set(
-    "--app-primary-bright",
-    hslToHex({ ...hsl, lightness: clamp(hsl.lightness + 12, 0, 96) }),
-  );
-  set(
-    "--app-primary-dark",
-    hslToHex({ ...hsl, lightness: clamp(hsl.lightness - 16, 8, 82) }),
-  );
+  set("--app-primary-bright", hslToHex({ ...hsl, lightness: clamp(hsl.lightness + 12, 0, 96) }));
+  set("--app-primary-dark", hslToHex({ ...hsl, lightness: clamp(hsl.lightness - 16, 8, 82) }));
   set("--app-primary-rgb", `${primary.r}, ${primary.g}, ${primary.b}`);
 }
 

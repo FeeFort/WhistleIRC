@@ -1,5 +1,16 @@
-.env
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+*.swp
+
+# mappool_builder.py and related artifacts
 __pycache__
 mappool.json
 raw_bancho_client.py
+*.pyc
+
+# build artifacts
 server/build

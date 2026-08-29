@@ -1,12 +1,5 @@
 <script setup>
-import {
-  Hash,
-  Timer,
-  ClipboardCheck,
-  Flag,
-  Gamepad2,
-  Users,
-} from "@lucide/vue";
+import { Hash, Timer, ClipboardCheck, Flag, Gamepad2, Users } from "@lucide/vue";
 
 const props = defineProps({
   size: { type: Number, default: 16 },
@@ -17,9 +10,7 @@ const props = defineProps({
   mode: { type: String, default: "osu" },
 });
 
-const timerLabel = props.timerActive
-  ? `${props.timerSeconds}s left`
-  : "No timer active";
+const timerLabel = props.timerActive ? `${props.timerSeconds}s left` : "No timer active";
 </script>
 
 <template>

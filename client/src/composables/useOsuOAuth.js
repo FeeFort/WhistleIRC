@@ -3,17 +3,12 @@ const TOKEN_PROXY_URL = "/api/osu/oauth/token";
 const STATE_KEY = "whistleirc-osu-oauth-state";
 
 export function getOsuRedirectUri() {
-  return (
-    import.meta.env.VITE_OSU_REDIRECT_URI ||
-    `${window.location.origin}${window.location.pathname}`
-  );
+  return import.meta.env.VITE_OSU_REDIRECT_URI || `${window.location.origin}${window.location.pathname}`;
 }
 
 function createState() {
   if (crypto.randomUUID) return crypto.randomUUID();
-  return Array.from(crypto.getRandomValues(new Uint8Array(24)), (value) =>
-    value.toString(16).padStart(2, "0"),
-  ).join("");
+  return Array.from(crypto.getRandomValues(new Uint8Array(24)), (value) => value.toString(16).padStart(2, "0")).join("");
 }
 
 export function startOsuAuthorization(clientId) {
@@ -42,9 +37,7 @@ export function readOsuAuthorizationCallback() {
   window.history.replaceState({}, document.title, getOsuRedirectUri());
 
   if (error) {
-    throw new Error(
-      params.get("error_description") || "osu! authorization was denied.",
-    );
+    throw new Error(params.get("error_description") || "osu! authorization was denied.");
   }
   if (!state || !savedState || state !== savedState) {
     throw new Error("osu! authorization state validation failed.");
@@ -56,18 +49,12 @@ export function readOsuAuthorizationCallback() {
 async function readResponse(response, fallbackMessage) {
   const payload = await response.json().catch(() => null);
   if (!response.ok) {
-    throw new Error(
-      payload?.error_description || payload?.message || fallbackMessage,
-    );
+    throw new Error(payload?.error_description || payload?.message || fallbackMessage);
   }
   return payload;
 }
 
-export async function completeOsuAuthorization({
-  clientId,
-  clientSecret,
-  code,
-}) {
+export async function completeOsuAuthorization({ clientId, clientSecret, code }) {
   const body = new URLSearchParams({
     client_id: clientId,
     client_secret: clientSecret,
@@ -83,10 +70,7 @@ export async function completeOsuAuthorization({
     },
     body,
   });
-  const payload = await readResponse(
-    tokenResponse,
-    "Unable to exchange the osu! authorization code.",
-  );
+  const payload = await readResponse(tokenResponse, "Unable to exchange the osu! authorization code.");
 
   return {
     accessToken: payload.access_token,

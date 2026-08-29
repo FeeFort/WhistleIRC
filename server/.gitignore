@@ -1,1 +1,13 @@
 node_modules/
+
+# esbuild/pkg artifacts
+dist/
+build/
+static/
+
+# logs
+*.log
+
+# secrets
+.env
+.env.local

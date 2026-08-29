@@ -3,21 +3,7 @@ import { ref, computed } from "vue";
 import Button from "primevue/button";
 import Dialog from "primevue/dialog";
 import Message from "primevue/message";
-import {
-  Play,
-  Square,
-  TimerOff,
-  Settings2,
-  Lock,
-  LockOpen,
-  DoorClosed,
-  Timer,
-  Zap,
-  Plus,
-  Pencil,
-  SlidersHorizontal,
-  AlertTriangle,
-} from "@lucide/vue";
+import { Play, Square, TimerOff, Settings2, Lock, LockOpen, DoorClosed, Timer, Zap, Plus, Pencil, SlidersHorizontal, AlertTriangle } from "@lucide/vue";
 import { useShortcuts, BUILTIN_IDS } from "../composables/useShortcuts";
 import ShortcutEditDialog from "./ShortcutEditDialog.vue";
 import BuiltinShortcutsSettings from "./BuiltinShortcutsSettings.vue";
@@ -29,18 +15,8 @@ const props = defineProps({
 
 const emit = defineEmits(["send-command"]);
 
-const {
-  startDelaySeconds,
-  timerSeconds,
-  builtinWarnings,
-  customShortcuts,
-  addCustomShortcut,
-  updateCustomShortcut,
-  removeCustomShortcut,
-  reorderCustomShortcut,
-  resolveIcon,
-  normalizeShortcutColor,
-} = useShortcuts();
+const { startDelaySeconds, timerSeconds, builtinWarnings, customShortcuts, addCustomShortcut, updateCustomShortcut, removeCustomShortcut, reorderCustomShortcut, resolveIcon, normalizeShortcutColor } =
+  useShortcuts();
 
 const commandConfirmationVisible = ref(false);
 const pendingCommand = ref("");
@@ -225,9 +201,7 @@ const builtinSettingsVisible = ref(false);
       'command-bar--disabled': disabled,
     }"
   >
-    <span v-if="!docked" class="command-bar__title"
-      ><Zap :size="18" /> Quick commands</span
-    >
+    <span v-if="!docked" class="command-bar__title"><Zap :size="18" /> Quick commands</span>
 
     <Dialog
       v-model:visible="commandConfirmationVisible"
@@ -238,12 +212,7 @@ const builtinSettingsVisible = ref(false);
       :pt="{ mask: { class: 'app-dialog-mask' } }"
       :style="{ width: '28rem' }"
     >
-      <Message
-        severity="warn"
-        variant="simple"
-        :closable="false"
-        class="command-confirm-message"
-      >
+      <Message severity="warn" variant="simple" :closable="false" class="command-confirm-message">
         <template #icon>
           <AlertTriangle :size="20" class="command-confirm-message__icon" />
         </template>
@@ -255,22 +224,13 @@ const builtinSettingsVisible = ref(false);
       </Message>
 
       <template #footer>
-        <Button
-          label="Cancel"
-          text
-          severity="secondary"
-          @click="cancelCommandConfirmation"
-        />
+        <Button label="Cancel" text severity="secondary" @click="cancelCommandConfirmation" />
         <Button label="Send" @click="acceptCommandConfirmation" />
       </template>
     </Dialog>
 
     <div class="command-bar__groups">
-      <section
-        v-for="group in commandGroups"
-        :key="group.label"
-        class="command-group"
-      >
+      <section v-for="group in commandGroups" :key="group.label" class="command-group">
         <div class="command-group__main">
           <div class="command-group__buttons">
             <Button
@@ -295,10 +255,7 @@ const builtinSettingsVisible = ref(false);
            built-in ones, scrolls independently if it overflows -->
       <section class="command-group command-group--custom">
         <div class="command-group__main">
-          <div
-            class="command-group__buttons command-group__buttons--scroll"
-            @wheel="onCustomShortcutsWheel"
-          >
+          <div class="command-group__buttons command-group__buttons--scroll" @wheel="onCustomShortcutsWheel">
             <div
               v-for="(shortcut, index) in customShortcuts"
               :key="shortcut.id"
@@ -313,41 +270,21 @@ const builtinSettingsVisible = ref(false);
                 type="button"
                 class="command-bar__btn"
                 :style="{
-                  color:
-                    normalizeShortcutColor(shortcut.color) ||
-                    'var(--app-muted)',
+                  color: normalizeShortcutColor(shortcut.color) || 'var(--app-muted)',
                 }"
                 :aria-label="shortcut.label"
                 :disabled="disabled"
                 @click="sendCustom(shortcut)"
               >
-                <component
-                  :is="resolveIcon(shortcut.icon)"
-                  v-if="resolveIcon(shortcut.icon)"
-                  :size="17"
-                />
-                <span v-else class="shortcut-item__initials">{{
-                  initials(shortcut.label)
-                }}</span>
+                <component :is="resolveIcon(shortcut.icon)" v-if="resolveIcon(shortcut.icon)" :size="17" />
+                <span v-else class="shortcut-item__initials">{{ initials(shortcut.label) }}</span>
               </button>
-              <button
-                type="button"
-                class="shortcut-item__edit"
-                aria-label="Edit shortcut"
-                @click="openEdit(shortcut)"
-              >
+              <button type="button" class="shortcut-item__edit" aria-label="Edit shortcut" @click="openEdit(shortcut)">
                 <Pencil :size="11" />
               </button>
             </div>
 
-            <button
-              v-tooltip.top="'Add shortcut'"
-              type="button"
-              class="command-bar__btn command-bar__btn--add"
-              :disabled="disabled"
-              aria-label="Add shortcut"
-              @click="openCreate"
-            >
+            <button v-tooltip.top="'Add shortcut'" type="button" class="command-bar__btn command-bar__btn--add" :disabled="disabled" aria-label="Add shortcut" @click="openCreate">
               <Plus :size="17" />
             </button>
           </div>
@@ -355,23 +292,11 @@ const builtinSettingsVisible = ref(false);
       </section>
     </div>
 
-    <button
-      v-tooltip.top="'Built-in shortcut settings'"
-      type="button"
-      class="command-bar__settings"
-      :disabled="disabled"
-      aria-label="Edit built-in shortcuts"
-      @click="builtinSettingsVisible = true"
-    >
+    <button v-tooltip.top="'Built-in shortcut settings'" type="button" class="command-bar__settings" :disabled="disabled" aria-label="Edit built-in shortcuts" @click="builtinSettingsVisible = true">
       <SlidersHorizontal :size="15" />
     </button>
 
-    <ShortcutEditDialog
-      v-model:visible="editorVisible"
-      :shortcut="editingShortcut"
-      @save="handleSave"
-      @delete="removeCustomShortcut"
-    />
+    <ShortcutEditDialog v-model:visible="editorVisible" :shortcut="editingShortcut" @save="handleSave" @delete="removeCustomShortcut" />
     <BuiltinShortcutsSettings v-model:visible="builtinSettingsVisible" />
   </div>
 </template>

@@ -35,12 +35,8 @@ const MOD_CODES = new Map(
   ]),
 );
 
-const TEAM_MODE_NAMES = new Map(
-  Object.values(TEAM_MODES).map((value) => [value.toLowerCase(), value]),
-);
-const SCORE_MODE_NAMES = new Map(
-  Object.values(SCORE_MODES).map((value) => [value.toLowerCase(), value]),
-);
+const TEAM_MODE_NAMES = new Map(Object.values(TEAM_MODES).map((value) => [value.toLowerCase(), value]));
+const SCORE_MODE_NAMES = new Map(Object.values(SCORE_MODES).map((value) => [value.toLowerCase(), value]));
 
 function parseRoomName(text) {
   const match = text.match(/^Room name:\s*(.*?)(?:,\s*History:|$)/i);
@@ -49,9 +45,7 @@ function parseRoomName(text) {
   const name = match[1].trim();
   const teams = name.match(/\(([^()]+)\)\s+vs\s+\(([^()]+)\)/i);
   if (!teams) return { name, qualifiers: false };
-  const qualifiers = QUALIFIER_ALIASES.some(
-    (alias) => alias.toLowerCase() === teams[1].trim().toLowerCase(),
-  );
+  const qualifiers = QUALIFIER_ALIASES.some((alias) => alias.toLowerCase() === teams[1].trim().toLowerCase());
 
   return {
     name,
@@ -63,9 +57,7 @@ function parseRoomName(text) {
 
 function parseNamedModes(teamMode, scoreMode) {
   const normalizedTeamMode = TEAM_MODE_NAMES.get(teamMode.trim().toLowerCase());
-  const normalizedScoreMode = SCORE_MODE_NAMES.get(
-    scoreMode.trim().toLowerCase(),
-  );
+  const normalizedScoreMode = SCORE_MODE_NAMES.get(scoreMode.trim().toLowerCase());
   if (!normalizedTeamMode || !normalizedScoreMode) return null;
 
   return {
@@ -75,14 +67,10 @@ function parseNamedModes(teamMode, scoreMode) {
 }
 
 function parseTeamSettings(text) {
-  const line = text.match(
-    /Team mode:\s*([^,]+),\s*Win condition:\s*([^\r\n]+)/i,
-  );
+  const line = text.match(/Team mode:\s*([^,]+),\s*Win condition:\s*([^\r\n]+)/i);
   if (line) return parseNamedModes(line[1], line[2]);
 
-  const changed = text.match(
-    /Changed match settings to\s*(\d+)\s+slots?,\s*([^,]+),\s*([^\r\n]+)/i,
-  );
+  const changed = text.match(/Changed match settings to\s*(\d+)\s+slots?,\s*([^,]+),\s*([^\r\n]+)/i);
   if (!changed) return null;
 
   const modes = parseNamedModes(changed[2], changed[3]);
@@ -91,9 +79,7 @@ function parseTeamSettings(text) {
 }
 
 function parseMpSetCommand(text) {
-  const match = text.match(
-    /^\s*!mp\s+set\s+([0-3])\s+([0-3])\s+(\d+)(?:\s|$)/i,
-  );
+  const match = text.match(/^\s*!mp\s+set\s+([0-3])\s+([0-3])\s+(\d+)(?:\s|$)/i);
   if (!match) return null;
 
   return {
@@ -121,9 +107,7 @@ function parseTimerMessage(text) {
   if (/^Countdown aborted\.?$/i.test(text.trim())) return { type: "aborted" };
   if (/^Countdown finished\.?$/i.test(text.trim())) return { type: "finished" };
 
-  const match = text.match(
-    /^Countdown ends in\s+(\d+)\s+(minute|minutes|second|seconds)\.?$/i,
-  );
+  const match = text.match(/^Countdown ends in\s+(\d+)\s+(minute|minutes|second|seconds)\.?$/i);
   if (!match) return null;
 
   const value = Number(match[1]);
@@ -138,7 +122,10 @@ function parseBeatmap(text) {
   if (!match) return null;
 
   const url = `https://osu.ppy.sh/b/${match[1]}`;
-  const title = match[2].trim().replace(/^[–—-]\s*/, "").trim();
+  const title = match[2]
+    .trim()
+    .replace(/^[–—-]\s*/, "")
+    .trim();
   const beatmapId = Number(match[1]);
   return { id: beatmapId, beatmapId, url, title: title || null };
 }
@@ -164,9 +151,7 @@ function parseModsConfirmation(text) {
 }
 
 function parsePlayerSnapshot(text) {
-  const match = text.match(
-    /^Slot\s+(\d+)\s+(Ready|Not Ready)\s+(https?:\/\/\S+)\s+(.+?)\s*$/i,
-  );
+  const match = text.match(/^Slot\s+(\d+)\s+(Ready|Not Ready)\s+(https?:\/\/\S+)\s+(.+?)\s*$/i);
   if (!match) return null;
 
   const playerDetails = match[4].match(/^(.*?)\s*\[([^\]]+)\]\s*$/);
@@ -176,9 +161,7 @@ function parsePlayerSnapshot(text) {
     .split(/\s*\/\s*/)
     .map((part) => part.trim())
     .filter(Boolean);
-  const teamPart = detailParts.find((part) =>
-    /^Team\s+(Red|Blue)$/i.test(part),
-  );
+  const teamPart = detailParts.find((part) => /^Team\s+(Red|Blue)$/i.test(part));
   const teamMatch = teamPart?.match(/^Team\s+(Red|Blue)$/i);
   const team = teamMatch ? teamMatch[1].toLowerCase() : null;
   const mods = detailParts
@@ -203,9 +186,7 @@ function parsePlayerSnapshot(text) {
 }
 
 function parsePlayerJoined(text) {
-  const match = text.match(
-    /^(.+?) joined in slot\s+(\d+)\s+for team\s+(red|blue)\.?$/i,
-  );
+  const match = text.match(/^(.+?) joined in slot\s+(\d+)\s+for team\s+(red|blue)\.?$/i);
   if (!match) return null;
   return {
     username: match[1].trim(),
@@ -221,9 +202,7 @@ function parsePlayerLeft(text) {
 }
 
 function parsePlayerScore(text) {
-  const match = text.match(
-    /^(.+?) finished playing\s+\(Score:\s*(\d+),\s*([^\)]+)\)\.?$/i,
-  );
+  const match = text.match(/^(.+?) finished playing\s+\(Score:\s*(\d+),\s*([^)]+)\)\.?$/i);
   if (!match) return null;
   return {
     username: match[1].trim(),
@@ -233,9 +212,7 @@ function parsePlayerScore(text) {
 }
 
 function parseMatchFinished(text) {
-  return /^The match has finished!?$/i.test(text.trim())
-    ? { finished: true }
-    : null;
+  return /^The match has finished!?$/i.test(text.trim()) ? { finished: true } : null;
 }
 
 function parseMatchMetadata(text) {

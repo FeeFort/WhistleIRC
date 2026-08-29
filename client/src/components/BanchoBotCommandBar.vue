@@ -9,24 +9,10 @@ const emit = defineEmits(["send-command", "create"]);
 <template>
   <div class="bancho-command-bar">
     <div class="bancho-command-bar__actions">
-      <Button
-        text
-        rounded
-        aria-label="Send help command"
-        title="Help"
-        :disabled="disabled"
-        @click="emit('send-command', '!help')"
-      >
+      <Button text rounded aria-label="Send help command" title="Help" :disabled="disabled" @click="emit('send-command', '!help')">
         <CircleHelp :size="17" />
       </Button>
-      <Button
-        text
-        rounded
-        aria-label="Create lobby"
-        title="Create lobby"
-        :disabled="disabled"
-        @click="emit('create')"
-      >
+      <Button text rounded aria-label="Create lobby" title="Create lobby" :disabled="disabled" @click="emit('create')">
         <Plus :size="17" />
       </Button>
     </div>

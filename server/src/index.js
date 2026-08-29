@@ -4,10 +4,7 @@ const path = require("node:path");
 const { execFile } = require("node:child_process");
 const express = require("express");
 const { WebSocketServer, WebSocket } = require("ws");
-const {
-  parseBanchoBotMessage,
-  parseLobbyCommand,
-} = require("./banchoBotParser");
+const { parseBanchoBotMessage, parseLobbyCommand } = require("./banchoBotParser");
 
 const HTTP_HOST = process.env.HOST || "0.0.0.0";
 const HTTP_PORT = Number(process.env.PORT || 3000);
@@ -29,7 +26,7 @@ function formatLogTime(date = new Date()) {
 
 const app = express();
 const httpServer = http.createServer(app);
-const publicDirectory = path.join(__dirname, "..", "src", "public");
+const staticDirectory = path.join(__dirname, "..", "static");
 const webSocketServer = new WebSocketServer({
   server: httpServer,
   path: "/ws",
@@ -50,91 +47,74 @@ app.options("/api/osu/oauth/token", (request, response) => {
   response.sendStatus(204);
 });
 
-app.post(
-  "/api/osu/oauth/token",
-  express.urlencoded({ extended: false }),
-  async (request, response) => {
-    setCorsHeaders(request, response);
+app.post("/api/osu/oauth/token", express.urlencoded({ extended: false }), async (request, response) => {
+  setCorsHeaders(request, response);
 
-    const {
-      client_id: clientId,
-      client_secret: clientSecret,
-      code,
-      redirect_uri: redirectUri,
-    } = request.body || {};
-    if (![clientId, clientSecret, code, redirectUri].every(isNonEmptyString)) {
-      response
-        .status(400)
-        .json({
-          message:
-            "client_id, client_secret, code and redirect_uri are required.",
-        });
+  const { client_id: clientId, client_secret: clientSecret, code, redirect_uri: redirectUri } = request.body || {};
+  if (![clientId, clientSecret, code, redirectUri].every(isNonEmptyString)) {
+    response.status(400).json({
+      message: "client_id, client_secret, code and redirect_uri are required.",
+    });
+    return;
+  }
+
+  try {
+    const tokenResponse = await fetch(OSU_TOKEN_URL, {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: new URLSearchParams({
+        client_id: clientId.trim(),
+        client_secret: clientSecret,
+        code: code.trim(),
+        grant_type: "authorization_code",
+        redirect_uri: redirectUri.trim(),
+      }),
+    });
+    const tokenPayload = await tokenResponse.json().catch(() => null);
+    if (!tokenResponse.ok || !tokenPayload?.access_token) {
+      response.status(tokenResponse.status || 502).json({
+        message: tokenPayload?.error_description || tokenPayload?.message || "osu! rejected the authorization code.",
+      });
       return;
     }
 
-    try {
-      const tokenResponse = await fetch(OSU_TOKEN_URL, {
-        method: "POST",
-        headers: {
-          Accept: "application/json",
-          "Content-Type": "application/x-www-form-urlencoded",
-        },
-        body: new URLSearchParams({
-          client_id: clientId.trim(),
-          client_secret: clientSecret,
-          code: code.trim(),
-          grant_type: "authorization_code",
-          redirect_uri: redirectUri.trim(),
-        }),
+    const userResponse = await fetch(OSU_ME_URL, {
+      headers: {
+        Accept: "application/json",
+        Authorization: `Bearer ${tokenPayload.access_token}`,
+      },
+    });
+    const userPayload = await userResponse.json().catch(() => null);
+    if (!userResponse.ok || !userPayload?.id || !userPayload?.username) {
+      response.status(userResponse.status || 502).json({
+        message: "osu! profile could not be loaded.",
       });
-      const tokenPayload = await tokenResponse.json().catch(() => null);
-      if (!tokenResponse.ok || !tokenPayload?.access_token) {
-        response.status(tokenResponse.status || 502).json({
-          message:
-            tokenPayload?.error_description ||
-            tokenPayload?.message ||
-            "osu! rejected the authorization code.",
-        });
-        return;
-      }
-
-      const userResponse = await fetch(OSU_ME_URL, {
-        headers: {
-          Accept: "application/json",
-          Authorization: `Bearer ${tokenPayload.access_token}`,
-        },
-      });
-      const userPayload = await userResponse.json().catch(() => null);
-      if (!userResponse.ok || !userPayload?.id || !userPayload?.username) {
-        response.status(userResponse.status || 502).json({
-          message: "osu! profile could not be loaded.",
-        });
-        return;
-      }
-
-      response.json({
-        access_token: tokenPayload.access_token,
-        refresh_token: tokenPayload.refresh_token || "",
-        expires_in: tokenPayload.expires_in || 0,
-        user: {
-          id: userPayload.id,
-          name: userPayload.username,
-          avatar: `https://a.ppy.sh/${userPayload.id}`,
-        },
-      });
-    } catch (error) {
-      console.error(
-        `[${formatLogTime()}] osu! OAuth request failed: ${error.message}`,
-      );
-      response.status(502).json({ message: "Unable to reach the osu! API." });
+      return;
     }
-  },
-);
 
-app.use(express.static(publicDirectory));
+    response.json({
+      access_token: tokenPayload.access_token,
+      refresh_token: tokenPayload.refresh_token || "",
+      expires_in: tokenPayload.expires_in || 0,
+      user: {
+        id: userPayload.id,
+        name: userPayload.username,
+        avatar: `https://a.ppy.sh/${userPayload.id}`,
+      },
+    });
+  } catch (error) {
+    console.error(`[${formatLogTime()}] osu! OAuth request failed: ${error.message}`);
+    response.status(502).json({ message: "Unable to reach the osu! API." });
+  }
+});
+
+app.use(express.static(staticDirectory));
 
 app.get("/", (_request, response) => {
-  response.sendFile(path.join(publicDirectory, "index.html"));
+  response.sendFile(path.join(staticDirectory, "index.html"));
 });
 
 app.get("/health", (_request, response) => {
@@ -227,18 +207,10 @@ function getMatchStatus(state) {
   const teamRedScore = Number(state.teamRedScore) || 0;
   const teamBlueScore = Number(state.teamBlueScore) || 0;
 
-  if (
-    winningScore &&
-    teamRedScore >= winningScore &&
-    teamRedScore > teamBlueScore
-  ) {
+  if (winningScore && teamRedScore >= winningScore && teamRedScore > teamBlueScore) {
     return `${state.teamRed} wins the match! GG and WP!`;
   }
-  if (
-    winningScore &&
-    teamBlueScore >= winningScore &&
-    teamBlueScore > teamRedScore
-  ) {
+  if (winningScore && teamBlueScore >= winningScore && teamBlueScore > teamRedScore) {
     return `${state.teamBlue} wins the match! GG and WP!`;
   }
   return state.nextPickTeam ? `Next Pick: ${state.nextPickTeam}` : null;
@@ -290,12 +262,7 @@ function cloneLobbyState(state) {
 
 function sameLobbyValue(left, right) {
   if (left === right) return true;
-  if (
-    !left ||
-    !right ||
-    typeof left !== "object" ||
-    typeof right !== "object"
-  ) {
+  if (!left || !right || typeof left !== "object" || typeof right !== "object") {
     return false;
   }
   return JSON.stringify(left) === JSON.stringify(right);
@@ -351,11 +318,7 @@ class BanchoConnection {
   }
 
   isOwnNick(nick) {
-    return Boolean(
-      nick &&
-      this.credentials?.login &&
-      nick.toLowerCase() === this.credentials.login.toLowerCase(),
-    );
+    return Boolean(nick && this.credentials?.login && nick.toLowerCase() === this.credentials.login.toLowerCase());
   }
 
   getLobbyState(channel, reset = false) {
@@ -367,11 +330,7 @@ class BanchoConnection {
     return this.lobbyStates.get(key);
   }
 
-  sendLobbyState(
-    channel,
-    state = this.lobbyStates.get(normalizeChannel(channel)),
-    client = null,
-  ) {
+  sendLobbyState(channel, state = this.lobbyStates.get(normalizeChannel(channel)), client = null) {
     if (!state) return;
     const payload = {
       type: "lobby_state",
@@ -412,11 +371,7 @@ class BanchoConnection {
     ]) {
       if (Object.prototype.hasOwnProperty.call(update, key)) {
         const sameValue =
-          key === "activeMods" &&
-          typeof state[key] === "string" &&
-          typeof update[key] === "string"
-            ? state[key].toLowerCase() === update[key].toLowerCase()
-            : sameLobbyValue(state[key], update[key]);
+          key === "activeMods" && typeof state[key] === "string" && typeof update[key] === "string" ? state[key].toLowerCase() === update[key].toLowerCase() : sameLobbyValue(state[key], update[key]);
         if (!sameValue) changed = true;
         state[key] = update[key];
       }
@@ -424,10 +379,7 @@ class BanchoConnection {
 
     if (update.timer) {
       const nextTimer = { ...state.timer, ...update.timer };
-      if (
-        state.timer.active !== nextTimer.active ||
-        state.timer.endsAt !== nextTimer.endsAt
-      ) {
+      if (state.timer.active !== nextTimer.active || state.timer.endsAt !== nextTimer.endsAt) {
         changed = true;
       }
       state.timer = nextTimer;
@@ -444,10 +396,7 @@ class BanchoConnection {
 
   closeLobby(channel) {
     const state = this.getLobbyState(channel);
-    const changed =
-      state.status !== "closed" ||
-      state.timer.active ||
-      state.timer.endsAt !== null;
+    const changed = state.status !== "closed" || state.timer.active || state.timer.endsAt !== null;
     state.status = "closed";
     state.timer = { active: false, endsAt: null };
     this.matchScoreBuffers.set(normalizeChannel(channel), new Map());
@@ -458,28 +407,16 @@ class BanchoConnection {
     const normalizedPlayers = players.map((player) => ({ ...player }));
     this.updateLobbyState(channel, {
       players: normalizedPlayers,
-      teamRedPlayers: normalizedPlayers
-        .filter((player) => player.team === "red")
-        .map((player) => player.username),
-      teamBluePlayers: normalizedPlayers
-        .filter((player) => player.team === "blue")
-        .map((player) => player.username),
+      teamRedPlayers: normalizedPlayers.filter((player) => player.team === "red").map((player) => player.username),
+      teamBluePlayers: normalizedPlayers.filter((player) => player.team === "blue").map((player) => player.username),
     });
   }
 
   upsertPlayer(channel, player) {
     const state = this.getLobbyState(channel);
     const normalizedName = player.username.toLowerCase();
-    const players = state.players.filter(
-      (item) =>
-        item.slot !== player.slot &&
-        item.username.toLowerCase() !== normalizedName,
-    );
-    const previous = state.players.find(
-      (item) =>
-        item.slot === player.slot ||
-        item.username.toLowerCase() === normalizedName,
-    );
+    const players = state.players.filter((item) => item.slot !== player.slot && item.username.toLowerCase() !== normalizedName);
+    const previous = state.players.find((item) => item.slot === player.slot || item.username.toLowerCase() === normalizedName);
     this.updatePlayers(channel, [
       ...players,
       {
@@ -487,27 +424,18 @@ class BanchoConnection {
         ...player,
         ready: player.ready ?? previous?.ready ?? false,
         team: player.team ?? previous?.team ?? null,
-        mods:
-          player.mods?.length || !previous?.mods
-            ? (player.mods ?? [])
-            : previous.mods,
+        mods: player.mods?.length || !previous?.mods ? (player.mods ?? []) : previous.mods,
         profileUrl: player.profileUrl || previous?.profileUrl || null,
         userId: player.userId ?? previous?.userId ?? null,
-        avatarUrl:
-          player.avatarUrl ||
-          previous?.avatarUrl ||
-          (player.userId ? `https://a.ppy.sh/${player.userId}` : null),
+        avatarUrl: player.avatarUrl || previous?.avatarUrl || (player.userId ? `https://a.ppy.sh/${player.userId}` : null),
       },
     ]);
   }
 
   removePlayer(channel, username) {
     const state = this.getLobbyState(channel);
-    const players = state.players.filter(
-      (player) => player.username.toLowerCase() !== username.toLowerCase(),
-    );
-    if (players.length !== state.players.length)
-      this.updatePlayers(channel, players);
+    const players = state.players.filter((player) => player.username.toLowerCase() !== username.toLowerCase());
+    if (players.length !== state.players.length) this.updatePlayers(channel, players);
   }
 
   recordPlayerScore(channel, result) {
@@ -519,26 +447,14 @@ class BanchoConnection {
 
   finishMatch(channel) {
     const state = this.getLobbyState(channel);
-    const scores =
-      this.matchScoreBuffers.get(normalizeChannel(channel)) || new Map();
+    const scores = this.matchScoreBuffers.get(normalizeChannel(channel)) || new Map();
     if (!scores.size) return;
 
-    const sumTeam = (players) =>
-      players.reduce(
-        (total, username) => total + (scores.get(username.toLowerCase()) || 0),
-        0,
-      );
+    const sumTeam = (players) => players.reduce((total, username) => total + (scores.get(username.toLowerCase()) || 0), 0);
     const teamRedScore = sumTeam(state.teamRedPlayers);
     const teamBlueScore = sumTeam(state.teamBluePlayers);
-    const winnerTeam =
-      teamRedScore === teamBlueScore
-        ? null
-        : teamRedScore > teamBlueScore
-          ? "red"
-          : "blue";
-    const scoreDifference = winnerTeam
-      ? Math.abs(teamRedScore - teamBlueScore)
-      : 0;
+    const winnerTeam = teamRedScore === teamBlueScore ? null : teamRedScore > teamBlueScore ? "red" : "blue";
+    const scoreDifference = winnerTeam ? Math.abs(teamRedScore - teamBlueScore) : 0;
     const nextPickTeam = getOppositePickTeam(state);
     const winningScore = getWinningScore(state.bestOf);
 
@@ -550,14 +466,8 @@ class BanchoConnection {
         winnerTeam,
       },
       ...(nextPickTeam ? { nextPickTeam } : {}),
-      ...(winnerTeam === "red" &&
-      (!winningScore || state.teamRedScore < winningScore)
-        ? { teamRedScore: state.teamRedScore + 1 }
-        : {}),
-      ...(winnerTeam === "blue" &&
-      (!winningScore || state.teamBlueScore < winningScore)
-        ? { teamBlueScore: state.teamBlueScore + 1 }
-        : {}),
+      ...(winnerTeam === "red" && (!winningScore || state.teamRedScore < winningScore) ? { teamRedScore: state.teamRedScore + 1 } : {}),
+      ...(winnerTeam === "blue" && (!winningScore || state.teamBlueScore < winningScore) ? { teamBlueScore: state.teamBlueScore + 1 } : {}),
     });
     scores.clear();
   }
@@ -620,14 +530,10 @@ class BanchoConnection {
     this.pendingAutoSettings.add(key);
     try {
       this.sendMessage(channel, "!mp settings");
-      console.log(
-        `[${formatLogTime()}] IRC OUT PRIVMSG ${channel} :!mp settings (automatic)`,
-      );
+      console.log(`[${formatLogTime()}] IRC OUT PRIVMSG ${channel} :!mp settings (automatic)`);
     } catch (error) {
       this.pendingAutoSettings.delete(key);
-      console.error(
-        `[${formatLogTime()}] IRC OUT PRIVMSG ${channel} :!mp settings failed: ${error.message}`,
-      );
+      console.error(`[${formatLogTime()}] IRC OUT PRIVMSG ${channel} :!mp settings failed: ${error.message}`);
     }
   }
 
@@ -666,9 +572,7 @@ class BanchoConnection {
       this.setState("authenticating");
       this.sendRaw(`PASS ${this.credentials.password}`);
       this.sendRaw(`NICK ${this.credentials.login}`);
-      this.sendRaw(
-        `USER ${this.credentials.login} 0 * :${this.credentials.login}`,
-      );
+      this.sendRaw(`USER ${this.credentials.login} 0 * :${this.credentials.login}`);
     });
 
     socket.on("data", (chunk) => {
@@ -722,9 +626,7 @@ class BanchoConnection {
         this.sendRaw(pong);
         console.log(`[${formatLogTime()}] IRC OUT ${pong}`);
       } catch (error) {
-        console.error(
-          `[${formatLogTime()}] IRC OUT ${pong} failed: ${error.message}`,
-        );
+        console.error(`[${formatLogTime()}] IRC OUT ${pong} failed: ${error.message}`);
       }
       return;
     }
@@ -737,12 +639,7 @@ class BanchoConnection {
       this.setState("error", AUTH_ERROR);
     }
 
-    if (
-      message.command === "372" &&
-      message.params.some((param) =>
-        param.toLowerCase().includes("required to authenticate"),
-      )
-    ) {
+    if (message.command === "372" && message.params.some((param) => param.toLowerCase().includes("required to authenticate"))) {
       this.setState("error", AUTH_ERROR);
     }
 
@@ -759,11 +656,7 @@ class BanchoConnection {
       const target = message.params[0];
       const nick = getNick(message.prefix);
       const text = message.params[1];
-      const channel =
-        this.credentials?.login &&
-        target.toLowerCase() === this.credentials.login.toLowerCase()
-          ? "BanchoBot"
-          : target;
+      const channel = this.credentials?.login && target.toLowerCase() === this.credentials.login.toLowerCase() ? "BanchoBot" : target;
       if (isMultiplayerChannel(channel)) {
         this.handleLobbyMessage(channel, nick, text);
       }
@@ -794,18 +687,10 @@ class BanchoConnection {
         channel,
         nick,
       });
-      if (
-        message.command === "JOIN" &&
-        isMultiplayerChannel(channel) &&
-        this.isOwnNick(nick)
-      ) {
+      if (message.command === "JOIN" && isMultiplayerChannel(channel) && this.isOwnNick(nick)) {
         this.sendLobbyState(channel);
       }
-      if (
-        message.command === "JOIN" &&
-        isMultiplayerChannel(channel) &&
-        this.isOwnNick(nick)
-      ) {
+      if (message.command === "JOIN" && isMultiplayerChannel(channel) && this.isOwnNick(nick)) {
         this.requestLobbySettings(channel);
       }
     }
@@ -921,10 +806,7 @@ function validateMessage(message) {
       if (!Number.isInteger(message.teamRedScore) || message.teamRedScore < 0) {
         return "teamRedScore must be a non-negative integer.";
       }
-      if (
-        !Number.isInteger(message.teamBlueScore) ||
-        message.teamBlueScore < 0
-      ) {
+      if (!Number.isInteger(message.teamBlueScore) || message.teamBlueScore < 0) {
         return "teamBlueScore must be a non-negative integer.";
       }
       return null;
@@ -933,16 +815,10 @@ function validateMessage(message) {
       if (!isNonEmptyString(message.channel)) {
         return "channel must be a non-empty string.";
       }
-      if (
-        message.bestOf !== null &&
-        (!Number.isInteger(message.bestOf) || message.bestOf < 1)
-      ) {
+      if (message.bestOf !== null && (!Number.isInteger(message.bestOf) || message.bestOf < 1)) {
         return "bestOf must be null or a positive integer.";
       }
-      if (
-        message.nextPickTeam !== null &&
-        !isNonEmptyString(message.nextPickTeam)
-      ) {
+      if (message.nextPickTeam !== null && !isNonEmptyString(message.nextPickTeam)) {
         return "nextPickTeam must be null or a non-empty string.";
       }
       return null;
@@ -1011,11 +887,7 @@ function handleSetLobbyScore(client, message) {
   try {
     const state = banchoConnection.getLobbyState(message.channel.trim());
     const winningScore = getWinningScore(state.bestOf);
-    if (
-      winningScore &&
-      (message.teamRedScore > winningScore ||
-        message.teamBlueScore > winningScore)
-    ) {
+    if (winningScore && (message.teamRedScore > winningScore || message.teamBlueScore > winningScore)) {
       throw new Error(`Match scores cannot exceed ${winningScore}.`);
     }
     banchoConnection.updateLobbyState(message.channel.trim(), {
@@ -1091,12 +963,8 @@ webSocketServer.on("connection", (client) => {
 });
 
 httpServer.listen(HTTP_PORT, HTTP_HOST, () => {
-  console.log(
-    `[${formatLogTime()}] WhistleIRC server listening on http://${HTTP_HOST}:${HTTP_PORT}`,
-  );
-  console.log(
-    `[${formatLogTime()}] WebSocket endpoint: ws://${HTTP_HOST}:${HTTP_PORT}/ws`,
-  );
+  console.log(`[${formatLogTime()}] WhistleIRC server listening on http://${HTTP_HOST}:${HTTP_PORT}`);
+  console.log(`[${formatLogTime()}] WebSocket endpoint: ws://${HTTP_HOST}:${HTTP_PORT}/ws`);
 
   const browserUrl = `http://localhost:${HTTP_PORT}`;
 
@@ -1119,9 +987,7 @@ function shutdown(signal) {
   if (process.stdin.isTTY && typeof process.stdin.setRawMode === "function") {
     process.stdin.setRawMode(false);
   }
-  console.log(
-    `[${formatLogTime()}] Shutting down${signal ? ` (${signal})` : ""}...`,
-  );
+  console.log(`[${formatLogTime()}] Shutting down${signal ? ` (${signal})` : ""}...`);
   banchoConnection.logout();
 
   for (const client of webSocketServer.clients) {

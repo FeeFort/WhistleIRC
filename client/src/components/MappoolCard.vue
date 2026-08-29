@@ -21,15 +21,11 @@ const groups = computed(() => {
     grouped.get(map.group).push(map);
   });
 
-  return [...grouped.entries()]
-    .sort(([first], [second]) => groupOrder(first) - groupOrder(second))
-    .map(([name, maps]) => ({ name, maps }));
+  return [...grouped.entries()].sort(([first], [second]) => groupOrder(first) - groupOrder(second)).map(([name, maps]) => ({ name, maps }));
 });
 
 function groupOrder(group) {
-  const order = ["NM", "HD", "HR", "DT", "HT", "FM", "TB", "Other"].indexOf(
-    group,
-  );
+  const order = ["NM", "HD", "HR", "DT", "HT", "FM", "TB", "Other"].indexOf(group);
   return order === -1 ? 999 : order;
 }
 
@@ -47,11 +43,7 @@ async function importFile(event) {
     const parsed = parseMappool(await file.text());
     setPool(parsed);
     stateBySlot.value = {};
-    const skippedText = parsed.skippedMaps
-      ? ` Skipped ${parsed.skippedMaps} invalid map${
-          parsed.skippedMaps === 1 ? "" : "s"
-        }.`
-      : "";
+    const skippedText = parsed.skippedMaps ? ` Skipped ${parsed.skippedMaps} invalid map${parsed.skippedMaps === 1 ? "" : "s"}.` : "";
     toast.add({
       severity: "success",
       summary: "Mappool imported",
@@ -62,8 +54,7 @@ async function importFile(event) {
     toast.add({
       severity: "error",
       summary: "Mappool import failed",
-      detail:
-        error instanceof Error ? error.message : "Unable to parse the file.",
+      detail: error instanceof Error ? error.message : "Unable to parse the file.",
       life: 4200,
     });
   }
@@ -134,13 +125,7 @@ function clearImportedPool() {
 
 <template>
   <div class="mappool-card">
-    <input
-      ref="fileInput"
-      class="mappool-card__file-input"
-      type="file"
-      accept=".json,application/json"
-      @change="importFile"
-    />
+    <input ref="fileInput" class="mappool-card__file-input" type="file" accept=".json,application/json" @change="importFile" />
 
     <div v-if="pool" class="mappool-card__toolbar">
       <div v-if="pool" class="mappool-card__meta">
@@ -149,26 +134,10 @@ function clearImportedPool() {
       </div>
 
       <div class="mappool-card__toolbar-actions">
-        <Button
-          text
-          rounded
-          aria-label="Import mappool JSON"
-          title="Import mappool JSON"
-          :disabled="disabled"
-          @click="openFilePicker"
-        >
+        <Button text rounded aria-label="Import mappool JSON" title="Import mappool JSON" :disabled="disabled" @click="openFilePicker">
           <Upload :size="15" />
         </Button>
-        <Button
-          v-if="pool"
-          text
-          rounded
-          severity="danger"
-          aria-label="Clear mappool"
-          title="Clear mappool"
-          :disabled="disabled"
-          @click="clearImportedPool"
-        >
+        <Button v-if="pool" text rounded severity="danger" aria-label="Clear mappool" title="Clear mappool" :disabled="disabled" @click="clearImportedPool">
           <Trash2 :size="14" />
         </Button>
       </div>
@@ -195,13 +164,9 @@ function clearImportedPool() {
             <div class="mappool-map__info">
               <div class="mappool-map__title">
                 <span class="mappool-map__slot">{{ map.slot }}</span>
-                <span class="mappool-map__name"
-                  >{{ map.name }} [{{ map.diff }}]</span
-                >
+                <span class="mappool-map__name">{{ map.name }} [{{ map.diff }}]</span>
               </div>
-              <span class="mappool-map__author"
-                >mapped by {{ map.author }}</span
-              >
+              <span class="mappool-map__author">mapped by {{ map.author }}</span>
             </div>
 
             <div class="mappool-map__actions">
@@ -256,9 +221,7 @@ function clearImportedPool() {
     <div v-else class="mappool-card__empty">
       <Upload :size="22" />
       <span>Import a JSON mappool to see its maps here.</span>
-      <Button text size="small" :disabled="disabled" @click="openFilePicker"
-        >Import JSON</Button
-      >
+      <Button text size="small" :disabled="disabled" @click="openFilePicker">Import JSON</Button>
     </div>
   </div>
 </template>
@@ -333,8 +296,7 @@ function clearImportedPool() {
   color: var(--app-red) !important;
 }
 
-.mappool-card__toolbar-actions
-  :deep(.p-button.p-button-danger:hover:not(:disabled)) {
+.mappool-card__toolbar-actions :deep(.p-button.p-button-danger:hover:not(:disabled)) {
   background: rgba(255, 109, 120, 0.12) !important;
   color: var(--app-red) !important;
 }

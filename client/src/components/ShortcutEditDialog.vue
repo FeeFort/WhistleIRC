@@ -47,9 +47,7 @@ watch(
 );
 
 const previewIcon = computed(() => resolveIcon(form.value.icon));
-const previewInitials = computed(() =>
-  (form.value.label || "??").trim().slice(0, 2).toUpperCase(),
-);
+const previewInitials = computed(() => (form.value.label || "??").trim().slice(0, 2).toUpperCase());
 
 const colorNoHash = computed({
   get: () => (form.value.color || "").replace("#", ""),
@@ -58,9 +56,7 @@ const colorNoHash = computed({
 
 const previewColor = computed(() => normalizeShortcutColor(form.value.color));
 
-const canSave = computed(
-  () => form.value.label.trim() && form.value.command.trim(),
-);
+const canSave = computed(() => form.value.label.trim() && form.value.command.trim());
 
 function close() {
   emit("update:visible", false);
@@ -91,14 +87,9 @@ function remove() {
   >
     <div class="shortcut-dialog">
       <div class="shortcut-dialog__preview">
-        <span
-          class="shortcut-dialog__preview-btn"
-          :style="{ color: previewColor || 'var(--app-muted)' }"
-        >
+        <span class="shortcut-dialog__preview-btn" :style="{ color: previewColor || 'var(--app-muted)' }">
           <component :is="previewIcon" v-if="previewIcon" :size="18" />
-          <span v-else class="shortcut-dialog__preview-initials">{{
-            previewInitials
-          }}</span>
+          <span v-else class="shortcut-dialog__preview-initials">{{ previewInitials }}</span>
         </span>
       </div>
 
@@ -109,39 +100,20 @@ function remove() {
 
       <label class="shortcut-dialog__field">
         <span class="shortcut-dialog__label">Command</span>
-        <InputText
-          v-model="form.command"
-          placeholder="!mp start 5 GLHF"
-          class="shortcut-dialog__mono"
-        />
+        <InputText v-model="form.command" placeholder="!mp start 5 GLHF" class="shortcut-dialog__mono" />
       </label>
 
       <label class="shortcut-dialog__field">
         <span class="shortcut-dialog__label">Description (optional)</span>
-        <Textarea
-          v-model="form.description"
-          rows="2"
-          autoResize
-          placeholder="Shown as the tooltip - if left blank, the command itself is shown instead"
-        />
+        <Textarea v-model="form.description" rows="2" autoResize placeholder="Shown as the tooltip - if left blank, the command itself is shown instead" />
       </label>
 
       <label class="shortcut-dialog__field">
         <span class="shortcut-dialog__label-row">
           <span class="shortcut-dialog__label">Icon (optional)</span>
-          <a
-            class="shortcut-dialog__icon-link"
-            href="https://lucide.dev/icons/"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Browse Lucide icons
-          </a>
+          <a class="shortcut-dialog__icon-link" href="https://lucide.dev/icons/" target="_blank" rel="noopener noreferrer"> Browse Lucide icons </a>
         </span>
-        <InputText
-          v-model="form.icon"
-          placeholder="lucide icon name, e.g. flag"
-        />
+        <InputText v-model="form.icon" placeholder="lucide icon name, e.g. flag" />
       </label>
 
       <div class="shortcut-dialog__field">
@@ -153,26 +125,13 @@ function remove() {
       </div>
 
       <div class="shortcut-dialog__toggle-row">
-        <ToggleSwitch
-          v-model="form.warning"
-          inputId="shortcut-warning"
-          class="app-solid-switch"
-        />
-        <label for="shortcut-warning"
-          >Ask for confirmation before sending</label
-        >
+        <ToggleSwitch v-model="form.warning" inputId="shortcut-warning" class="app-solid-switch" />
+        <label for="shortcut-warning">Ask for confirmation before sending</label>
       </div>
     </div>
 
     <template #footer>
-      <Button
-        v-if="isEdit"
-        label="Delete"
-        text
-        severity="danger"
-        class="shortcut-dialog__delete"
-        @click="remove"
-      />
+      <Button v-if="isEdit" label="Delete" text severity="danger" class="shortcut-dialog__delete" @click="remove" />
       <Button label="Cancel" text severity="secondary" @click="close" />
       <Button label="Save" :disabled="!canSave" @click="save" />
     </template>

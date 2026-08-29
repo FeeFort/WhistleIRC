@@ -24,13 +24,7 @@ const TEMPLATE_VARIABLE_RENAMES = Object.freeze({
 });
 
 function migrateTemplateContent(content) {
-  return String(content || "").replace(
-    /{{\s*([a-zA-Z0-9_]+)\s*}}/g,
-    (match, key) =>
-      TEMPLATE_VARIABLE_RENAMES[key]
-        ? `{{${TEMPLATE_VARIABLE_RENAMES[key]}}}`
-        : match,
-  );
+  return String(content || "").replace(/{{\s*([a-zA-Z0-9_]+)\s*}}/g, (match, key) => (TEMPLATE_VARIABLE_RENAMES[key] ? `{{${TEMPLATE_VARIABLE_RENAMES[key]}}}` : match));
 }
 
 const DEFAULT_MESSAGE_CONTENT_MIGRATIONS = Object.freeze({
@@ -73,15 +67,13 @@ export const DEFAULT_LOBBY_PRESETS = [
       {
         id: "full-result-difference",
         label: "Score difference",
-        content:
-          "{{teamRedName}} | {{beatmapTeamRedScore}} - {{beatmapTeamBlueScore}} | {{teamBlueName}} // Score difference: {{scoreDifference}}",
+        content: "{{teamRedName}} | {{beatmapTeamRedScore}} - {{beatmapTeamBlueScore}} | {{teamBlueName}} // Score difference: {{scoreDifference}}",
         enabled: true,
       },
       {
         id: "full-result-match",
         label: "Match score",
-        content:
-          "{{teamRedName}} | {{matchTeamRedScore}} - {{matchTeamBlueScore}} | {{teamBlueName}} // Best of {{bestOf}} - {{matchStatus}}",
+        content: "{{teamRedName}} | {{matchTeamRedScore}} - {{matchTeamBlueScore}} | {{teamBlueName}} // Best of {{bestOf}} - {{matchStatus}}",
         enabled: true,
       },
     ],
@@ -94,8 +86,7 @@ export const DEFAULT_LOBBY_PRESETS = [
       {
         id: "match-only-score",
         label: "Match score",
-        content:
-          "{{teamRedName}} | {{matchTeamRedScore}} - {{matchTeamBlueScore}} | {{teamBlueName}} // Best of {{bestOf}} - {{matchStatus}}",
+        content: "{{teamRedName}} | {{matchTeamRedScore}} - {{matchTeamBlueScore}} | {{teamBlueName}} // Best of {{bestOf}} - {{matchStatus}}",
         enabled: true,
       },
     ],
@@ -105,9 +96,7 @@ export const DEFAULT_LOBBY_PRESETS = [
 const STORAGE_KEY = "feeirc-lobby-message-presets";
 
 function uid(prefix = "lobby") {
-  return typeof crypto !== "undefined" && crypto.randomUUID
-    ? crypto.randomUUID()
-    : `${prefix}_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+  return typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `${prefix}_${Date.now()}_${Math.random().toString(16).slice(2)}`;
 }
 
 function cloneDefaults() {
@@ -121,15 +110,13 @@ function loadState() {
   try {
     const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null");
     const presets = Array.isArray(saved?.presets) ? saved.presets : null;
-    const usablePresets = (presets?.length ? presets : cloneDefaults()).map(
-      (preset) => ({
-        ...preset,
-        messages: preset.messages.map((message) => ({
-          ...message,
-          content: migrateMessageContent(message),
-        })),
-      }),
-    );
+    const usablePresets = (presets?.length ? presets : cloneDefaults()).map((preset) => ({
+      ...preset,
+      messages: preset.messages.map((message) => ({
+        ...message,
+        content: migrateMessageContent(message),
+      })),
+    }));
     return {
       presets: usablePresets,
       activePresetId: saved?.activePresetId || usablePresets[0]?.id || null,
@@ -144,12 +131,7 @@ const savedState = loadState();
 const presets = ref(savedState.presets);
 const activePresetId = ref(savedState.activePresetId);
 
-const activePreset = computed(
-  () =>
-    presets.value.find((preset) => preset.id === activePresetId.value) ||
-    presets.value[0] ||
-    null,
-);
+const activePreset = computed(() => presets.value.find((preset) => preset.id === activePresetId.value) || presets.value[0] || null);
 
 watch(
   [presets, activePresetId],
@@ -207,8 +189,7 @@ function addMessage(presetId, data = {}) {
   const message = {
     id: uid("message"),
     label: "New message",
-    content:
-      "{{teamRedName}} | {{matchTeamRedScore}} - {{matchTeamBlueScore}} | {{teamBlueName}} // Best of {{bestOf}} - {{matchStatus}}",
+    content: "{{teamRedName}} | {{matchTeamRedScore}} - {{matchTeamBlueScore}} | {{teamBlueName}} // Best of {{bestOf}} - {{matchStatus}}",
     enabled: true,
     ...data,
   };
@@ -248,9 +229,7 @@ function replaceState(nextPresets, nextActivePresetId) {
 }
 
 export function formatLobbyTemplate(content, values) {
-  return String(content || "").replace(/{{\s*([a-zA-Z0-9_]+)\s*}}/g, (_, key) =>
-    String(values[key] ?? "—"),
-  );
+  return String(content || "").replace(/{{\s*([a-zA-Z0-9_]+)\s*}}/g, (_, key) => String(values[key] ?? "—"));
 }
 
 export function useLobbyMessages() {

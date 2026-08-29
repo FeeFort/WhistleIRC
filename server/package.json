@@ -3,12 +3,14 @@
   "private": true,
   "version": "0.1.1-alpha",
   "description": "WhistleIRC WebSocket and Bancho IRC bridge",
-  "main": "index.js",
+  "main": "src/index.js",
   "bin": "dist/bundle.js",
   "scripts": {
-    "start": "node index.js",
-    "bundle": "esbuild index.js --bundle --platform=node --outfile=dist/bundle.js",
-    "build": "node build.js"
+    "start": "node src/index.js",
+    "bundle": "esbuild src/index.js --bundle --platform=node --outfile=dist/bundle.js",
+    "build": "node build.js",
+    "lint": "eslint .",
+    "format": "prettier --write . --ignore-path ../.prettierignore"
   },
   "dependencies": {
     "express": "^5.1.0",
@@ -16,12 +18,17 @@
   },
   "devDependencies": {
     "@yao-pkg/pkg": "^6.22.0",
-    "esbuild": "^0.24.0",
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.9.1",
+    "eslint-config-prettier": "^10.1.8",
+    "esbuild": "^0.28.2",
+    "globals": "^17.11.0",
+    "prettier": "^3.9.6",
     "resedit-cli": "^3.1.0"
   },
   "pkg": {
     "assets": [
-      "src/public/**/*"
+      "static/**/*"
     ],
     "targets": [
       "node22-win-x64",
@@ -32,5 +39,9 @@
       "node22-linux-arm64"
     ],
     "outputPath": "build"
+  },
+  "allowScripts": {
+    "esbuild@0.28.2": true,
+    "esbuild@0.24.2": true
   }
 }

@@ -46,10 +46,7 @@ const settings = {
 };
 
 watch(
-  () =>
-    Object.fromEntries(
-      Object.entries(settings).map(([key, value]) => [key, value.value]),
-    ),
+  () => Object.fromEntries(Object.entries(settings).map(([key, value]) => [key, value.value])),
   (value) => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(value));
   },
