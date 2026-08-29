@@ -35,7 +35,7 @@ export default defineConfig({
     globals: true,
   },
   build: {
-    outDir: "../server/src/public",
+    outDir: "../server/static",
     emptyOutDir: true,
     cssMinify: false,
   },

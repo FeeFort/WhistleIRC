@@ -21,13 +21,17 @@ function toFourPartVersion(version) {
 
 async function main() {
   const buildDir = path.join(__dirname, "build");
+  const staticDir = path.join(__dirname, "static");
 
   // Wipe leftovers from previous runs so stale files never mix in with fresh output.
   if (fs.existsSync(buildDir)) {
     fs.rmSync(buildDir, { recursive: true, force: true });
   }
 
-  run("npx esbuild index.js --bundle --platform=node --outfile=dist/bundle.js");
+  const clientDir = path.join(__dirname, "..", "client");
+  run(`npm run build --prefix "${clientDir}`);
+
+  run("npx esbuild src/index.js --bundle --platform=node --outfile=dist/bundle.js");
 
   // Native target: bytecode generation works fine, host can execute this binary directly.
   run(`npx pkg . --targets node22-win-x64 --output build/${pkgJson.name}-win-x64.exe --compress GZip`);
@@ -59,14 +63,7 @@ async function main() {
       const tmpPath = `${fullPath}.tmp`;
       console.log(`\nSetting icon and version (${appVersion}) for ${file}...`);
 
-      // IMPORTANT: use resedit-cli here, NOT rcedit / Resource Hacker.
-      // pkg appends its payload (the packaged snapshot) after the normal PE
-      // image; rcedit-style tools rewrite the resource section in a way that
-      // can shift/truncate that trailing data, which is exactly what causes
-      // "Pkg: Error reading from file." at runtime. resedit recalculates the
-      // resource section size properly (growing it to fit the new icon) and
-      // keeps every other offset in the file consistent, so it doesn't
-      // disturb pkg's trailing payload.
+      // IMPORTANT: use resedit-cli here cause of proper size calculation
       run(
         `npx resedit "${fullPath}" "${tmpPath}" ` +
           `--icon 1,"${path.join(__dirname, "icon.ico")}" ` +
