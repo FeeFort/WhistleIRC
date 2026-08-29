@@ -48,9 +48,7 @@ function create() {
   if (!isValid.value) return;
   const name = command.value.replace(/^!mp\s+make\s+/i, "");
   const teamRedValue = qualifiers.value ? "Qualifiers" : teamRed.value.trim();
-  const teamBlueValue = qualifiers.value
-    ? `Lobby ${qualifiersLobby.value.trim()}`
-    : teamBlue.value.trim();
+  const teamBlueValue = qualifiers.value ? `Lobby ${qualifiersLobby.value.trim()}` : teamBlue.value.trim();
   emit("create", {
     command: command.value,
     lobby: {
@@ -112,13 +110,7 @@ watch(
 
       <label class="create-lobby-dialog__field">
         <span>Best of</span>
-        <InputNumber
-          v-model="bestOf"
-          :min="1"
-          :max="99"
-          :use-grouping="false"
-          inputId="create-lobby-best-of"
-        />
+        <InputNumber v-model="bestOf" :min="1" :max="99" :use-grouping="false" inputId="create-lobby-best-of" />
       </label>
 
       <div class="create-lobby-dialog__toggle-row">

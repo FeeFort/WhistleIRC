@@ -4,15 +4,7 @@ import Button from "primevue/button";
 import InputText from "primevue/inputtext";
 import Password from "primevue/password";
 import ToggleSwitch from "primevue/toggleswitch";
-import {
-  ArrowRight,
-  Copy,
-  ExternalLink,
-  KeyRound,
-  LogIn,
-  LogOut,
-  TriangleAlert,
-} from "@lucide/vue";
+import { ArrowRight, Copy, ExternalLink, KeyRound, LogIn, LogOut, TriangleAlert } from "@lucide/vue";
 import { getOsuRedirectUri } from "../composables/useOsuOAuth";
 
 const props = defineProps({
@@ -24,13 +16,7 @@ const props = defineProps({
   osuError: { type: String, default: "" },
   loading: { type: Boolean, default: false },
 });
-const emit = defineEmits([
-  "login",
-  "save-osu-credentials",
-  "osu-login",
-  "osu-logout",
-  "copy-callback",
-]);
+const emit = defineEmits(["login", "save-osu-credentials", "osu-login", "osu-logout", "copy-callback"]);
 
 const login = ref(props.initialLogin);
 const password = ref("");
@@ -42,11 +28,7 @@ const osuSubmitted = ref(false);
 const setupStep = ref(props.osuClientId ? 2 : 1);
 const showSetup = computed(() => !props.osuProfile);
 const redirectUri = getOsuRedirectUri();
-const currentStepText = computed(() =>
-  setupStep.value === 1
-    ? "Step 1 of 3 · Enter your osu! app credentials"
-    : "Step 2 of 3 · Authorize your osu! account",
-);
+const currentStepText = computed(() => (setupStep.value === 1 ? "Step 1 of 3 · Enter your osu! app credentials" : "Step 2 of 3 · Authorize your osu! account"));
 
 const canSubmit = () => login.value.trim() && password.value;
 
@@ -135,78 +117,37 @@ watch(
         <div class="login-setup__intro">
           <h1>Connect your osu! account</h1>
           <p>Complete these steps once. After that, you can log in with IRC.</p>
-          <div
-            class="login-progress"
-            role="progressbar"
-            :aria-valuenow="setupStep"
-            aria-valuemin="1"
-            aria-valuemax="3"
-            :aria-label="currentStepText"
-          >
+          <div class="login-progress" role="progressbar" :aria-valuenow="setupStep" aria-valuemin="1" aria-valuemax="3" :aria-label="currentStepText">
             <div class="login-progress__track">
-              <span
-                class="login-progress__fill"
-                :style="{ width: `${((setupStep - 1) / 2) * 100}%` }"
-              />
+              <span class="login-progress__fill" :style="{ width: `${((setupStep - 1) / 2) * 100}%` }" />
             </div>
-            <span
-              v-for="step in 3"
-              :key="step"
-              class="login-progress__step"
-              :class="{ 'login-progress__step--active': setupStep >= step }"
-            >
+            <span v-for="step in 3" :key="step" class="login-progress__step" :class="{ 'login-progress__step--active': setupStep >= step }">
               {{ step }}
             </span>
           </div>
           <p class="login-progress__label">{{ currentStepText }}</p>
         </div>
 
-        <form
-          v-if="setupStep === 1"
-          class="login-form"
-          @submit.prevent="saveOsuCredentials"
-        >
+        <form v-if="setupStep === 1" class="login-form" @submit.prevent="saveOsuCredentials">
           <label class="login-form__field">
             <span class="login-form__label">Client ID</span>
-            <InputText
-              v-model="clientId"
-              autocomplete="off"
-              placeholder="Enter your osu! client ID"
-              :invalid="osuSubmitted && !clientId.trim()"
-            />
+            <InputText v-model="clientId" autocomplete="off" placeholder="Enter your osu! client ID" :invalid="osuSubmitted && !clientId.trim()" />
           </label>
           <label class="login-form__field">
             <span class="login-form__label">Client secret</span>
-            <Password
-              v-model="clientSecret"
-              autocomplete="off"
-              placeholder="Enter your osu! client secret"
-              :feedback="false"
-              toggleMask
-              :invalid="osuSubmitted && !clientSecret"
-            />
+            <Password v-model="clientSecret" autocomplete="off" placeholder="Enter your osu! client secret" :feedback="false" toggleMask :invalid="osuSubmitted && !clientSecret" />
           </label>
           <div class="login-callback-warning">
             <TriangleAlert :size="15" class="login-callback-warning__icon" />
             <div class="login-callback-warning__content">
-              <span
-                >Create an OAuth application and set this callback URL:</span
-              >
-              <button
-                type="button"
-                class="login-callback"
-                title="Copy callback URL"
-                @click="copyCallbackUrl"
-              >
+              <span>Create an OAuth application and set this callback URL:</span>
+              <button type="button" class="login-callback" title="Copy callback URL" @click="copyCallbackUrl">
                 <Copy :size="14" />
                 <code>{{ redirectUri }}</code>
               </button>
             </div>
           </div>
-          <Button type="submit" class="login-form__submit"
-            ><KeyRound :size="15" /><span>Save and continue</span
-            ><ArrowRight :size="15"
-          /></Button>
+          <Button type="submit" class="login-form__submit"><KeyRound :size="15" /><span>Save and continue</span><ArrowRight :size="15" /></Button>
         </form>
 
         <div v-else class="login-form">
@@ -214,35 +155,16 @@ watch(
             <TriangleAlert :size="15" class="login-callback-warning__icon" />
             <div class="login-callback-warning__content">
               <span>Use this exact callback URL in your osu! application:</span>
-              <button
-                type="button"
-                class="login-callback"
-                title="Copy callback URL"
-                @click="copyCallbackUrl"
-              >
+              <button type="button" class="login-callback" title="Copy callback URL" @click="copyCallbackUrl">
                 <Copy :size="14" />
                 <code>{{ redirectUri }}</code>
               </button>
             </div>
           </div>
-          <p class="login-form__hint">
-            Authorize WhistleIRC in osu! to connect your profile.
-          </p>
+          <p class="login-form__hint">Authorize WhistleIRC in osu! to connect your profile.</p>
           <p v-if="osuError" class="login-form__error">{{ osuError }}</p>
-          <Button
-            class="login-form__submit"
-            :loading="osuLoading"
-            :disabled="osuLoading"
-            @click="loginFromOsu"
-            ><ExternalLink :size="15" /><span>Login from osu!</span></Button
-          >
-          <Button
-            text
-            class="login-form__secondary"
-            :disabled="osuLoading"
-            @click="editCredentials"
-            >Edit credentials</Button
-          >
+          <Button class="login-form__submit" :loading="osuLoading" :disabled="osuLoading" @click="loginFromOsu"><ExternalLink :size="15" /><span>Login from osu!</span></Button>
+          <Button text class="login-form__secondary" :disabled="osuLoading" @click="editCredentials">Edit credentials</Button>
         </div>
       </div>
 
@@ -251,13 +173,7 @@ watch(
         <div>
           <span>osu! account</span><strong>{{ osuProfile.name }}</strong>
         </div>
-        <Button
-          text
-          class="login-form__osu-logout"
-          aria-label="Log out from osu!"
-          title="Log out from osu!"
-          @click="logoutFromOsu"
-        >
+        <Button text class="login-form__osu-logout" aria-label="Log out from osu!" title="Log out from osu!" @click="logoutFromOsu">
           <LogOut :size="15" />
         </Button>
       </div>
@@ -265,14 +181,7 @@ watch(
       <form v-if="!showSetup" class="login-form" @submit.prevent="submit">
         <label class="login-form__field">
           <span class="login-form__label">IRC login</span>
-          <InputText
-            v-model="login"
-            autocomplete="username"
-            autofocus
-            placeholder="Enter your login"
-            :disabled="true"
-            :invalid="submitted && !login.trim()"
-          />
+          <InputText v-model="login" autocomplete="username" autofocus placeholder="Enter your login" :disabled="true" :invalid="submitted && !login.trim()" />
         </label>
 
         <label class="login-form__field">
@@ -291,22 +200,12 @@ watch(
 
         <div class="login-form__options">
           <div class="login-form__remember">
-            <ToggleSwitch
-              v-model="rememberMe"
-              inputId="remember-me"
-              :disabled="loading"
-              class="app-solid-switch"
-            />
+            <ToggleSwitch v-model="rememberMe" inputId="remember-me" :disabled="loading" class="app-solid-switch" />
             <label for="remember-me">Remember me</label>
           </div>
         </div>
 
-        <Button
-          type="submit"
-          :loading="loading"
-          :disabled="loading"
-          class="login-form__submit"
-        >
+        <Button type="submit" :loading="loading" :disabled="loading" class="login-form__submit">
           <LogIn :size="15" />
           <span>Login</span>
         </Button>
@@ -363,11 +262,7 @@ watch(
   display: block;
   height: 100%;
   border-radius: inherit;
-  background: linear-gradient(
-    90deg,
-    var(--app-primary),
-    var(--app-primary-bright)
-  );
+  background: linear-gradient(90deg, var(--app-primary), var(--app-primary-bright));
   transition: width 320ms ease;
 }
 

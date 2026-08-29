@@ -20,17 +20,7 @@ import Avatar from "primevue/avatar";
 import Button from "primevue/button";
 import Dialog from "primevue/dialog";
 import Message from "primevue/message";
-import {
-  AlertTriangle,
-  ChevronDown,
-  LogOut,
-  MessageSquare,
-  Moon,
-  Plus,
-  Settings2,
-  Sun,
-  X,
-} from "@lucide/vue";
+import { AlertTriangle, ChevronDown, LogOut, MessageSquare, Moon, Plus, Settings2, Sun, X } from "@lucide/vue";
 import { useDarkMode } from "../composables/useDarkMode";
 
 const props = defineProps({
@@ -42,14 +32,7 @@ const props = defineProps({
   joinedChannels: { type: Array, default: () => [] },
 });
 
-const emit = defineEmits([
-  "update:open",
-  "logout",
-  "open-settings",
-  "select-chat",
-  "open-add-channel",
-  "close-chat",
-]);
+const emit = defineEmits(["update:open", "logout", "open-settings", "select-chat", "open-add-channel", "close-chat"]);
 
 const { isDark, toggleDark } = useDarkMode();
 
@@ -106,22 +89,12 @@ const profileMenuItems = computed(() => [
 
 <template>
   <SidebarLayout class="app-sidebar-layout">
-    <Sidebar
-      id="app-sidebar"
-      collapsible="offcanvas"
-      :overlay="false"
-      :open="open"
-      width="15rem"
-      @update:open="(v) => emit('update:open', v)"
-    >
+    <Sidebar id="app-sidebar" collapsible="offcanvas" :overlay="false" :open="open" width="15rem" @update:open="(v) => emit('update:open', v)">
       <SidebarSpacer />
       <SidebarAside>
         <SidebarPanel>
           <SidebarHeader>
-            <div class="app-sidebar__logo">
-              <span class="app-sidebar__logo-mark">Whistle</span
-              ><span>IRC</span>
-            </div>
+            <div class="app-sidebar__logo"><span class="app-sidebar__logo-mark">Whistle</span><span>IRC</span></div>
           </SidebarHeader>
 
           <SidebarContent>
@@ -130,18 +103,10 @@ const profileMenuItems = computed(() => [
               <SidebarGroupContent>
                 <SidebarMenu>
                   <SidebarMenuItem>
-                    <SidebarMenuButton
-                      :isActive="activeChat === 'bancho'"
-                      @click="emit('select-chat', 'bancho')"
-                    >
+                    <SidebarMenuButton :isActive="activeChat === 'bancho'" @click="emit('select-chat', 'bancho')">
                       <MessageSquare :size="15" />
                       <span class="app-sidebar__chat-label">BanchoBot</span>
-                      <span
-                        v-if="unreadChats.bancho"
-                        class="app-sidebar__chat-unread"
-                        role="status"
-                        aria-label="New messages"
-                      />
+                      <span v-if="unreadChats.bancho" class="app-sidebar__chat-unread" role="status" aria-label="New messages" />
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                   <SidebarMenuItem
@@ -152,28 +117,12 @@ const profileMenuItems = computed(() => [
                       'app-sidebar__chat-item--closed': channel.closed,
                     }"
                   >
-                    <SidebarMenuButton
-                      :isActive="activeChat === channel.id"
-                      @click="emit('select-chat', channel.id)"
-                    >
+                    <SidebarMenuButton :isActive="activeChat === channel.id" @click="emit('select-chat', channel.id)">
                       <MessageSquare :size="15" />
-                      <span class="app-sidebar__chat-label">{{
-                        channel.lobby?.name || channel.label
-                      }}</span>
-                      <span
-                        v-if="unreadChats[channel.id]"
-                        class="app-sidebar__chat-unread"
-                        role="status"
-                        aria-label="New messages"
-                      />
+                      <span class="app-sidebar__chat-label">{{ channel.lobby?.name || channel.label }}</span>
+                      <span v-if="unreadChats[channel.id]" class="app-sidebar__chat-unread" role="status" aria-label="New messages" />
                     </SidebarMenuButton>
-                    <button
-                      type="button"
-                      class="app-sidebar__chat-close"
-                      :aria-label="`Close ${channel.lobby?.name || channel.label} chat`"
-                      title="Close chat"
-                      @click.stop="requestCloseChat(channel)"
-                    >
+                    <button type="button" class="app-sidebar__chat-close" :aria-label="`Close ${channel.lobby?.name || channel.label} chat`" title="Close chat" @click.stop="requestCloseChat(channel)">
                       <X :size="11" />
                     </button>
                   </SidebarMenuItem>
@@ -191,37 +140,13 @@ const profileMenuItems = computed(() => [
           <SidebarFooter>
             <SidebarMenu>
               <SidebarMenuItem>
-                <SidebarMenuButton
-                  class="app-sidebar__profile-button"
-                  aria-haspopup="true"
-                  aria-controls="profile_menu"
-                  @click="toggleProfileMenu"
-                >
-                  <Avatar
-                    v-if="userAvatar"
-                    :image="userAvatar"
-                    shape="circle"
-                    class="app-sidebar__avatar"
-                  />
-                  <Avatar
-                    v-else
-                    :label="initials(userName || '?')"
-                    shape="circle"
-                    class="app-sidebar__avatar"
-                  />
+                <SidebarMenuButton class="app-sidebar__profile-button" aria-haspopup="true" aria-controls="profile_menu" @click="toggleProfileMenu">
+                  <Avatar v-if="userAvatar" :image="userAvatar" shape="circle" class="app-sidebar__avatar" />
+                  <Avatar v-else :label="initials(userName || '?')" shape="circle" class="app-sidebar__avatar" />
                   <span>{{ userName }}</span>
-                  <ChevronDown
-                    :size="15"
-                    class="app-sidebar__profile-chevron"
-                  />
+                  <ChevronDown :size="15" class="app-sidebar__profile-chevron" />
                 </SidebarMenuButton>
-                <Menu
-                  id="profile_menu"
-                  ref="profileMenu"
-                  class="app-user-menu"
-                  :model="profileMenuItems"
-                  :popup="true"
-                >
+                <Menu id="profile_menu" ref="profileMenu" class="app-user-menu" :model="profileMenuItems" :popup="true">
                   <template #item="{ item }">
                     <div class="app-sidebar__menu-item" :class="item.class">
                       <component :is="item.icon" :size="15" />
@@ -236,39 +161,19 @@ const profileMenuItems = computed(() => [
       </SidebarAside>
     </Sidebar>
 
-    <Dialog
-      v-model:visible="closeConfirmationVisible"
-      modal
-      dismissableMask
-      :closable="false"
-      class="command-confirm-dialog"
-      :pt="{ mask: { class: 'app-dialog-mask' } }"
-      :style="{ width: '28rem' }"
-    >
-      <Message
-        severity="warn"
-        variant="simple"
-        :closable="false"
-        class="command-confirm-message"
-      >
+    <Dialog v-model:visible="closeConfirmationVisible" modal dismissableMask :closable="false" class="command-confirm-dialog" :pt="{ mask: { class: 'app-dialog-mask' } }" :style="{ width: '28rem' }">
+      <Message severity="warn" variant="simple" :closable="false" class="command-confirm-message">
         <template #icon>
           <AlertTriangle :size="20" class="command-confirm-message__icon" />
         </template>
         <div class="command-confirm-message__content">
           <strong>Close this chat?</strong>
-          <span>
-            Are you sure you want to close “{{ pendingCloseChat?.label }}”?
-          </span>
+          <span> Are you sure you want to close “{{ pendingCloseChat?.label }}”? </span>
         </div>
       </Message>
 
       <template #footer>
-        <Button
-          label="Cancel"
-          text
-          severity="secondary"
-          @click="cancelCloseChat"
-        />
+        <Button label="Cancel" text severity="secondary" @click="cancelCloseChat" />
         <Button label="Close" @click="confirmCloseChat" />
       </template>
     </Dialog>
@@ -436,9 +341,7 @@ const profileMenuItems = computed(() => [
   color: var(--app-purple-bright);
 }
 
-.app-sidebar-layout
-  .p-sidebar-menu-button:not([data-active="true"]):not([aria-current="page"])
-  svg {
+.app-sidebar-layout .p-sidebar-menu-button:not([data-active="true"]):not([aria-current="page"]) svg {
   color: var(--app-muted);
 }
 

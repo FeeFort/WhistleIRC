@@ -6,10 +6,7 @@ function getDefaultWebSocketUrl() {
     return `${protocol}://${window.location.host}/ws`;
   }
 
-  const hostname =
-    window.location.hostname === "0.0.0.0"
-      ? "127.0.0.1"
-      : window.location.hostname || "127.0.0.1";
+  const hostname = window.location.hostname === "0.0.0.0" ? "127.0.0.1" : window.location.hostname || "127.0.0.1";
   const protocol = window.location.protocol === "https:" ? "wss" : "ws";
   return `${protocol}://${hostname}:3000/ws`;
 }
@@ -27,9 +24,7 @@ function send(socketInstance, payload) {
 }
 
 function sendMessage(channel, message) {
-  return socket.value
-    ? send(socket.value, { type: "send_message", channel, message })
-    : false;
+  return socket.value ? send(socket.value, { type: "send_message", channel, message }) : false;
 }
 
 function sendChannelCommand(type, channel) {
@@ -110,9 +105,7 @@ export function useServerConnection() {
 
     let socketInstance;
     try {
-      socketInstance = new WebSocket(
-        import.meta.env.VITE_WS_URL || getDefaultWebSocketUrl(),
-      );
+      socketInstance = new WebSocket(import.meta.env.VITE_WS_URL || getDefaultWebSocketUrl());
     } catch (error) {
       state.value = "error";
       lastError.value = error.message;

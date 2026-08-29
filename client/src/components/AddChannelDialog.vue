@@ -13,11 +13,7 @@ const emit = defineEmits(["update:visible", "join"]);
 
 const channelInput = ref("");
 
-const acceptedFormats = [
-  /^https:\/\/osu\.ppy\.sh\/mp\/(\d+)\/?$/i,
-  /^https:\/\/osu\.ppy\.sh\/community\/matches\/(\d+)\/?$/i,
-  /^#mp_(\d+)$/i,
-];
+const acceptedFormats = [/^https:\/\/osu\.ppy\.sh\/mp\/(\d+)\/?$/i, /^https:\/\/osu\.ppy\.sh\/community\/matches\/(\d+)\/?$/i, /^#mp_(\d+)$/i];
 
 const match = computed(() => {
   const value = channelInput.value.trim();
@@ -83,36 +79,15 @@ watch(
 
       <label class="add-channel-dialog__field">
         <span>Multiplayer link</span>
-        <InputText
-          v-model="channelInput"
-          autofocus
-          placeholder="https://osu.ppy.sh/mp/12345678"
-          spellcheck="false"
-          :disabled="loading"
-          @keydown.enter="join"
-        />
+        <InputText v-model="channelInput" autofocus placeholder="https://osu.ppy.sh/mp/12345678" spellcheck="false" :disabled="loading" @keydown.enter="join" />
       </label>
 
-      <p class="add-channel-dialog__help">
-        Accepted: https://osu.ppy.sh/mp/mp-id,
-        https://osu.ppy.sh/community/matches/mp-id, or #mp_mp-id.
-      </p>
+      <p class="add-channel-dialog__help">Accepted: https://osu.ppy.sh/mp/mp-id, https://osu.ppy.sh/community/matches/mp-id, or #mp_mp-id.</p>
     </div>
 
     <template #footer>
-      <Button
-        label="Cancel"
-        text
-        severity="secondary"
-        :disabled="loading"
-        @click="close"
-      />
-      <Button
-        label="Join"
-        :loading="loading"
-        :disabled="!isValid || loading"
-        @click="join"
-      />
+      <Button label="Cancel" text severity="secondary" :disabled="loading" @click="close" />
+      <Button label="Join" :loading="loading" :disabled="!isValid || loading" @click="join" />
     </template>
   </Dialog>
 </template>

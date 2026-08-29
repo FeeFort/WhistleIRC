@@ -1,15 +1,6 @@
 // osu!-style deterministic nick colors: same nick always gets the same
 // color within a session, picked from a fixed palette via a string hash.
-const NICK_PALETTE = [
-  "#8e7cf0",
-  "#e06ea3",
-  "#4fb8a3",
-  "#e0a23d",
-  "#5b9de0",
-  "#d1637a",
-  "#7fb04a",
-  "#c084fc",
-];
+const NICK_PALETTE = ["#8e7cf0", "#e06ea3", "#4fb8a3", "#e0a23d", "#5b9de0", "#d1637a", "#7fb04a", "#c084fc"];
 
 function hashString(str) {
   let hash = 0;

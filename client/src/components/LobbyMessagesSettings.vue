@@ -7,36 +7,13 @@ import Message from "primevue/message";
 import Textarea from "primevue/textarea";
 import ToggleSwitch from "primevue/toggleswitch";
 import { useToast } from "primevue/usetoast";
-import {
-  AlertTriangle,
-  ArrowDown,
-  ArrowUp,
-  Check,
-  Plus,
-  Save,
-  Trash2,
-} from "@lucide/vue";
-import {
-  LOBBY_TEMPLATE_VARIABLES,
-  useLobbyMessages,
-} from "../composables/useLobbyMessages";
+import { AlertTriangle, ArrowDown, ArrowUp, Check, Plus, Save, Trash2 } from "@lucide/vue";
+import { LOBBY_TEMPLATE_VARIABLES, useLobbyMessages } from "../composables/useLobbyMessages";
 
 const props = defineProps({ visible: { type: Boolean, default: false } });
 const emit = defineEmits(["update:visible"]);
 const toast = useToast();
-const {
-  presets,
-  activePresetId,
-  addPreset,
-  updatePreset,
-  removePreset,
-  setActivePreset,
-  addMessage,
-  updateMessage,
-  removeMessage,
-  moveMessage,
-  replaceState,
-} = useLobbyMessages();
+const { presets, activePresetId, addPreset, updatePreset, removePreset, setActivePreset, addMessage, updateMessage, removeMessage, moveMessage, replaceState } = useLobbyMessages();
 
 const selectedPresetId = ref(null);
 const selectedMessageId = ref(null);
@@ -45,14 +22,8 @@ const messageDraft = ref({ label: "", content: "", enabled: true });
 const closeConfirmationVisible = ref(false);
 const baselineState = ref(null);
 
-const selectedPreset = computed(() =>
-  presets.value.find((preset) => preset.id === selectedPresetId.value),
-);
-const selectedMessage = computed(() =>
-  selectedPreset.value?.messages.find(
-    (message) => message.id === selectedMessageId.value,
-  ),
-);
+const selectedPreset = computed(() => presets.value.find((preset) => preset.id === selectedPresetId.value));
+const selectedMessage = computed(() => selectedPreset.value?.messages.find((message) => message.id === selectedMessageId.value));
 
 function loadPreset(preset) {
   presetDraft.value = { label: preset?.label || "" };
@@ -79,9 +50,7 @@ function snapshot() {
   });
 }
 
-const isDirty = computed(
-  () => baselineState.value !== null && snapshot() !== baselineState.value,
-);
+const isDirty = computed(() => baselineState.value !== null && snapshot() !== baselineState.value);
 
 function syncBaseline() {
   baselineState.value = snapshot();
@@ -92,8 +61,7 @@ function saveMessage({ notify = false } = {}) {
     updatePreset(selectedPreset.value.id, {
       label: presetDraft.value.label.trim() || "Untitled preset",
     });
-    presetDraft.value.label =
-      presetDraft.value.label.trim() || "Untitled preset";
+    presetDraft.value.label = presetDraft.value.label.trim() || "Untitled preset";
   }
   if (selectedPreset.value && selectedMessage.value) {
     updateMessage(selectedPreset.value.id, selectedMessage.value.id, {
@@ -101,8 +69,7 @@ function saveMessage({ notify = false } = {}) {
       content: messageDraft.value.content,
       enabled: messageDraft.value.enabled,
     });
-    messageDraft.value.label =
-      messageDraft.value.label.trim() || "Untitled message";
+    messageDraft.value.label = messageDraft.value.label.trim() || "Untitled message";
   }
   syncBaseline();
   if (notify) {
@@ -125,9 +92,7 @@ function selectPreset(id, save = true) {
 function selectMessage(id, save = true) {
   if (save) saveMessage();
   selectedMessageId.value = id;
-  loadMessage(
-    selectedPreset.value?.messages.find((message) => message.id === id),
-  );
+  loadMessage(selectedPreset.value?.messages.find((message) => message.id === id));
   syncBaseline();
 }
 
@@ -148,25 +113,18 @@ function createMessage() {
 
 function deleteMessage() {
   if (!selectedPreset.value || !selectedMessage.value) return;
-  const index = selectedPreset.value.messages.findIndex(
-    (message) => message.id === selectedMessage.value.id,
-  );
+  const index = selectedPreset.value.messages.findIndex((message) => message.id === selectedMessage.value.id);
   removeMessage(selectedPreset.value.id, selectedMessage.value.id);
-  const next =
-    selectedPreset.value.messages[index] ||
-    selectedPreset.value.messages[index - 1];
+  const next = selectedPreset.value.messages[index] || selectedPreset.value.messages[index - 1];
   selectedMessageId.value = next?.id || null;
   loadMessage(next);
 }
 
 function deletePreset() {
   if (!selectedPreset.value) return;
-  const index = presets.value.findIndex(
-    (preset) => preset.id === selectedPreset.value.id,
-  );
+  const index = presets.value.findIndex((preset) => preset.id === selectedPreset.value.id);
   removePreset(selectedPreset.value.id);
-  const next =
-    presets.value[index] || presets.value[index - 1] || presets.value[0];
+  const next = presets.value[index] || presets.value[index - 1] || presets.value[0];
   selectedPresetId.value = next?.id || null;
   loadPreset(next);
 }
@@ -229,9 +187,7 @@ function variableToken(key) {
 
 function onVisible(value) {
   if (!value) return;
-  const preset =
-    presets.value.find((item) => item.id === activePresetId.value) ||
-    presets.value[0];
+  const preset = presets.value.find((item) => item.id === activePresetId.value) || presets.value[0];
   if (preset) selectPreset(preset.id, false);
   syncBaseline();
 }
@@ -281,41 +237,23 @@ watch(
           type="button"
           class="lobby-messages-dialog__template"
           :class="{
-            'lobby-messages-dialog__template--selected':
-              preset.id === selectedPresetId,
+            'lobby-messages-dialog__template--selected': preset.id === selectedPresetId,
           }"
           @click="selectPreset(preset.id)"
         >
-          <span class="lobby-messages-dialog__template-name">{{
-            preset.label
-          }}</span>
-          <Check
-            v-if="preset.id === activePresetId"
-            :size="14"
-            class="lobby-messages-dialog__active"
-          />
+          <span class="lobby-messages-dialog__template-name">{{ preset.label }}</span>
+          <Check v-if="preset.id === activePresetId" :size="14" class="lobby-messages-dialog__active" />
         </button>
       </aside>
 
       <section v-if="selectedPreset" class="lobby-messages-dialog__messages">
         <div class="lobby-messages-dialog__subheader">
           <InputText v-model="presetDraft.label" aria-label="Preset name" />
-          <Button
-            v-if="selectedPreset.id !== activePresetId"
-            text
-            size="small"
-            @click="chooseActivePreset"
-          >
+          <Button v-if="selectedPreset.id !== activePresetId" text size="small" @click="chooseActivePreset">
             <Check :size="14" />
             <span>Use this preset</span>
           </Button>
-          <Button
-            text
-            severity="danger"
-            size="small"
-            aria-label="Delete preset"
-            @click="deletePreset"
-          >
+          <Button text severity="danger" size="small" aria-label="Delete preset" @click="deletePreset">
             <Trash2 :size="14" />
           </Button>
         </div>
@@ -327,53 +265,25 @@ watch(
             type="button"
             class="lobby-messages-dialog__message-row"
             :class="{
-              'lobby-messages-dialog__message-row--selected':
-                message.id === selectedMessageId,
+              'lobby-messages-dialog__message-row--selected': message.id === selectedMessageId,
             }"
             @click="selectMessage(message.id)"
           >
-            <ToggleSwitch
-              :model-value="message.enabled"
-              class="app-solid-switch"
-              @click.stop
-              @update:model-value="
-                updateMessageEnabled(selectedPreset.id, message.id, $event)
-              "
-            />
-            <span class="lobby-messages-dialog__message-name">{{
-              message.label
-            }}</span>
-            <span class="lobby-messages-dialog__message-preview">{{
-              message.content
-            }}</span>
+            <ToggleSwitch :model-value="message.enabled" class="app-solid-switch" @click.stop @update:model-value="updateMessageEnabled(selectedPreset.id, message.id, $event)" />
+            <span class="lobby-messages-dialog__message-name">{{ message.label }}</span>
+            <span class="lobby-messages-dialog__message-preview">{{ message.content }}</span>
             <span class="lobby-messages-dialog__message-order">
-              <Button
-                text
-                rounded
-                aria-label="Move message up"
-                :disabled="messageIndex === 0"
-                @click.stop="moveMessage(selectedPreset.id, message.id, -1)"
-              >
+              <Button text rounded aria-label="Move message up" :disabled="messageIndex === 0" @click.stop="moveMessage(selectedPreset.id, message.id, -1)">
                 <ArrowUp :size="13" />
               </Button>
-              <Button
-                text
-                rounded
-                aria-label="Move message down"
-                :disabled="messageIndex === selectedPreset.messages.length - 1"
-                @click.stop="moveMessage(selectedPreset.id, message.id, 1)"
-              >
+              <Button text rounded aria-label="Move message down" :disabled="messageIndex === selectedPreset.messages.length - 1" @click.stop="moveMessage(selectedPreset.id, message.id, 1)">
                 <ArrowDown :size="13" />
               </Button>
             </span>
           </button>
         </div>
 
-        <Button
-          text
-          class="lobby-messages-dialog__add-message"
-          @click="createMessage"
-        >
+        <Button text class="lobby-messages-dialog__add-message" @click="createMessage">
           <Plus :size="14" />
           <span>Add message to preset</span>
         </Button>
@@ -404,33 +314,16 @@ watch(
           </div>
         </div>
         <div class="lobby-messages-dialog__actions">
-          <Button text severity="danger" @click="deleteMessage"
-            ><Trash2 :size="14" /><span>Delete message</span></Button
-          >
+          <Button text severity="danger" @click="deleteMessage"><Trash2 :size="14" /><span>Delete message</span></Button>
           <span class="lobby-messages-dialog__actions-spacer" />
-          <Button :disabled="!isDirty" @click="saveChanges"
-            ><Save :size="14" /><span>Save</span></Button
-          >
+          <Button :disabled="!isDirty" @click="saveChanges"><Save :size="14" /><span>Save</span></Button>
         </div>
       </section>
     </div>
   </Dialog>
 
-  <Dialog
-    v-model:visible="closeConfirmationVisible"
-    modal
-    dismissableMask
-    :closable="false"
-    class="command-confirm-dialog"
-    :pt="{ mask: { class: 'app-dialog-mask' } }"
-    :style="{ width: '28rem' }"
-  >
-    <Message
-      severity="warn"
-      variant="simple"
-      :closable="false"
-      class="command-confirm-message"
-    >
+  <Dialog v-model:visible="closeConfirmationVisible" modal dismissableMask :closable="false" class="command-confirm-dialog" :pt="{ mask: { class: 'app-dialog-mask' } }" :style="{ width: '28rem' }">
+    <Message severity="warn" variant="simple" :closable="false" class="command-confirm-message">
       <template #icon>
         <AlertTriangle :size="20" class="command-confirm-message__icon" />
       </template>
@@ -441,12 +334,7 @@ watch(
     </Message>
 
     <template #footer>
-      <Button
-        label="Discard"
-        text
-        severity="secondary"
-        @click="discardChanges"
-      />
+      <Button label="Discard" text severity="secondary" @click="discardChanges" />
       <Button label="Save" @click="saveAndClose" />
     </template>
   </Dialog>

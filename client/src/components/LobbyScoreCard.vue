@@ -20,12 +20,7 @@ const props = defineProps({
   disabled: { type: Boolean, default: false },
 });
 
-const emit = defineEmits([
-  "update:teamAScore",
-  "update:teamBScore",
-  "send-result",
-  "update-settings",
-]);
+const emit = defineEmits(["update:teamAScore", "update:teamBScore", "send-result", "update-settings"]);
 
 const { redTeamColor, blueTeamColor } = useChatSettings();
 const copied = ref(false);
@@ -34,21 +29,9 @@ const draftBestOf = ref(null);
 const draftNextPickTeam = ref(null);
 let copiedTimer;
 
-const nextPickOptions = computed(() =>
-  [props.teamAName, props.teamBName].filter(
-    (team, index, teams) => team && teams.indexOf(team) === index,
-  ),
-);
-const settingsValid = computed(
-  () =>
-    draftBestOf.value === null ||
-    (Number.isInteger(draftBestOf.value) && draftBestOf.value > 0),
-);
-const winningScore = computed(() =>
-  Number.isInteger(props.bestOf) && props.bestOf > 0
-    ? Math.ceil(props.bestOf / 2)
-    : null,
-);
+const nextPickOptions = computed(() => [props.teamAName, props.teamBName].filter((team, index, teams) => team && teams.indexOf(team) === index));
+const settingsValid = computed(() => draftBestOf.value === null || (Number.isInteger(draftBestOf.value) && draftBestOf.value > 0));
+const winningScore = computed(() => (Number.isInteger(props.bestOf) && props.bestOf > 0 ? Math.ceil(props.bestOf / 2) : null));
 
 const leader = computed(() => {
   if (props.teamAScore === props.teamBScore) return null;
@@ -60,13 +43,7 @@ function changeScore(team, delta) {
 
   const prop = team === "a" ? "teamAScore" : "teamBScore";
   const event = team === "a" ? "update:teamAScore" : "update:teamBScore";
-  const nextScore = Math.max(
-    0,
-    Math.min(
-      winningScore.value ?? Number.POSITIVE_INFINITY,
-      props[prop] + delta,
-    ),
-  );
+  const nextScore = Math.max(0, Math.min(winningScore.value ?? Number.POSITIVE_INFINITY, props[prop] + delta));
   if (nextScore === props[prop]) return;
   emit(event, nextScore);
 }
@@ -91,9 +68,7 @@ function sendResult() {
 
 function openSettings() {
   draftBestOf.value = props.bestOf;
-  draftNextPickTeam.value = nextPickOptions.value.includes(props.nextPickTeam)
-    ? props.nextPickTeam
-    : nextPickOptions.value[0] || null;
+  draftNextPickTeam.value = nextPickOptions.value.includes(props.nextPickTeam) ? props.nextPickTeam : nextPickOptions.value[0] || null;
   settingsVisible.value = true;
 }
 
@@ -172,80 +147,38 @@ async function copyMpLink() {
       </button>
     </div>
 
-    <Button
-      v-if="showMatchControls"
-      label="Send Result"
-      class="lobby-score-card__send"
-      :disabled="disabled || !canEdit"
-      @click="sendResult"
-    >
+    <Button v-if="showMatchControls" label="Send Result" class="lobby-score-card__send" :disabled="disabled || !canEdit" @click="sendResult">
       <Send :size="14" />
       <span>Send Result</span>
     </Button>
 
-    <Button
-      label="Lobby Settings"
-      text
-      class="lobby-score-card__settings"
-      :disabled="disabled"
-      @click="openSettings"
-    >
+    <Button label="Lobby Settings" text class="lobby-score-card__settings" :disabled="disabled" @click="openSettings">
       <SlidersHorizontal :size="14" />
       <span>Lobby Settings</span>
     </Button>
 
-    <Button
-      :label="copied ? 'Copied' : 'Copy MP Link'"
-      text
-      class="lobby-score-card__copy"
-      :disabled="disabled"
-      @click="copyMpLink"
-    >
+    <Button :label="copied ? 'Copied' : 'Copy MP Link'" text class="lobby-score-card__copy" :disabled="disabled" @click="copyMpLink">
       <Check v-if="copied" :size="14" />
       <Copy v-else :size="14" />
       <span>{{ copied ? "Copied" : "Copy MP Link" }}</span>
     </Button>
   </div>
 
-  <Dialog
-    v-model:visible="settingsVisible"
-    modal
-    dismissableMask
-    class="lobby-settings-dialog"
-    header="Lobby settings"
-    :style="{ width: '26rem' }"
-    :pt="{ mask: { class: 'app-dialog-mask' } }"
-  >
+  <Dialog v-model:visible="settingsVisible" modal dismissableMask class="lobby-settings-dialog" header="Lobby settings" :style="{ width: '26rem' }" :pt="{ mask: { class: 'app-dialog-mask' } }">
     <div class="lobby-settings__body">
       <label class="lobby-settings__field">
         <span>Best of</span>
-        <InputNumber
-          v-model="draftBestOf"
-          :min="1"
-          :max="99"
-          :use-grouping="false"
-          inputId="lobby-settings-best-of"
-        />
+        <InputNumber v-model="draftBestOf" :min="1" :max="99" :use-grouping="false" inputId="lobby-settings-best-of" />
       </label>
 
       <div class="lobby-settings__field">
         <span>Next pick</span>
-        <SelectButton
-          v-model="draftNextPickTeam"
-          :options="nextPickOptions"
-          :allow-empty="false"
-          aria-label="Next pick team"
-        />
+        <SelectButton v-model="draftNextPickTeam" :options="nextPickOptions" :allow-empty="false" aria-label="Next pick team" />
       </div>
     </div>
 
     <template #footer>
-      <Button
-        label="Cancel"
-        text
-        severity="secondary"
-        @click="settingsVisible = false"
-      />
+      <Button label="Cancel" text severity="secondary" @click="settingsVisible = false" />
       <Button label="Save" :disabled="!settingsValid" @click="saveSettings" />
     </template>
   </Dialog>
@@ -282,24 +215,14 @@ async function copyMpLink() {
 }
 
 .lobby-score-card--red-leads::before {
-  background: linear-gradient(
-    90deg,
-    v-bind(redTeamColor) 0%,
-    v-bind(redTeamColor) 22%,
-    transparent 100%
-  );
+  background: linear-gradient(90deg, v-bind(redTeamColor) 0%, v-bind(redTeamColor) 22%, transparent 100%);
   opacity: 0.18;
 }
 
 .lobby-score-card--blue-leads::before {
   right: -1.55rem;
   left: auto;
-  background: linear-gradient(
-    270deg,
-    v-bind(blueTeamColor) 0%,
-    v-bind(blueTeamColor) 22%,
-    transparent 100%
-  );
+  background: linear-gradient(270deg, v-bind(blueTeamColor) 0%, v-bind(blueTeamColor) 22%, transparent 100%);
   opacity: 0.18;
 }
 

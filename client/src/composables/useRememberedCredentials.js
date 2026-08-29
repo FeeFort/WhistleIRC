@@ -58,11 +58,7 @@ async function saveEncryptedValue(storeName, keyName, value) {
   const key = await getEncryptionKey();
   const iv = crypto.getRandomValues(new Uint8Array(12));
   const data = new TextEncoder().encode(JSON.stringify(value));
-  const encrypted = await crypto.subtle.encrypt(
-    { name: "AES-GCM", iv },
-    key,
-    data,
-  );
+  const encrypted = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, data);
 
   await writeValue(storeName, keyName, {
     iv: Array.from(iv),
@@ -77,11 +73,7 @@ async function loadEncryptedValue(storeName, keyName) {
   const key = await readValue(KEYS_STORE, ENCRYPTION_KEY);
   if (!key) return null;
 
-  const decrypted = await crypto.subtle.decrypt(
-    { name: "AES-GCM", iv: new Uint8Array(record.iv) },
-    key,
-    new Uint8Array(record.encrypted),
-  );
+  const decrypted = await crypto.subtle.decrypt({ name: "AES-GCM", iv: new Uint8Array(record.iv) }, key, new Uint8Array(record.encrypted));
   return JSON.parse(new TextDecoder().decode(decrypted));
 }
 
@@ -89,11 +81,7 @@ async function getEncryptionKey() {
   const existingKey = await readValue(KEYS_STORE, ENCRYPTION_KEY);
   if (existingKey) return existingKey;
 
-  const key = await crypto.subtle.generateKey(
-    { name: "AES-GCM", length: 256 },
-    false,
-    ["encrypt", "decrypt"],
-  );
+  const key = await crypto.subtle.generateKey({ name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]);
   await writeValue(KEYS_STORE, ENCRYPTION_KEY, key);
   return key;
 }

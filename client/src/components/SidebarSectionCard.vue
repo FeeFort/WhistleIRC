@@ -7,10 +7,7 @@ defineProps({
 </script>
 
 <template>
-  <section
-    class="sidebar-section-card"
-    :class="{ 'sidebar-section-card--scrollable': scrollable }"
-  >
+  <section class="sidebar-section-card" :class="{ 'sidebar-section-card--scrollable': scrollable }">
     <div class="sidebar-section-card__heading">
       <component :is="icon" :size="18" />
       <span>{{ title }}</span>

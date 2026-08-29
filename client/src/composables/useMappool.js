@@ -99,18 +99,12 @@ export function parseMappool(input) {
   if (!source || typeof source !== "object" || Array.isArray(source)) {
     throw new Error("Mappool JSON must contain an object.");
   }
-  if (
-    !source.maps ||
-    typeof source.maps !== "object" ||
-    Array.isArray(source.maps)
-  ) {
+  if (!source.maps || typeof source.maps !== "object" || Array.isArray(source.maps)) {
     throw new Error("Mappool JSON must contain a maps object.");
   }
 
   const entries = Object.entries(source.maps);
-  const maps = entries
-    .map(([slot, value]) => normalizeMap(String(slot).trim(), value))
-    .filter(Boolean);
+  const maps = entries.map(([slot, value]) => normalizeMap(String(slot).trim(), value)).filter(Boolean);
 
   if (!maps.length) {
     throw new Error("No valid maps were found in the mappool JSON.");
@@ -119,15 +113,8 @@ export function parseMappool(input) {
   return {
     tournament: String(source.tournament || "Untitled tournament").trim(),
     stage: String(source.stage || "Unspecified stage").trim(),
-    ruleset:
-      Number.isInteger(Number(source.ruleset)) &&
-      Number(source.ruleset) >= 0 &&
-      Number(source.ruleset) <= 3
-        ? Number(source.ruleset)
-        : DEFAULT_RULESET,
-    generalAdditionalCommands: normalizeCommands(
-      source.generalAdditionalCommands,
-    ),
+    ruleset: Number.isInteger(Number(source.ruleset)) && Number(source.ruleset) >= 0 && Number(source.ruleset) <= 3 ? Number(source.ruleset) : DEFAULT_RULESET,
+    generalAdditionalCommands: normalizeCommands(source.generalAdditionalCommands),
     maps,
     skippedMaps: entries.length - maps.length,
   };

@@ -1,12 +1,5 @@
 <script setup>
-import {
-  computed,
-  onBeforeUnmount,
-  onMounted,
-  reactive,
-  ref,
-  watch,
-} from "vue";
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import Button from "primevue/button";
 import ColorPicker from "primevue/colorpicker";
 import InputText from "primevue/inputtext";
@@ -14,15 +7,7 @@ import SelectButton from "primevue/selectbutton";
 import Toast from "primevue/toast";
 import ToggleSwitch from "primevue/toggleswitch";
 import { useToast } from "primevue/usetoast";
-import {
-  ArrowLeft,
-  Check,
-  CircleX,
-  DoorOpen,
-  Map,
-  RotateCcw,
-  Settings2,
-} from "@lucide/vue";
+import { ArrowLeft, Check, CircleX, DoorOpen, Map, RotateCcw, Settings2 } from "@lucide/vue";
 import ChatWindow from "./components/ChatWindow.vue";
 import AddChannelDialog from "./components/AddChannelDialog.vue";
 import CreateLobbyDialog from "./components/CreateLobbyDialog.vue";
@@ -34,28 +19,12 @@ import PlayerListCard from "./components/PlayerListCard.vue";
 import AppSidebar from "./components/AppSidebar.vue";
 import SidebarSectionCard from "./components/SidebarSectionCard.vue";
 import { DEFAULT_PRIMARY_COLOR, useDarkMode } from "./composables/useDarkMode";
-import {
-  DEFAULT_CHAT_SETTINGS,
-  useChatSettings,
-} from "./composables/useChatSettings";
+import { DEFAULT_CHAT_SETTINGS, useChatSettings } from "./composables/useChatSettings";
 import { useNickColor } from "./composables/useNickColor";
-import {
-  clearRememberedCredentials,
-  loadRememberedCredentials,
-  loadOsuAuthData,
-  saveRememberedCredentials,
-  saveOsuAuthData,
-} from "./composables/useRememberedCredentials";
-import {
-  completeOsuAuthorization,
-  readOsuAuthorizationCallback,
-  startOsuAuthorization,
-} from "./composables/useOsuOAuth";
+import { clearRememberedCredentials, loadRememberedCredentials, loadOsuAuthData, saveRememberedCredentials, saveOsuAuthData } from "./composables/useRememberedCredentials";
+import { completeOsuAuthorization, readOsuAuthorizationCallback, startOsuAuthorization } from "./composables/useOsuOAuth";
 import { useServerConnection } from "./composables/useServerConnection";
-import {
-  formatLobbyTemplate,
-  useLobbyMessages,
-} from "./composables/useLobbyMessages";
+import { formatLobbyTemplate, useLobbyMessages } from "./composables/useLobbyMessages";
 import { useMappool } from "./composables/useMappool";
 
 const commandScrollToken = ref(0);
@@ -86,16 +55,7 @@ const pendingLobbyCreatedViaApp = ref(false);
 const pendingJoinChannel = ref(null);
 let pendingJoinTimeout;
 const { primaryColor, setPrimaryColor } = useDarkMode();
-const {
-  highlightReferee,
-  highlightBanchoBot,
-  banchoBotColor,
-  redTeamColor,
-  blueTeamColor,
-  unassignedColorMode,
-  unassignedColor,
-  timestampMode,
-} = useChatSettings();
+const { highlightReferee, highlightBanchoBot, banchoBotColor, redTeamColor, blueTeamColor, unassignedColorMode, unassignedColor, timestampMode } = useChatSettings();
 const { nickColor: baseNickColor } = useNickColor();
 const {
   state: serverState,
@@ -172,9 +132,7 @@ const primaryColorPicker = computed({
   },
 });
 
-const primaryColorChanged = computed(
-  () => primaryColor.value.toLowerCase() !== DEFAULT_PRIMARY_COLOR,
-);
+const primaryColorChanged = computed(() => primaryColor.value.toLowerCase() !== DEFAULT_PRIMARY_COLOR);
 
 const redTeamColorPicker = computed({
   get: () => redTeamColor.value.replace("#", ""),
@@ -197,15 +155,10 @@ const unassignedColorPicker = computed({
 });
 
 const chatSettingChanged = computed(() => ({
-  banchoBotColor:
-    banchoBotColor.value.toLowerCase() !== DEFAULT_CHAT_SETTINGS.banchoBotColor,
-  redTeamColor:
-    redTeamColor.value.toLowerCase() !== DEFAULT_CHAT_SETTINGS.redTeamColor,
-  blueTeamColor:
-    blueTeamColor.value.toLowerCase() !== DEFAULT_CHAT_SETTINGS.blueTeamColor,
-  unassignedColor:
-    unassignedColor.value.toLowerCase() !==
-    DEFAULT_CHAT_SETTINGS.unassignedColor,
+  banchoBotColor: banchoBotColor.value.toLowerCase() !== DEFAULT_CHAT_SETTINGS.banchoBotColor,
+  redTeamColor: redTeamColor.value.toLowerCase() !== DEFAULT_CHAT_SETTINGS.redTeamColor,
+  blueTeamColor: blueTeamColor.value.toLowerCase() !== DEFAULT_CHAT_SETTINGS.blueTeamColor,
+  unassignedColor: unassignedColor.value.toLowerCase() !== DEFAULT_CHAT_SETTINGS.unassignedColor,
 }));
 
 watch(
@@ -219,20 +172,13 @@ watch(
     if (event?.type === "channel_joined") {
       const channel = addJoinedChannel(event.channel);
       const joinedChannelId = channelId(event.channel);
-      if (
-        pendingJoinChannel.value?.id === joinedChannelId &&
-        normalizeIrcNick(event.nick) === normalizeIrcNick(currentUser.value)
-      ) {
+      if (pendingJoinChannel.value?.id === joinedChannelId && normalizeIrcNick(event.nick) === normalizeIrcNick(currentUser.value)) {
         clearPendingJoin();
         activeChat.value = joinedChannelId;
         addChannelDialogOpen.value = false;
         showJoinToast("success", "Connected", "Successfully joined the lobby.");
       }
-      if (
-        channel &&
-        pendingLobbySeed.value &&
-        normalizeIrcNick(event.nick) === normalizeIrcNick(currentUser.value)
-      ) {
+      if (channel && pendingLobbySeed.value && normalizeIrcNick(event.nick) === normalizeIrcNick(currentUser.value)) {
         channel.createdViaCreateLobby = pendingLobbyCreatedViaApp.value;
         const seededLobby = {
           ...channel.lobby,
@@ -241,11 +187,7 @@ watch(
         channel.lobby = seededLobby;
         lobbyStates[channel.id] = seededLobby;
         if (Number.isInteger(seededLobby.bestOf) && seededLobby.bestOf > 0) {
-          setLobbySettings(
-            channel.label,
-            seededLobby.bestOf,
-            seededLobby.nextPickTeam,
-          );
+          setLobbySettings(channel.label, seededLobby.bestOf, seededLobby.nextPickTeam);
         }
         pendingLobbySeed.value = null;
         pendingLobbyCreatedViaApp.value = false;
@@ -253,14 +195,8 @@ watch(
       return;
     }
 
-    if (
-      event?.type === "irc_event" &&
-      pendingJoinChannel.value &&
-      ["403", "471", "473", "474", "475", "482"].includes(event.command)
-    ) {
-      const mentionsPendingChannel = event.params?.some(
-        (param) => channelId(param) === pendingJoinChannel.value.id,
-      );
+    if (event?.type === "irc_event" && pendingJoinChannel.value && ["403", "471", "473", "474", "475", "482"].includes(event.command)) {
+      const mentionsPendingChannel = event.params?.some((param) => channelId(param) === pendingJoinChannel.value.id);
       if (mentionsPendingChannel) {
         failPendingJoin();
         return;
@@ -271,13 +207,8 @@ watch(
       const partedChannelId = channelId(event.channel);
       if (pendingPartChannels.delete(partedChannelId)) return;
 
-      const joinedChannel = joinedChannels.value.find(
-        (channel) => channel.id === partedChannelId,
-      );
-      if (
-        !joinedChannel ||
-        normalizeIrcNick(event.nick) !== normalizeIrcNick(currentUser.value)
-      ) {
+      const joinedChannel = joinedChannels.value.find((channel) => channel.id === partedChannelId);
+      if (!joinedChannel || normalizeIrcNick(event.nick) !== normalizeIrcNick(currentUser.value)) {
         return;
       }
 
@@ -288,22 +219,13 @@ watch(
     if (event?.type !== "message" || !event.channel || !event.text) return;
 
     if (event.nick === "BanchoBot") {
-      const joinedChannel = joinedChannels.value.find(
-        (channel) => channel.id === channelId(event.channel),
-      );
-      if (
-        joinedChannel &&
-        /(?:!mp\s+close|room\s+(?:has been\s+)?closed|lobby\s+(?:has been\s+)?closed)/i.test(
-          event.text,
-        )
-      ) {
+      const joinedChannel = joinedChannels.value.find((channel) => channel.id === channelId(event.channel));
+      if (joinedChannel && /(?:!mp\s+close|room\s+(?:has been\s+)?closed|lobby\s+(?:has been\s+)?closed)/i.test(event.text)) {
         markRoomClosed(joinedChannel.id);
       }
     }
 
-    const joinedChannel = joinedChannels.value.find(
-      (channel) => channel.id === channelId(event.channel),
-    );
+    const joinedChannel = joinedChannels.value.find((channel) => channel.id === channelId(event.channel));
     const chatId = event.channel === "BanchoBot" ? "bancho" : joinedChannel?.id;
     if (!chatId) {
       return;
@@ -313,10 +235,7 @@ watch(
       applyRefereeConfirmation(joinedChannel, event.text);
     }
 
-    const player = joinedChannel?.lobby?.players?.find(
-      (item) =>
-        normalizeIrcNick(item.username) === normalizeIrcNick(event.nick),
-    );
+    const player = joinedChannel?.lobby?.players?.find((item) => normalizeIrcNick(item.username) === normalizeIrcNick(event.nick));
 
     appendChatMessage(chatId, {
       id: nextId++,
@@ -334,15 +253,12 @@ watch(primaryColor, (value) => {
   primaryColorDraft.value = value;
 });
 
-watch(
-  [banchoBotColor, redTeamColor, blueTeamColor, unassignedColor],
-  ([bot, red, blue, unassigned]) => {
-    banchoBotColorDraft.value = bot;
-    redTeamColorDraft.value = red;
-    blueTeamColorDraft.value = blue;
-    unassignedColorDraft.value = unassigned;
-  },
-);
+watch([banchoBotColor, redTeamColor, blueTeamColor, unassignedColor], ([bot, red, blue, unassigned]) => {
+  banchoBotColorDraft.value = bot;
+  redTeamColorDraft.value = red;
+  blueTeamColorDraft.value = blue;
+  unassignedColorDraft.value = unassigned;
+});
 
 function commitPrimaryColor() {
   if (/^#[0-9a-f]{6}$/i.test(primaryColorDraft.value.trim())) {
@@ -551,10 +467,7 @@ function handleCopyCallback() {
 }
 
 onMounted(async () => {
-  const [credentials, osuAuth] = await Promise.all([
-    loadRememberedCredentials(),
-    loadOsuAuthData(),
-  ]);
+  const [credentials, osuAuth] = await Promise.all([loadRememberedCredentials(), loadOsuAuthData()]);
   osuClientId.value = osuAuth?.clientId || "";
   osuClientSecret.value = osuAuth?.clientSecret || "";
   osuProfile.value = osuAuth?.user || null;
@@ -586,10 +499,7 @@ onMounted(async () => {
   }
 
   if (credentials?.login && credentials?.password) {
-    const connectedSuccessfully = await connectWithToast(
-      credentials.login,
-      credentials.password,
-    );
+    const connectedSuccessfully = await connectWithToast(credentials.login, credentials.password);
     if (connectedSuccessfully) {
       currentUser.value = credentials.login;
       isAuthenticated.value = true;
@@ -629,25 +539,16 @@ const banchoMessages = ref([
 ]);
 const roomClosedByChat = reactive({});
 
-const activeMessages = computed(() =>
-  activeChat.value === "bancho"
-    ? banchoMessages.value
-    : channelMessages[activeChat.value] || [],
-);
+const activeMessages = computed(() => (activeChat.value === "bancho" ? banchoMessages.value : channelMessages[activeChat.value] || []));
 const activeChatTitle = computed(() => {
   if (activeChat.value === "bancho") return "BanchoBot";
-  const channel = joinedChannels.value.find(
-    (item) => item.id === activeChat.value,
-  );
+  const channel = joinedChannels.value.find((item) => item.id === activeChat.value);
   return channel?.lobby?.name || channel?.label || activeChat.value;
 });
 watch(
   [isAuthenticated, settingsOpen, activeChatTitle],
   ([authenticated, settingsVisible, title]) => {
-    document.title =
-      authenticated && !settingsVisible && title
-        ? `WhistleIRC — ${title}`
-        : "WhistleIRC";
+    document.title = authenticated && !settingsVisible && title ? `WhistleIRC — ${title}` : "WhistleIRC";
   },
   { immediate: true },
 );
@@ -660,17 +561,10 @@ const activeLobbyState = computed(() => {
   if (isBanchoChat.value) return null;
   return lobbyStates[activeChat.value];
 });
-const showQualificationToggle = computed(
-  () =>
-    Boolean(activeChannel.value) && !activeChannel.value.createdViaCreateLobby,
-);
+const showQualificationToggle = computed(() => Boolean(activeChannel.value) && !activeChannel.value.createdViaCreateLobby);
 const activeLobbySize = computed(() => activeLobbyState.value?.size ?? 16);
-const activeLobbyTeamMode = computed(
-  () => activeLobbyState.value?.teamMode || "HeadToHead",
-);
-const activeLobbyScoreMode = computed(
-  () => activeLobbyState.value?.scoreMode || "Score",
-);
+const activeLobbyTeamMode = computed(() => activeLobbyState.value?.teamMode || "HeadToHead");
+const activeLobbyScoreMode = computed(() => activeLobbyState.value?.scoreMode || "Score");
 const activeLobbyTeamAScore = computed({
   get: () => activeLobbyState.value?.teamRedScore ?? 0,
   set: (value) => updateActiveLobbyScore("teamRedScore", value),
@@ -692,22 +586,13 @@ const activeLobbyPlayers = computed(() => {
     name: player.username,
     isHost: false,
     isReady: Boolean(player.ready),
-    avatarUrl:
-      player.avatarUrl ||
-      (player.userId ? `https://a.ppy.sh/${player.userId}` : ""),
+    avatarUrl: player.avatarUrl || (player.userId ? `https://a.ppy.sh/${player.userId}` : ""),
     team: player.team || null,
-    mods: [...commonMods, ...(player.mods || [])].filter(
-      (mod, index, mods) =>
-        mods.findIndex(
-          (candidate) => candidate.toLowerCase() === mod.toLowerCase(),
-        ) === index,
-    ),
+    mods: [...commonMods, ...(player.mods || [])].filter((mod, index, mods) => mods.findIndex((candidate) => candidate.toLowerCase() === mod.toLowerCase()) === index),
   }));
 });
 const activeLobbyReferees = computed(() => {
-  const channel = joinedChannels.value.find(
-    (item) => item.id === activeChat.value,
-  );
+  const channel = joinedChannels.value.find((item) => item.id === activeChat.value);
   if (Array.isArray(channel?.referees)) {
     return channel.referees;
   }
@@ -719,9 +604,7 @@ const activeLobbyTimerSeconds = computed(() => {
   if (!timer?.active || !timer.endsAt) return 0;
   return Math.max(0, Math.ceil((timer.endsAt - lobbyClock.value) / 1000));
 });
-const activeLobbyTimer = computed(
-  () => activeLobbyTimerSeconds.value > 0 && Boolean(activeLobbyState.value),
-);
+const activeLobbyTimer = computed(() => activeLobbyTimerSeconds.value > 0 && Boolean(activeLobbyState.value));
 let lobbyClockInterval;
 onMounted(() => {
   lobbyClockInterval = window.setInterval(() => {
@@ -788,9 +671,7 @@ function addJoinedChannel(channelName) {
   const normalizedChannel = normalizeChannel(channelName);
   if (!normalizedChannel) return;
 
-  const existingChannel = joinedChannels.value.find(
-    (channel) => channel.id === channelId(channelName),
-  );
+  const existingChannel = joinedChannels.value.find((channel) => channel.id === channelId(channelName));
   if (existingChannel) return existingChannel;
 
   const channel = {
@@ -811,9 +692,7 @@ function addJoinedChannel(channelName) {
 function applyLobbyState(event) {
   if (!event.channel || !event.state) return;
   const eventChannelId = channelId(event.channel);
-  const existingChannel = joinedChannels.value.find(
-    (item) => item.id === eventChannelId,
-  );
+  const existingChannel = joinedChannels.value.find((item) => item.id === eventChannelId);
   if (!existingChannel && pendingPartChannels.has(eventChannelId)) return;
 
   const channel = existingChannel || addJoinedChannel(event.channel);
@@ -829,9 +708,7 @@ function applyLobbyState(event) {
     name: incomingLobby.name || currentLobby.name,
     teamRed: incomingLobby.teamRed || currentLobby.teamRed,
     teamBlue: incomingLobby.teamBlue || currentLobby.teamBlue,
-    qualifiers: incomingLobby.name
-      ? incomingLobby.qualifiers
-      : currentLobby.qualifiers,
+    qualifiers: incomingLobby.name ? incomingLobby.qualifiers : currentLobby.qualifiers,
     timer: {
       ...currentLobby.timer,
       ...incomingLobby.timer,
@@ -840,18 +717,10 @@ function applyLobbyState(event) {
       ...currentLobby.lastPlay,
       ...incomingLobby.lastPlay,
     },
-    currentBeatmap: incomingLobby.currentBeatmap
-      ? { ...incomingLobby.currentBeatmap }
-      : currentLobby.currentBeatmap,
-    teamRedPlayers: Array.isArray(incomingLobby.teamRedPlayers)
-      ? [...incomingLobby.teamRedPlayers]
-      : currentLobby.teamRedPlayers,
-    teamBluePlayers: Array.isArray(incomingLobby.teamBluePlayers)
-      ? [...incomingLobby.teamBluePlayers]
-      : currentLobby.teamBluePlayers,
-    players: Array.isArray(incomingLobby.players)
-      ? incomingLobby.players.map((player) => ({ ...player }))
-      : currentLobby.players,
+    currentBeatmap: incomingLobby.currentBeatmap ? { ...incomingLobby.currentBeatmap } : currentLobby.currentBeatmap,
+    teamRedPlayers: Array.isArray(incomingLobby.teamRedPlayers) ? [...incomingLobby.teamRedPlayers] : currentLobby.teamRedPlayers,
+    teamBluePlayers: Array.isArray(incomingLobby.teamBluePlayers) ? [...incomingLobby.teamBluePlayers] : currentLobby.teamBluePlayers,
+    players: Array.isArray(incomingLobby.players) ? incomingLobby.players.map((player) => ({ ...player })) : currentLobby.players,
   };
   channel.lobby = nextLobby;
   lobbyStates[eventChannelId] = nextLobby;
@@ -865,44 +734,25 @@ function applyLobbyState(event) {
 }
 
 function updateActiveLobbyScore(field, value) {
-  const channel = joinedChannels.value.find(
-    (item) => item.id === activeChat.value,
-  );
+  const channel = joinedChannels.value.find((item) => item.id === activeChat.value);
   if (!channel?.lobby) return;
 
   const score = Math.max(0, Number.parseInt(value, 10) || 0);
   if (channel.lobby[field] === score) return;
   channel.lobby[field] = score;
-  channel.lobby.matchStatus = getMatchStatus(
-    channel.lobby,
-    channel.lobby.teamRed || "Team A",
-    channel.lobby.teamBlue || "Team B",
-  );
-  setLobbyScore(
-    channel.label,
-    channel.lobby.teamRedScore,
-    channel.lobby.teamBlueScore,
-  );
+  channel.lobby.matchStatus = getMatchStatus(channel.lobby, channel.lobby.teamRed || "Team A", channel.lobby.teamBlue || "Team B");
+  setLobbyScore(channel.label, channel.lobby.teamRedScore, channel.lobby.teamBlueScore);
 }
 
 function updateActiveLobbySettings(settings) {
-  const channel = joinedChannels.value.find(
-    (item) => item.id === activeChat.value,
-  );
+  const channel = joinedChannels.value.find((item) => item.id === activeChat.value);
   if (!channel?.lobby) return;
 
-  const bestOf =
-    Number.isInteger(settings.bestOf) && settings.bestOf > 0
-      ? settings.bestOf
-      : null;
+  const bestOf = Number.isInteger(settings.bestOf) && settings.bestOf > 0 ? settings.bestOf : null;
   const nextPickTeam = settings.nextPickTeam || null;
   channel.lobby.bestOf = bestOf;
   channel.lobby.nextPickTeam = nextPickTeam;
-  channel.lobby.matchStatus = getMatchStatus(
-    channel.lobby,
-    channel.lobby.teamRed || "Team A",
-    channel.lobby.teamBlue || "Team B",
-  );
+  channel.lobby.matchStatus = getMatchStatus(channel.lobby, channel.lobby.teamRed || "Team A", channel.lobby.teamBlue || "Team B");
   setLobbySettings(channel.label, bestOf, nextPickTeam);
 }
 
@@ -913,41 +763,27 @@ function applyRefereeConfirmation(channel, text) {
 
   const action = added ? "add" : "remove";
   const nickname = (added || removed)[1].trim();
-  const referees = Array.isArray(channel.referees)
-    ? channel.referees
-    : currentUser.value
-      ? [currentUser.value]
-      : [];
+  const referees = Array.isArray(channel.referees) ? channel.referees : currentUser.value ? [currentUser.value] : [];
   const normalizedNickname = normalizeIrcNick(nickname);
 
   if (action === "add") {
-    if (
-      referees.some(
-        (referee) => normalizeIrcNick(referee) === normalizedNickname,
-      )
-    ) {
+    if (referees.some((referee) => normalizeIrcNick(referee) === normalizedNickname)) {
       return;
     }
     channel.referees = [...referees, nickname];
     return;
   }
 
-  channel.referees = referees.filter(
-    (referee) => normalizeIrcNick(referee) !== normalizedNickname,
-  );
+  channel.referees = referees.filter((referee) => normalizeIrcNick(referee) !== normalizedNickname);
 }
 
 function removeJoinedChannel(channelName) {
   const normalizedChannel = normalizeChannel(channelName);
-  const channel = joinedChannels.value.find(
-    (item) => item.id === channelId(channelName),
-  );
+  const channel = joinedChannels.value.find((item) => item.id === channelId(channelName));
   if (!channel) return;
 
   if (activeChat.value === channel.id) activeChat.value = "bancho";
-  joinedChannels.value = joinedChannels.value.filter(
-    (item) => item.id !== channel.id,
-  );
+  joinedChannels.value = joinedChannels.value.filter((item) => item.id !== channel.id);
   delete channelMessages[channel.id];
   delete unreadChats[channel.id];
   delete lobbyStates[channel.id];
@@ -960,10 +796,7 @@ function selectChat(chatId) {
 }
 
 function appendChatMessage(chatId, message) {
-  const list =
-    chatId === "bancho"
-      ? banchoMessages.value
-      : (channelMessages[chatId] ||= []);
+  const list = chatId === "bancho" ? banchoMessages.value : (channelMessages[chatId] ||= []);
   list.push(message);
   if (activeChat.value !== chatId) unreadChats[chatId] = true;
 }
@@ -988,9 +821,7 @@ function joinChannel(channel) {
   const joinedChannelId = channelId(label);
   if (!joinedChannelId || pendingJoinChannel.value) return;
 
-  const existingChannel = joinedChannels.value.find(
-    (item) => item.id === joinedChannelId,
-  );
+  const existingChannel = joinedChannels.value.find((item) => item.id === joinedChannelId);
   if (existingChannel) {
     activeChat.value = existingChannel.id;
     addChannelDialogOpen.value = false;
@@ -1001,9 +832,7 @@ function joinChannel(channel) {
   showJoinToast("info", "Connecting", "Joining the multiplayer lobby...");
   const sent = joinServerChannel(label);
   if (!sent) {
-    failPendingJoin(
-      "Unable to send the join request. Please reconnect and try again.",
-    );
+    failPendingJoin("Unable to send the join request. Please reconnect and try again.");
     return;
   }
   pendingJoinTimeout = window.setTimeout(() => {
@@ -1030,9 +859,7 @@ function clearPendingJoin() {
   pendingJoinChannel.value = null;
 }
 
-function failPendingJoin(
-  detail = "The lobby does not exist or you are not a referee in it. Please try again or enter another lobby.",
-) {
+function failPendingJoin(detail = "The lobby does not exist or you are not a referee in it. Please try again or enter another lobby.") {
   clearPendingJoin();
   showJoinToast("error", "Join failed", detail);
 }
@@ -1048,9 +875,7 @@ function requestPartChannel(channelName) {
 function closeActiveChat(chatId = activeChat.value) {
   if (chatId === "bancho") return;
 
-  const index = joinedChannels.value.findIndex(
-    (channel) => channel.id === chatId,
-  );
+  const index = joinedChannels.value.findIndex((channel) => channel.id === chatId);
   const channel = joinedChannels.value[index];
   if (channel) requestPartChannel(channel.label);
   if (index !== -1) joinedChannels.value.splice(index, 1);
@@ -1064,20 +889,11 @@ function closeActiveChat(chatId = activeChat.value) {
 }
 
 function handleSend(text) {
-  const channel =
-    activeChat.value === "bancho"
-      ? "BanchoBot"
-      : joinedChannels.value.find((item) => item.id === activeChat.value)
-          ?.label;
+  const channel = activeChat.value === "bancho" ? "BanchoBot" : joinedChannels.value.find((item) => item.id === activeChat.value)?.label;
   if (!channel) return;
-  const resolvedText = activeLobbyState.value
-    ? formatLobbyTemplate(text, getLobbyTemplateValues(activeLobbyState.value))
-    : text;
+  const resolvedText = activeLobbyState.value ? formatLobbyTemplate(text, getLobbyTemplateValues(activeLobbyState.value)) : text;
   if (!sendServerMessage(channel, resolvedText)) return;
-  const lobbyPlayer = activeLobbyState.value?.players?.find(
-    (player) =>
-      normalizeIrcNick(player.username) === normalizeIrcNick(currentUser.value),
-  );
+  const lobbyPlayer = activeLobbyState.value?.players?.find((player) => normalizeIrcNick(player.username) === normalizeIrcNick(currentUser.value));
   appendChatMessage(activeChat.value, {
     id: nextId++,
     author: currentUser.value,
@@ -1092,9 +908,7 @@ function handleCommand(command) {
   if (activeChat.value === "bancho") return;
   if (!/^!mp\s+close\b/i.test(command.trim())) return;
 
-  const channel = joinedChannels.value.find(
-    (item) => item.id === activeChat.value,
-  );
+  const channel = joinedChannels.value.find((item) => item.id === activeChat.value);
   if (!channel) return;
 
   markRoomClosed(channel.id);
@@ -1112,23 +926,14 @@ function handleCreateLobby(payload) {
 
 function getMatchStatus(lobby, teamRedName, teamBlueName) {
   const bestOf = Number(lobby.bestOf);
-  const winningScore =
-    Number.isInteger(bestOf) && bestOf > 0 ? Math.ceil(bestOf / 2) : null;
+  const winningScore = Number.isInteger(bestOf) && bestOf > 0 ? Math.ceil(bestOf / 2) : null;
   const teamOneScore = Number(lobby.teamRedScore) || 0;
   const teamTwoScore = Number(lobby.teamBlueScore) || 0;
 
-  if (
-    winningScore &&
-    teamOneScore >= winningScore &&
-    teamOneScore > teamTwoScore
-  ) {
+  if (winningScore && teamOneScore >= winningScore && teamOneScore > teamTwoScore) {
     return `${teamRedName} wins the match! GG and WP!`;
   }
-  if (
-    winningScore &&
-    teamTwoScore >= winningScore &&
-    teamTwoScore > teamOneScore
-  ) {
+  if (winningScore && teamTwoScore >= winningScore && teamTwoScore > teamOneScore) {
     return `${teamBlueName} wins the match! GG and WP!`;
   }
   return lobby.nextPickTeam ? `Next Pick: ${lobby.nextPickTeam}` : "—";
@@ -1140,26 +945,12 @@ function getLobbyTemplateValues(lobby, result = {}) {
   const teamRedScore = lobby.teamRedScore ?? 0;
   const teamBlueScore = lobby.teamBlueScore ?? 0;
   const lastPlay = lobby.lastPlay || {};
-  const hasLastPlay =
-    Number.isFinite(lastPlay.teamRedScore) &&
-    Number.isFinite(lastPlay.teamBlueScore);
-  const lastPlayWinnerScore =
-    lastPlay.winnerTeam === "red"
-      ? lastPlay.teamRedScore
-      : lastPlay.teamBlueScore;
-  const lastPlayLoserScore =
-    lastPlay.winnerTeam === "red"
-      ? lastPlay.teamBlueScore
-      : lastPlay.teamRedScore;
+  const hasLastPlay = Number.isFinite(lastPlay.teamRedScore) && Number.isFinite(lastPlay.teamBlueScore);
+  const lastPlayWinnerScore = lastPlay.winnerTeam === "red" ? lastPlay.teamRedScore : lastPlay.teamBlueScore;
+  const lastPlayLoserScore = lastPlay.winnerTeam === "red" ? lastPlay.teamBlueScore : lastPlay.teamRedScore;
 
   return {
-    beatmapWinner: !hasLastPlay
-      ? "—"
-      : lastPlay.teamRedScore === lastPlay.teamBlueScore
-        ? "Draw"
-        : lastPlay.teamRedScore > lastPlay.teamBlueScore
-          ? teamRedName
-          : teamBlueName,
+    beatmapWinner: !hasLastPlay ? "—" : lastPlay.teamRedScore === lastPlay.teamBlueScore ? "Draw" : lastPlay.teamRedScore > lastPlay.teamBlueScore ? teamRedName : teamBlueName,
     beatmap: lobby.currentBeatmap?.url || "—",
     beatmapTeamRedScore: hasLastPlay ? lastPlay.teamRedScore : "—",
     beatmapTeamBlueScore: hasLastPlay ? lastPlay.teamBlueScore : "—",
@@ -1167,13 +958,7 @@ function getLobbyTemplateValues(lobby, result = {}) {
     teamBlueName,
     matchTeamRedScore: teamRedScore,
     matchTeamBlueScore: teamBlueScore,
-    scoreDifference: hasLastPlay
-      ? Number.isFinite(lastPlay.scoreDifference)
-        ? lastPlay.scoreDifference
-        : lastPlay.winnerTeam
-          ? lastPlayWinnerScore - lastPlayLoserScore
-          : 0
-      : 0,
+    scoreDifference: hasLastPlay ? (Number.isFinite(lastPlay.scoreDifference) ? lastPlay.scoreDifference : lastPlay.winnerTeam ? lastPlayWinnerScore - lastPlayLoserScore : 0) : 0,
     matchStatus: getMatchStatus(lobby, teamRedName, teamBlueName),
     bestOf: lobby.bestOf ?? "—",
   };
@@ -1185,12 +970,9 @@ function handleSendResult(result) {
   if (!lobby) return;
   const values = getLobbyTemplateValues(lobby, result);
 
-  const outgoingMessages = activePreset.value?.messages.filter(
-    (message) => message.enabled && message.content.trim(),
-  ) || [
+  const outgoingMessages = activePreset.value?.messages.filter((message) => message.enabled && message.content.trim()) || [
     {
-      content:
-        "{{teamRedName}} {{matchTeamRedScore}} - {{matchTeamBlueScore}} {{teamBlueName}}",
+      content: "{{teamRedName}} {{matchTeamRedScore}} - {{matchTeamBlueScore}} {{teamBlueName}}",
     },
   ];
 
@@ -1204,21 +986,9 @@ function handleSendResult(result) {
   <Toast position="top-right" />
   <Toast position="top-right" :group="loginToastGroup">
     <template #messageicon="{ message }">
-      <span
-        v-if="message.severity === 'info'"
-        class="login-toast-spinner"
-        aria-label="Loading"
-      ></span>
-      <Check
-        v-else-if="message.severity === 'success'"
-        :size="18"
-        aria-label="Success"
-      />
-      <CircleX
-        v-else-if="message.severity === 'error'"
-        :size="18"
-        aria-label="Error"
-      />
+      <span v-if="message.severity === 'info'" class="login-toast-spinner" aria-label="Loading"></span>
+      <Check v-else-if="message.severity === 'success'" :size="18" aria-label="Success" />
+      <CircleX v-else-if="message.severity === 'error'" :size="18" aria-label="Error" />
     </template>
   </Toast>
   <LoginPage
@@ -1252,12 +1022,7 @@ function handleSendResult(result) {
   >
     <div v-if="settingsOpen" class="settings-page">
       <header class="settings-page__header">
-        <button
-          type="button"
-          class="settings-page__back"
-          aria-label="Back to chat"
-          @click="closeSettings"
-        >
+        <button type="button" class="settings-page__back" aria-label="Back to chat" @click="closeSettings">
           <ArrowLeft :size="18" />
         </button>
         <div class="settings-page__title">
@@ -1274,28 +1039,13 @@ function handleSendResult(result) {
         <div class="settings-page__setting">
           <div class="settings-page__setting-info">
             <h3>Primary color</h3>
-            <p>
-              Controls the main accent color used for active states, buttons,
-              highlights, and other interactive elements across the app.
-            </p>
+            <p>Controls the main accent color used for active states, buttons, highlights, and other interactive elements across the app.</p>
           </div>
 
           <div class="settings-page__color-control">
             <ColorPicker v-model="primaryColorPicker" inputId="primary-color" />
-            <InputText
-              v-model="primaryColorDraft"
-              aria-label="Primary color hex value"
-              spellcheck="false"
-              @blur="commitPrimaryColor"
-              @keydown.enter="commitPrimaryColor"
-            />
-            <Button
-              v-if="primaryColorChanged"
-              text
-              size="small"
-              aria-label="Reset primary color"
-              @click="resetPrimaryColor"
-            >
+            <InputText v-model="primaryColorDraft" aria-label="Primary color hex value" spellcheck="false" @blur="commitPrimaryColor" @keydown.enter="commitPrimaryColor" />
+            <Button v-if="primaryColorChanged" text size="small" aria-label="Reset primary color" @click="resetPrimaryColor">
               <RotateCcw :size="14" />
               <span>Reset</span>
             </Button>
@@ -1311,9 +1061,7 @@ function handleSendResult(result) {
         <div class="settings-page__setting">
           <div class="settings-page__setting-info">
             <h3>Result messages</h3>
-            <p>
-              Choose and customize the messages sent by the Send Result button.
-            </p>
+            <p>Choose and customize the messages sent by the Send Result button.</p>
           </div>
           <div class="settings-page__setting-control">
             <Button text size="small" @click="lobbyMessagesSettingsOpen = true">
@@ -1332,20 +1080,14 @@ function handleSendResult(result) {
         </div>
 
         <div class="settings-page__chat-preview" aria-label="Chat preview">
-          <div
-            v-for="(message, index) in chatPreviewMessages"
-            :key="message.id"
-            class="settings-page__chat-line"
-          >
+          <div v-for="(message, index) in chatPreviewMessages" :key="message.id" class="settings-page__chat-line">
             <span class="settings-page__chat-time">
               {{ previewTime(message.time, index) }}
             </span>
             <span
               class="settings-page__chat-nick"
               :class="{
-                'settings-page__chat-nick--badge':
-                  (message.role === 'referee' && highlightReferee) ||
-                  (message.author === 'BanchoBot' && highlightBanchoBot),
+                'settings-page__chat-nick--badge': (message.role === 'referee' && highlightReferee) || (message.author === 'BanchoBot' && highlightBanchoBot),
               }"
               :style="previewNickStyle(message)"
               >{{ message.author }}</span
@@ -1361,11 +1103,7 @@ function handleSendResult(result) {
               <p>Show the referee name as a filled accent badge in chat.</p>
             </div>
             <div class="settings-page__setting-control">
-              <ToggleSwitch
-                v-model="highlightReferee"
-                inputId="highlight-referee"
-                class="app-solid-switch"
-              />
+              <ToggleSwitch v-model="highlightReferee" inputId="highlight-referee" class="app-solid-switch" />
             </div>
           </div>
 
@@ -1375,11 +1113,7 @@ function handleSendResult(result) {
               <p>Show BanchoBot as a filled color badge in chat.</p>
             </div>
             <div class="settings-page__setting-control">
-              <ToggleSwitch
-                v-model="highlightBanchoBot"
-                inputId="highlight-bancho-bot"
-                class="app-solid-switch"
-              />
+              <ToggleSwitch v-model="highlightBanchoBot" inputId="highlight-bancho-bot" class="app-solid-switch" />
             </div>
           </div>
 
@@ -1395,17 +1129,9 @@ function handleSendResult(result) {
                 aria-label="BanchoBot color hex value"
                 spellcheck="false"
                 @blur="commitChatColor(banchoBotColor, banchoBotColorDraft)"
-                @keydown.enter="
-                  commitChatColor(banchoBotColor, banchoBotColorDraft)
-                "
+                @keydown.enter="commitChatColor(banchoBotColor, banchoBotColorDraft)"
               />
-              <Button
-                v-if="chatSettingChanged.banchoBotColor"
-                text
-                size="small"
-                aria-label="Reset BanchoBot color"
-                @click="resetChatSetting('banchoBotColor')"
-              >
+              <Button v-if="chatSettingChanged.banchoBotColor" text size="small" aria-label="Reset BanchoBot color" @click="resetChatSetting('banchoBotColor')">
                 <RotateCcw :size="14" />
                 <span>Reset</span>
               </Button>
@@ -1424,17 +1150,9 @@ function handleSendResult(result) {
                 aria-label="Red team color hex value"
                 spellcheck="false"
                 @blur="commitChatColor(redTeamColor, redTeamColorDraft)"
-                @keydown.enter="
-                  commitChatColor(redTeamColor, redTeamColorDraft)
-                "
+                @keydown.enter="commitChatColor(redTeamColor, redTeamColorDraft)"
               />
-              <Button
-                v-if="chatSettingChanged.redTeamColor"
-                text
-                size="small"
-                aria-label="Reset red team color"
-                @click="resetChatSetting('redTeamColor')"
-              >
+              <Button v-if="chatSettingChanged.redTeamColor" text size="small" aria-label="Reset red team color" @click="resetChatSetting('redTeamColor')">
                 <RotateCcw :size="14" />
                 <span>Reset</span>
               </Button>
@@ -1453,17 +1171,9 @@ function handleSendResult(result) {
                 aria-label="Blue team color hex value"
                 spellcheck="false"
                 @blur="commitChatColor(blueTeamColor, blueTeamColorDraft)"
-                @keydown.enter="
-                  commitChatColor(blueTeamColor, blueTeamColorDraft)
-                "
+                @keydown.enter="commitChatColor(blueTeamColor, blueTeamColorDraft)"
               />
-              <Button
-                v-if="chatSettingChanged.blueTeamColor"
-                text
-                size="small"
-                aria-label="Reset blue team color"
-                @click="resetChatSetting('blueTeamColor')"
-              >
+              <Button v-if="chatSettingChanged.blueTeamColor" text size="small" aria-label="Reset blue team color" @click="resetChatSetting('blueTeamColor')">
                 <RotateCcw :size="14" />
                 <span>Reset</span>
               </Button>
@@ -1475,17 +1185,8 @@ function handleSendResult(result) {
               <h3>Unassigned player color</h3>
               <p>Use a stable random palette color or choose a custom one.</p>
             </div>
-            <div
-              class="settings-page__setting-control settings-page__setting-control--wrap"
-            >
-              <SelectButton
-                v-model="unassignedColorMode"
-                :options="unassignedColorModes"
-                optionLabel="label"
-                optionValue="value"
-                :allowEmpty="false"
-                aria-label="Unassigned player color mode"
-              />
+            <div class="settings-page__setting-control settings-page__setting-control--wrap">
+              <SelectButton v-model="unassignedColorMode" :options="unassignedColorModes" optionLabel="label" optionValue="value" :allowEmpty="false" aria-label="Unassigned player color mode" />
               <template v-if="unassignedColorMode === 'custom'">
                 <ColorPicker v-model="unassignedColorPicker" />
                 <InputText
@@ -1493,16 +1194,11 @@ function handleSendResult(result) {
                   aria-label="Unassigned player color hex value"
                   spellcheck="false"
                   @blur="commitChatColor(unassignedColor, unassignedColorDraft)"
-                  @keydown.enter="
-                    commitChatColor(unassignedColor, unassignedColorDraft)
-                  "
+                  @keydown.enter="commitChatColor(unassignedColor, unassignedColorDraft)"
                 />
               </template>
               <Button
-                v-if="
-                  unassignedColorMode === 'custom' &&
-                  chatSettingChanged.unassignedColor
-                "
+                v-if="unassignedColorMode === 'custom' && chatSettingChanged.unassignedColor"
                 text
                 size="small"
                 aria-label="Reset unassigned player color"
@@ -1520,14 +1216,7 @@ function handleSendResult(result) {
               <p>Choose between minute-only and full timestamps in chat.</p>
             </div>
             <div class="settings-page__setting-control">
-              <SelectButton
-                v-model="timestampMode"
-                :options="timestampModes"
-                optionLabel="label"
-                optionValue="value"
-                :allowEmpty="false"
-                aria-label="Timestamp format"
-              />
+              <SelectButton v-model="timestampMode" :options="timestampModes" optionLabel="label" optionValue="value" :allowEmpty="false" aria-label="Timestamp format" />
             </div>
           </div>
         </div>
@@ -1570,37 +1259,20 @@ function handleSendResult(result) {
             :can-edit="currentUser === refereeUser"
             :show-match-controls="!qualificationMode"
             :disabled="Boolean(roomClosedByChat[activeChat])"
-            :mp-link="
-              activeLobbyState?.id
-                ? `https://osu.ppy.sh/mp/${activeLobbyState.id}`
-                : ''
-            "
+            :mp-link="activeLobbyState?.id ? `https://osu.ppy.sh/mp/${activeLobbyState.id}` : ''"
             @send-result="handleSendResult"
             @update-settings="updateActiveLobbySettings"
           />
         </SidebarSectionCard>
-        <PlayerListCard
-          :players="activeLobbyPlayers"
-          :current-user="currentUser"
-        />
+        <PlayerListCard :players="activeLobbyPlayers" :current-user="currentUser" />
         <SidebarSectionCard title="Mappool" :icon="Map" scrollable>
-          <MappoolCard
-            :disabled="Boolean(roomClosedByChat[activeChat])"
-            @send-command="handleCommand"
-          />
+          <MappoolCard :disabled="Boolean(roomClosedByChat[activeChat])" @send-command="handleCommand" />
         </SidebarSectionCard>
       </div>
 
-      <CreateLobbyDialog
-        v-model:visible="createLobbyDialogOpen"
-        @create="handleCreateLobby"
-      />
+      <CreateLobbyDialog v-model:visible="createLobbyDialogOpen" @create="handleCreateLobby" />
 
-      <AddChannelDialog
-        v-model:visible="addChannelDialogOpen"
-        :loading="Boolean(pendingJoinChannel)"
-        @join="joinChannel"
-      />
+      <AddChannelDialog v-model:visible="addChannelDialogOpen" :loading="Boolean(pendingJoinChannel)" @join="joinChannel" />
     </div>
   </AppSidebar>
 </template>
@@ -1898,8 +1570,7 @@ function handleSendResult(result) {
   font-size: 0.72rem;
 }
 
-.settings-page__setting-control
-  :deep(.p-selectbutton .p-togglebutton.p-togglebutton-checked) {
+.settings-page__setting-control :deep(.p-selectbutton .p-togglebutton.p-togglebutton-checked) {
   border-color: rgba(var(--app-primary-rgb), 0.35);
   background: rgba(var(--app-primary-rgb), 0.16);
   color: var(--app-primary-bright);

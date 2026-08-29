@@ -32,9 +32,7 @@ const MOD_CODES = Object.freeze({
   spunout: "SO",
 });
 
-const visiblePlayers = computed(() =>
-  props.players.filter((player) => !player.isReferee),
-);
+const visiblePlayers = computed(() => props.players.filter((player) => !player.isReferee));
 
 function colorFor(player) {
   if (player.team === "red") return redTeamColor.value;
@@ -58,9 +56,7 @@ function modCode(mod) {
 }
 
 function playerMods(player) {
-  return (player.mods || [])
-    .map(modCode)
-    .filter((mod, index, mods) => mods.indexOf(mod) === index);
+  return (player.mods || []).map(modCode).filter((mod, index, mods) => mods.indexOf(mod) === index);
 }
 </script>
 
@@ -71,37 +67,17 @@ function playerMods(player) {
       <span class="player-list__count">{{ visiblePlayers.length }}</span>
     </div>
 
-    <ul
-      class="player-list__items"
-      :class="{ 'player-list__items--scrollable': visiblePlayers.length > 5 }"
-    >
-      <li
-        v-for="player in visiblePlayers"
-        :key="player.name"
-        class="player-row"
-      >
-        <span
-          v-if="player.avatarUrl"
-          class="player-row__avatar"
-          :style="{ backgroundImage: `url(${player.avatarUrl})` }"
-        />
-        <span
-          v-else
-          class="player-row__avatar player-row__avatar--placeholder"
-          :style="{ background: colorFor(player) }"
-          >{{ initials(player.name) }}</span
-        >
+    <ul class="player-list__items" :class="{ 'player-list__items--scrollable': visiblePlayers.length > 5 }">
+      <li v-for="player in visiblePlayers" :key="player.name" class="player-row">
+        <span v-if="player.avatarUrl" class="player-row__avatar" :style="{ backgroundImage: `url(${player.avatarUrl})` }" />
+        <span v-else class="player-row__avatar player-row__avatar--placeholder" :style="{ background: colorFor(player) }">{{ initials(player.name) }}</span>
 
         <span class="player-row__name" :style="playerNameStyle(player)">
           {{ player.name }}
         </span>
 
         <span v-if="playerMods(player).length" class="player-row__mods">
-          <span
-            v-for="mod in playerMods(player)"
-            :key="mod"
-            class="player-row__mod"
-          >
+          <span v-for="mod in playerMods(player)" :key="mod" class="player-row__mod">
             {{ modCode(mod) }}
           </span>
         </span>
@@ -109,9 +85,7 @@ function playerMods(player) {
         <span class="player-row__ready" :data-ready="player.isReady" />
       </li>
 
-      <li v-if="!visiblePlayers.length" class="player-list__empty">
-        No players yet
-      </li>
+      <li v-if="!visiblePlayers.length" class="player-list__empty">No players yet</li>
     </ul>
   </div>
 </template>

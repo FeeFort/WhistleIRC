@@ -3,32 +3,14 @@ import { ref, computed, nextTick, watch, onBeforeUnmount } from "vue";
 import Button from "primevue/button";
 import Textarea from "primevue/textarea";
 import ToggleSwitch from "primevue/toggleswitch";
-import {
-  Menu,
-  Send,
-  Hash,
-  Timer,
-  ClipboardCheck,
-  Flag,
-  Gamepad2,
-  GraduationCap,
-} from "@lucide/vue";
+import { Menu, Send, Hash, Timer, ClipboardCheck, Flag, Gamepad2, GraduationCap } from "@lucide/vue";
 import { useNickColor } from "../composables/useNickColor";
 import { useChatSettings } from "../composables/useChatSettings";
 import BanchoBotCommandBar from "./BanchoBotCommandBar.vue";
 import CommandBar from "./CommandBar.vue";
 
 const { nickColor: baseNickColor } = useNickColor();
-const {
-  highlightReferee,
-  highlightBanchoBot,
-  banchoBotColor,
-  redTeamColor,
-  blueTeamColor,
-  unassignedColorMode,
-  unassignedColor,
-  timestampMode,
-} = useChatSettings();
+const { highlightReferee, highlightBanchoBot, banchoBotColor, redTeamColor, blueTeamColor, unassignedColorMode, unassignedColor, timestampMode } = useChatSettings();
 
 const props = defineProps({
   title: { type: String, default: "Referee chat" },
@@ -61,21 +43,11 @@ function formatTimer(seconds) {
   return `${minutes}:${remainder}`;
 }
 
-const timerLabel = computed(() =>
-  props.timerActive ? formatTimer(props.timerSeconds) : "No timer active",
-);
+const timerLabel = computed(() => (props.timerActive ? formatTimer(props.timerSeconds) : "No timer active"));
 
-const statusLabel = computed(() =>
-  props.connected ? "Connected" : "Disconnected",
-);
+const statusLabel = computed(() => (props.connected ? "Connected" : "Disconnected"));
 
-const emit = defineEmits([
-  "send",
-  "toggle-sidebar",
-  "send-command",
-  "create-lobby",
-  "update:qualificationMode",
-]);
+const emit = defineEmits(["send", "toggle-sidebar", "send-command", "create-lobby", "update:qualificationMode"]);
 
 const draft = ref("");
 const listEl = ref(null);
@@ -100,10 +72,7 @@ function nickColor(author, team) {
 
 function isReferee(author) {
   const normalizedAuthor = normalizeNick(author);
-  return (
-    !!normalizedAuthor &&
-    props.refereeUsers.some((nick) => normalizeNick(nick) === normalizedAuthor)
-  );
+  return !!normalizedAuthor && props.refereeUsers.some((nick) => normalizeNick(nick) === normalizedAuthor);
 }
 
 function normalizeNick(nick) {
@@ -157,10 +126,7 @@ function messageMinute(time) {
 function shouldShowTime(index) {
   if (timestampMode.value === "full") return true;
   if (index === 0) return true;
-  return (
-    messageMinute(props.messages[index]?.time) !==
-    messageMinute(props.messages[index - 1]?.time)
-  );
+  return messageMinute(props.messages[index]?.time) !== messageMinute(props.messages[index - 1]?.time);
 }
 
 function displayTime(time, index) {
@@ -169,9 +135,7 @@ function displayTime(time, index) {
 }
 
 function isNearBottom(el) {
-  return (
-    el.scrollHeight - el.clientHeight - el.scrollTop <= AUTO_SCROLL_THRESHOLD
-  );
+  return el.scrollHeight - el.clientHeight - el.scrollTop <= AUTO_SCROLL_THRESHOLD;
 }
 
 function finishAutoScroll(el) {
@@ -202,10 +166,7 @@ function animateScrollTo(el, target) {
 
   if (document.hidden) {
     el.scrollTo({ top: target, behavior: "smooth" });
-    autoScrollTimer = setTimeout(
-      () => finishAutoScroll(el),
-      AUTO_SCROLL_DURATION + 100,
-    );
+    autoScrollTimer = setTimeout(() => finishAutoScroll(el), AUTO_SCROLL_DURATION + 100);
     return;
   }
 
@@ -214,10 +175,7 @@ function animateScrollTo(el, target) {
   function step(now) {
     if (document.hidden) {
       el.scrollTo({ top: target, behavior: "smooth" });
-      autoScrollTimer = setTimeout(
-        () => finishAutoScroll(el),
-        AUTO_SCROLL_DURATION + 100,
-      );
+      autoScrollTimer = setTimeout(() => finishAutoScroll(el), AUTO_SCROLL_DURATION + 100);
       animationFrameId = undefined;
       return;
     }
@@ -268,11 +226,7 @@ function onWheel(event) {
 watch(
   () => props.messages.length,
   () => {
-    const stickToBottom =
-      forceAutoScroll ||
-      !listEl.value ||
-      isAutoScrolling ||
-      isNearBottom(listEl.value);
+    const stickToBottom = forceAutoScroll || !listEl.value || isAutoScrolling || isNearBottom(listEl.value);
     forceAutoScroll = false;
     if (!stickToBottom) return;
     shouldAutoScroll.value = true;
@@ -322,36 +276,21 @@ function forwardCommand(command) {
   <div class="chat-window">
     <div class="chat-header">
       <div class="chat-header__title">
-        <button
-          type="button"
-          class="chat-menu"
-          aria-label="Toggle sidebar"
-          @click.stop="emit('toggle-sidebar')"
-        >
+        <button type="button" class="chat-menu" aria-label="Toggle sidebar" @click.stop="emit('toggle-sidebar')">
           <Menu :size="18" />
         </button>
         <div class="chat-header__titlegroup">
           <span class="chat-title">{{ title }}</span>
           <div v-if="shortcutMode !== 'bancho'" class="chat-subtitle">
-            <span class="chat-subtitle__item"
-              ><Hash :size="12" />{{ roomSize }}</span
-            >
+            <span class="chat-subtitle__item"><Hash :size="12" />{{ roomSize }}</span>
             <span class="chat-subtitle__dot">·</span>
-            <span class="chat-subtitle__item"
-              ><Timer :size="12" />{{ timerLabel }}</span
-            >
+            <span class="chat-subtitle__item"><Timer :size="12" />{{ timerLabel }}</span>
             <span class="chat-subtitle__dot">·</span>
-            <span class="chat-subtitle__item"
-              ><ClipboardCheck :size="12" />{{ format }}</span
-            >
+            <span class="chat-subtitle__item"><ClipboardCheck :size="12" />{{ format }}</span>
             <span class="chat-subtitle__dot">·</span>
-            <span class="chat-subtitle__item"
-              ><Flag :size="12" />{{ winCondition }}</span
-            >
+            <span class="chat-subtitle__item"><Flag :size="12" />{{ winCondition }}</span>
             <span class="chat-subtitle__dot">·</span>
-            <span class="chat-subtitle__item"
-              ><Gamepad2 :size="12" />{{ mode }}</span
-            >
+            <span class="chat-subtitle__item"><Gamepad2 :size="12" />{{ mode }}</span>
           </div>
         </div>
       </div>
@@ -359,12 +298,7 @@ function forwardCommand(command) {
         <div v-if="showQualificationToggle" class="chat-qualification-control">
           <GraduationCap :size="15" />
           <span>Qualifications</span>
-          <ToggleSwitch
-            :model-value="qualificationMode"
-            class="app-solid-switch"
-            inputId="chat-qualification-mode"
-            @update:model-value="emit('update:qualificationMode', $event)"
-          />
+          <ToggleSwitch :model-value="qualificationMode" class="app-solid-switch" inputId="chat-qualification-mode" @update:model-value="emit('update:qualificationMode', $event)" />
         </div>
         <div
           class="chat-status-card"
@@ -382,27 +316,18 @@ function forwardCommand(command) {
 
     <div ref="listEl" class="chat-log" @scroll="onScroll" @wheel="onWheel">
       <div class="chat-log__inner">
-        <div
-          v-for="(msg, index) in messages"
-          :key="msg.id"
-          class="chat-line"
-          :class="{ 'chat-line--system': msg.type === 'system' }"
-        >
+        <div v-for="(msg, index) in messages" :key="msg.id" class="chat-line" :class="{ 'chat-line--system': msg.type === 'system' }">
           <template v-if="msg.type === 'system'">
             <span class="chat-line__system-rule" aria-hidden="true"></span>
             <span class="chat-line__system-text">{{ msg.text }}</span>
             <span class="chat-line__system-rule" aria-hidden="true"></span>
           </template>
           <template v-else>
-            <span class="chat-line__time">{{
-              displayTime(msg.time, index)
-            }}</span>
+            <span class="chat-line__time">{{ displayTime(msg.time, index) }}</span>
             <span
               class="chat-line__nick"
               :class="{
-                'chat-line__nick--badge':
-                  (isReferee(msg.author) && highlightReferee) ||
-                  (isBanchoBot(msg.author) && highlightBanchoBot),
+                'chat-line__nick--badge': (isReferee(msg.author) && highlightReferee) || (isBanchoBot(msg.author) && highlightBanchoBot),
               }"
               :style="nickStyle(msg.author, msg.team)"
               >{{ msg.author }}</span
@@ -413,36 +338,12 @@ function forwardCommand(command) {
       </div>
     </div>
 
-    <BanchoBotCommandBar
-      v-if="shortcutMode === 'bancho'"
-      :disabled="roomClosed"
-      @send-command="forwardCommand"
-      @create="emit('create-lobby')"
-    />
-    <CommandBar
-      v-else
-      docked
-      :disabled="roomClosed"
-      @send-command="forwardCommand"
-    />
+    <BanchoBotCommandBar v-if="shortcutMode === 'bancho'" :disabled="roomClosed" @send-command="forwardCommand" @create="emit('create-lobby')" />
+    <CommandBar v-else docked :disabled="roomClosed" @send-command="forwardCommand" />
 
     <div class="chat-input">
-      <Textarea
-        v-model="draft"
-        placeholder="Write a message"
-        rows="1"
-        autoResize
-        class="chat-input__field"
-        :disabled="roomClosed"
-        @keydown="onKeydown"
-      />
-      <Button
-        rounded
-        aria-label="Send message"
-        class="chat-input__send"
-        :disabled="roomClosed || !draft.trim()"
-        @click="send"
-      >
+      <Textarea v-model="draft" placeholder="Write a message" rows="1" autoResize class="chat-input__field" :disabled="roomClosed" @keydown="onKeydown" />
+      <Button rounded aria-label="Send message" class="chat-input__send" :disabled="roomClosed || !draft.trim()" @click="send">
         <Send :size="17" />
       </Button>
     </div>
@@ -694,19 +595,11 @@ function forwardCommand(command) {
 .chat-line__system-rule {
   flex: 1 1 auto;
   height: 1px;
-  background: linear-gradient(
-    90deg,
-    transparent,
-    rgba(var(--app-primary-rgb), 0.55)
-  );
+  background: linear-gradient(90deg, transparent, rgba(var(--app-primary-rgb), 0.55));
 }
 
 .chat-line__system-rule:last-child {
-  background: linear-gradient(
-    90deg,
-    rgba(var(--app-primary-rgb), 0.55),
-    transparent
-  );
+  background: linear-gradient(90deg, rgba(var(--app-primary-rgb), 0.55), transparent);
 }
 
 .chat-line__system-text {

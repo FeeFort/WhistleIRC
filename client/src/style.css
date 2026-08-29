@@ -10,16 +10,8 @@
   --app-surface-raised: #111521;
   --app-surface-hover: #171c2b;
   --app-control: rgba(14, 17, 27, 0.8);
-  --app-panel-gradient: linear-gradient(
-    145deg,
-    rgba(17, 21, 33, 0.92),
-    var(--app-surface)
-  );
-  --app-log-background: radial-gradient(
-    circle at 50% 20%,
-    rgba(106, 82, 173, 0.05),
-    transparent 44%
-  );
+  --app-panel-gradient: linear-gradient(145deg, rgba(17, 21, 33, 0.92), var(--app-surface));
+  --app-log-background: radial-gradient(circle at 50% 20%, rgba(106, 82, 173, 0.05), transparent 44%);
   --app-step-background: rgba(255, 255, 255, 0.04);
   --app-border: rgba(148, 163, 184, 0.16);
   --app-border-strong: rgba(148, 163, 184, 0.25);
@@ -93,33 +85,13 @@ body {
   inset: 0;
   pointer-events: none;
   content: "";
-  background:
-    radial-gradient(
-      circle at 18% -10%,
-      rgba(117, 68, 206, 0.14),
-      transparent 32rem
-    ),
-    radial-gradient(
-      circle at 88% 115%,
-      rgba(66, 112, 176, 0.1),
-      transparent 28rem
-    );
+  background: radial-gradient(circle at 18% -10%, rgba(117, 68, 206, 0.14), transparent 32rem), radial-gradient(circle at 88% 115%, rgba(66, 112, 176, 0.1), transparent 28rem);
   opacity: 1;
   transition: opacity var(--app-theme-duration) var(--app-theme-easing);
 }
 
 #app::after {
-  background:
-    radial-gradient(
-      circle at 18% -10%,
-      rgba(117, 68, 206, 0.08),
-      transparent 32rem
-    ),
-    radial-gradient(
-      circle at 88% 115%,
-      rgba(66, 112, 176, 0.08),
-      transparent 28rem
-    );
+  background: radial-gradient(circle at 18% -10%, rgba(117, 68, 206, 0.08), transparent 32rem), radial-gradient(circle at 88% 115%, rgba(66, 112, 176, 0.08), transparent 28rem);
   opacity: 0;
 }
 
@@ -233,8 +205,7 @@ html.app-theme-transition .app-sidebar-layout .p-sidebar-aside,
 html.app-theme-transition .app-sidebar-layout .p-sidebar-menu-button,
 html.app-theme-transition .chat-line__nick,
 html.app-theme-transition .player-row__ready {
-  transition-property:
-    background, background-color, border-color, box-shadow, color !important;
+  transition-property: background, background-color, border-color, box-shadow, color !important;
   transition-duration: var(--app-theme-duration) !important;
   transition-timing-function: var(--app-theme-easing) !important;
   transition-delay: 0ms !important;
@@ -243,9 +214,7 @@ html.app-theme-transition .player-row__ready {
 html.app-theme-transition *,
 html.app-theme-transition *::before,
 html.app-theme-transition *::after {
-  transition-property:
-    background, background-color, background-image, border-color, box-shadow,
-    color, fill, stroke !important;
+  transition-property: background, background-color, background-image, border-color, box-shadow, color, fill, stroke !important;
   transition-duration: var(--app-theme-duration) !important;
   transition-timing-function: var(--app-theme-easing) !important;
   transition-delay: 0ms !important;
@@ -755,8 +724,7 @@ html.app-light .app-dialog-mask {
   background: var(--app-bg) !important;
 }
 
-.app-solid-switch:not(.p-disabled):has(.p-toggleswitch-input:focus-visible)
-  .p-toggleswitch-slider {
+.app-solid-switch:not(.p-disabled):has(.p-toggleswitch-input:focus-visible) .p-toggleswitch-slider {
   outline: 2px solid rgba(var(--app-primary-rgb), 0.45);
   outline-offset: 2px;
 }

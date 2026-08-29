@@ -41,9 +41,7 @@ function loadJSON(key, fallback) {
 }
 
 function uid() {
-  return typeof crypto !== "undefined" && crypto.randomUUID
-    ? crypto.randomUUID()
-    : `sc_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+  return typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `sc_${Date.now()}_${Math.random().toString(16).slice(2)}`;
 }
 
 const startDelaySeconds = ref(loadJSON(START_DELAY_KEY, 5));
@@ -55,26 +53,14 @@ const builtinWarnings = ref({
 // each: { id, label, command, description, icon, color, warning }
 const customShortcuts = ref(loadJSON(CUSTOM_KEY, []));
 
-watch(startDelaySeconds, (v) =>
-  localStorage.setItem(START_DELAY_KEY, JSON.stringify(v)),
-);
-watch(timerSeconds, (v) =>
-  localStorage.setItem(TIMER_SECONDS_KEY, JSON.stringify(v)),
-);
-watch(
-  builtinWarnings,
-  (v) => localStorage.setItem(WARNINGS_KEY, JSON.stringify(v)),
-  {
-    deep: true,
-  },
-);
-watch(
-  customShortcuts,
-  (v) => localStorage.setItem(CUSTOM_KEY, JSON.stringify(v)),
-  {
-    deep: true,
-  },
-);
+watch(startDelaySeconds, (v) => localStorage.setItem(START_DELAY_KEY, JSON.stringify(v)));
+watch(timerSeconds, (v) => localStorage.setItem(TIMER_SECONDS_KEY, JSON.stringify(v)));
+watch(builtinWarnings, (v) => localStorage.setItem(WARNINGS_KEY, JSON.stringify(v)), {
+  deep: true,
+});
+watch(customShortcuts, (v) => localStorage.setItem(CUSTOM_KEY, JSON.stringify(v)), {
+  deep: true,
+});
 
 function addCustomShortcut(data = {}) {
   const shortcut = {
