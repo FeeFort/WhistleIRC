@@ -4,9 +4,11 @@
 
 - Embed mappool builder tool into the main client
 - Fix blank space on the IRC connection status
-- Find bugs
-- Fix them
-- idk what to write here basically no todo for now
+- Add currently active map display
+- Add display of mods for each player independently
+- Add automatic custom multiplier score calculation
+- Add notification sounds with configurable ping words
+- Add autofocus on typing bar
 
 ## Lazer referee (SignalR)
 
