@@ -6,22 +6,27 @@
   "main": "src/index.js",
   "bin": "dist/bundle.js",
   "scripts": {
-    "start": "node src/index.js",
+    "start": "tsx src/index.js",
     "bundle": "esbuild src/index.js --bundle --platform=node --outfile=dist/bundle.js",
     "build": "node build.js",
     "lint": "eslint .",
-    "format": "prettier --write . --ignore-path ../.prettierignore"
+    "format": "prettier --write . --ignore-path ../.prettierignore",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "express": "^5.1.0",
     "ws": "^8.18.0"
   },
   "devDependencies": {
-    "@yao-pkg/pkg": "^6.22.0",
     "@eslint/js": "^10.0.1",
+    "@yao-pkg/pkg": "^6.22.0",
+    "@types/node": "^26.4.0",
+    "esbuild": "^0.28.2",
     "eslint": "^10.9.1",
     "eslint-config-prettier": "^10.1.8",
-    "esbuild": "^0.28.2",
+    "tsx": "^4.23.13",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.68.0",
     "globals": "^17.11.0",
     "prettier": "^3.9.6",
     "resedit-cli": "^3.1.0"
