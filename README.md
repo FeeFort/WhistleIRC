@@ -45,6 +45,8 @@ Click **Save and continue** once both fields are filled in.
 Check the callback URL and click **Login from osu!**. A new page on `osu.ppy.sh` will open. Approve WhistleIRC there and you will be sent back to the app.
 
 WhistleIRC uses osu!'s OAuth authorization flow. It does not ask for your osu! password and never accesses it. After authorization, it saves your osu! user ID, username, and avatar locally in the browser.
+The access token stays on the server and never reaches the browser.
+
 ![Logging in from osu!](assets/oauth-login.png)
 
 ### 3. Log in through IRC

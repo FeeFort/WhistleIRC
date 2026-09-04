@@ -99,7 +99,7 @@ watch(
 watch(
   () => props.osuProfile,
   (profile) => {
-    login.value = profile?.name || props.initialLogin;
+    login.value = profile?.username || props.initialLogin;
   },
   { immediate: true },
 );
@@ -169,9 +169,9 @@ watch(
       </div>
 
       <div v-if="!showSetup" class="login-form__osu-profile">
-        <img :src="osuProfile.avatar" alt="" />
+        <img :src="osuProfile.avatarUrl" alt="" />
         <div>
-          <span>osu! account</span><strong>{{ osuProfile.name }}</strong>
+          <span>osu! account</span><strong>{{ osuProfile.username }}</strong>
         </div>
         <Button text class="login-form__osu-logout" aria-label="Log out from osu!" title="Log out from osu!" @click="logoutFromOsu">
           <LogOut :size="15" />
