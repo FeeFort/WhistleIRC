@@ -2,7 +2,11 @@
 
 ## Stable referee (IRC)
 
-- Embed mappool builder tool into the main client
+- Add mappool configuration page (feature)
+  - Mappool configuration tool (currently separate script)
+  - Custom FM mod multipliers
+  - Custom win conditions
+  - Deprecate current python script tool (>:3c)
 - Fix blank space on the IRC connection status
 - Add currently active map display
 - Add display of mods for each player independently

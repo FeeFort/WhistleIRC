@@ -1,5 +1,4 @@
 const AUTHORIZE_URL = "https://osu.ppy.sh/oauth/authorize";
-const TOKEN_PROXY_URL = "/api/osu/oauth/token";
 const STATE_KEY = "whistleirc-osu-oauth-state";
 
 export function getOsuRedirectUri() {
@@ -44,38 +43,4 @@ export function readOsuAuthorizationCallback() {
   }
 
   return { code };
-}
-
-async function readResponse(response, fallbackMessage) {
-  const payload = await response.json().catch(() => null);
-  if (!response.ok) {
-    throw new Error(payload?.error_description || payload?.message || fallbackMessage);
-  }
-  return payload;
-}
-
-export async function completeOsuAuthorization({ clientId, clientSecret, code }) {
-  const body = new URLSearchParams({
-    client_id: clientId,
-    client_secret: clientSecret,
-    code,
-    grant_type: "authorization_code",
-    redirect_uri: getOsuRedirectUri(),
-  });
-  const tokenResponse = await fetch(TOKEN_PROXY_URL, {
-    method: "POST",
-    headers: {
-      Accept: "application/json",
-      "Content-Type": "application/x-www-form-urlencoded",
-    },
-    body,
-  });
-  const payload = await readResponse(tokenResponse, "Unable to exchange the osu! authorization code.");
-
-  return {
-    accessToken: payload.access_token,
-    refreshToken: payload.refresh_token || "",
-    expiresAt: Date.now() + Number(payload.expires_in || 0) * 1000,
-    user: payload.user,
-  };
 }

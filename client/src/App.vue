@@ -22,7 +22,7 @@ import { DEFAULT_PRIMARY_COLOR, useDarkMode } from "./composables/useDarkMode";
 import { DEFAULT_CHAT_SETTINGS, useChatSettings } from "./composables/useChatSettings";
 import { useNickColor } from "./composables/useNickColor";
 import { clearRememberedCredentials, loadRememberedCredentials, loadOsuAuthData, saveRememberedCredentials, saveOsuAuthData } from "./composables/useRememberedCredentials";
-import { completeOsuAuthorization, readOsuAuthorizationCallback, startOsuAuthorization } from "./composables/useOsuOAuth";
+import { getOsuRedirectUri, readOsuAuthorizationCallback, startOsuAuthorization } from "./composables/useOsuOAuth";
 import { useServerConnection } from "./composables/useServerConnection";
 import { formatLobbyTemplate, useLobbyMessages } from "./composables/useLobbyMessages";
 import { useMappool } from "./composables/useMappool";
@@ -62,6 +62,8 @@ const {
   lastEvent,
   login: loginToServer,
   logout: logoutFromServer,
+  loginOsu,
+  logoutOsu,
   sendMessage: sendServerMessage,
   joinChannel: joinServerChannel,
   partChannel: partServerChannel,
@@ -131,6 +133,15 @@ const primaryColorPicker = computed({
     if (/^#[0-9a-f]{6}$/i.test(normalized)) setPrimaryColor(normalized);
   },
 });
+
+function normalizeOsuUser(user) {
+  if (!user) return null;
+  return {
+    id: user.id ?? null,
+    username: user.username || user.name || "",
+    avatarUrl: user.avatarUrl || user.avatar || "",
+  };
+}
 
 const primaryColorChanged = computed(() => primaryColor.value.toLowerCase() !== DEFAULT_PRIMARY_COLOR);
 
@@ -445,11 +456,13 @@ async function handleOsuLogin({ clientId, clientSecret }) {
 }
 
 async function handleOsuLogout() {
+  await logoutOsu().catch(() => {});
   osuProfile.value = null;
   osuError.value = "";
   await saveOsuAuthData({
     clientId: osuClientId.value,
     clientSecret: osuClientSecret.value,
+    user: null,
   });
   await clearRememberedCredentials();
   localStorage.removeItem("feeirc-remembered-login");
@@ -470,7 +483,7 @@ onMounted(async () => {
   const [credentials, osuAuth] = await Promise.all([loadRememberedCredentials(), loadOsuAuthData()]);
   osuClientId.value = osuAuth?.clientId || "";
   osuClientSecret.value = osuAuth?.clientSecret || "";
-  osuProfile.value = osuAuth?.user || null;
+  osuProfile.value = normalizeOsuUser(osuAuth?.user);
 
   try {
     const callback = readOsuAuthorizationCallback();
@@ -480,17 +493,18 @@ onMounted(async () => {
       }
 
       osuLoading.value = true;
-      const authData = await completeOsuAuthorization({
+      const authData = await loginOsu({
         clientId: osuClientId.value,
         clientSecret: osuClientSecret.value,
         code: callback.code,
+        redirectUri: getOsuRedirectUri(),
       });
       await saveOsuAuthData({
-        ...authData,
         clientId: osuClientId.value,
         clientSecret: osuClientSecret.value,
+        user: authData,
       });
-      osuProfile.value = authData.user;
+      osuProfile.value = normalizeOsuUser(authData);
     }
   } catch (error) {
     osuError.value = error.message || "Unable to log in from osu!.";
@@ -1010,7 +1024,7 @@ function handleSendResult(result) {
     v-if="isAuthenticated"
     v-model:open="sidebarOpen"
     :user-name="currentUser"
-    :user-avatar="osuProfile?.avatar || ''"
+    :user-avatar="osuProfile?.avatarUrl || ''"
     :active-chat="activeChat"
     :unread-chats="unreadChats"
     :joined-channels="joinedChannels"

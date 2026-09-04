@@ -5,20 +5,13 @@ const { execFile } = require("node:child_process");
 const express = require("express");
 const { WebSocketServer, WebSocket } = require("ws");
 const { parseBanchoBotMessage, parseLobbyCommand } = require("./banchoBotParser");
+const { login: loginOsu, logout: logoutOsu } = require("./auth/auth");
 
 const HTTP_HOST = process.env.HOST || "0.0.0.0";
 const HTTP_PORT = Number(process.env.PORT || 3000);
 const IRC_HOST = "irc.ppy.sh";
 const IRC_PORT = 6667;
 const AUTH_ERROR = "Login or password is incorrect.";
-const OSU_TOKEN_URL = "https://osu.ppy.sh/oauth/token";
-const OSU_ME_URL = "https://osu.ppy.sh/api/v2/me/osu";
-const allowedCorsOrigins = new Set(
-  (process.env.CORS_ORIGIN || "http://localhost:3000,http://localhost:5173")
-    .split(",")
-    .map((origin) => origin.trim())
-    .filter(Boolean),
-);
 
 function formatLogTime(date = new Date()) {
   return date.toTimeString().slice(0, 8);
@@ -30,85 +23,6 @@ const staticDirectory = path.join(__dirname, "..", "static");
 const webSocketServer = new WebSocketServer({
   server: httpServer,
   path: "/ws",
-});
-
-function setCorsHeaders(request, response) {
-  const origin = request.headers.origin;
-  if (origin && allowedCorsOrigins.has(origin)) {
-    response.setHeader("Access-Control-Allow-Origin", origin);
-    response.setHeader("Vary", "Origin");
-  }
-  response.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-  response.setHeader("Access-Control-Allow-Headers", "Content-Type");
-}
-
-app.options("/api/osu/oauth/token", (request, response) => {
-  setCorsHeaders(request, response);
-  response.sendStatus(204);
-});
-
-app.post("/api/osu/oauth/token", express.urlencoded({ extended: false }), async (request, response) => {
-  setCorsHeaders(request, response);
-
-  const { client_id: clientId, client_secret: clientSecret, code, redirect_uri: redirectUri } = request.body || {};
-  if (![clientId, clientSecret, code, redirectUri].every(isNonEmptyString)) {
-    response.status(400).json({
-      message: "client_id, client_secret, code and redirect_uri are required.",
-    });
-    return;
-  }
-
-  try {
-    const tokenResponse = await fetch(OSU_TOKEN_URL, {
-      method: "POST",
-      headers: {
-        Accept: "application/json",
-        "Content-Type": "application/x-www-form-urlencoded",
-      },
-      body: new URLSearchParams({
-        client_id: clientId.trim(),
-        client_secret: clientSecret,
-        code: code.trim(),
-        grant_type: "authorization_code",
-        redirect_uri: redirectUri.trim(),
-      }),
-    });
-    const tokenPayload = await tokenResponse.json().catch(() => null);
-    if (!tokenResponse.ok || !tokenPayload?.access_token) {
-      response.status(tokenResponse.status || 502).json({
-        message: tokenPayload?.error_description || tokenPayload?.message || "osu! rejected the authorization code.",
-      });
-      return;
-    }
-
-    const userResponse = await fetch(OSU_ME_URL, {
-      headers: {
-        Accept: "application/json",
-        Authorization: `Bearer ${tokenPayload.access_token}`,
-      },
-    });
-    const userPayload = await userResponse.json().catch(() => null);
-    if (!userResponse.ok || !userPayload?.id || !userPayload?.username) {
-      response.status(userResponse.status || 502).json({
-        message: "osu! profile could not be loaded.",
-      });
-      return;
-    }
-
-    response.json({
-      access_token: tokenPayload.access_token,
-      refresh_token: tokenPayload.refresh_token || "",
-      expires_in: tokenPayload.expires_in || 0,
-      user: {
-        id: userPayload.id,
-        name: userPayload.username,
-        avatar: `https://a.ppy.sh/${userPayload.id}`,
-      },
-    });
-  } catch (error) {
-    console.error(`[${formatLogTime()}] osu! OAuth request failed: ${error.message}`);
-    response.status(502).json({ message: "Unable to reach the osu! API." });
-  }
 });
 
 app.use(express.static(staticDirectory));
@@ -772,6 +686,14 @@ function validateMessage(message) {
       return null;
     },
     logout: () => null,
+    osu_login: () => {
+      if (!isNonEmptyString(message.clientId)) return "clientId must be a non-empty string.";
+      if (!isNonEmptyString(message.clientSecret)) return "clientSecret must be a non-empty string.";
+      if (!isNonEmptyString(message.code)) return "code must be a non-empty string.";
+      if (!isNonEmptyString(message.redirectUri)) return "redirectUri must be a non-empty string.";
+      return null;
+    },
+    osu_logout: () => null,
     send_message: () => {
       if (!isNonEmptyString(message.channel)) {
         return "channel must be a non-empty string.";
@@ -845,6 +767,26 @@ function handleLogin(client, message) {
 function handleLogout(client) {
   banchoConnection.logout();
   sendJson(client, { type: "ack", received: "logout" });
+}
+
+async function handleOsuLogin(client, message) {
+  try {
+    const user = await loginOsu({ clientId: message.clientId.trim(), clientSecret: message.clientSecret, redirectUri: message.redirectUri.trim() }, message.code.trim());
+    sendJson(client, { type: "osu_user", user });
+  } catch (error) {
+    console.error(`[${formatLogTime()}] osu! OAuth request failed: ${error.message}`);
+    sendJson(client, { type: "error", request: "osu_login", message: error.message || "Unable to reach the osu! API." });
+  }
+}
+
+async function handleOsuLogout(client) {
+  try {
+    await logoutOsu();
+    sendJson(client, { type: "ack", received: "osu_logout" });
+  } catch (error) {
+    console.error(`[${formatLogTime()}] osu! logout failed: ${error.message}`);
+    sendJson(client, { type: "error", request: "osu_logout", message: "Unable to log out from the osu! API." });
+  }
 }
 
 function handleSendMessage(client, message) {
@@ -921,11 +863,15 @@ function handleClientMessage(client, message) {
 
   const logMessage = { ...message };
   delete logMessage.password;
+  delete logMessage.clientSecret;
+  delete logMessage.code;
   console.log(`[${formatLogTime()}] WS ${JSON.stringify(logMessage)}`);
 
   const handlers = {
     login: handleLogin,
     logout: handleLogout,
+    osu_login: handleOsuLogin,
+    osu_logout: handleOsuLogout,
     send_message: handleSendMessage,
     join_channel: handleJoinChannel,
     leave_channel: handleLeaveChannel,
