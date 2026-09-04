@@ -3,7 +3,7 @@ const net = require("node:net");
 const path = require("node:path");
 const { execFile } = require("node:child_process");
 const express = require("express");
-const { WebSocketServer, WebSocket } = require("ws");
+const { WebSocketServer } = require("ws");
 const { parseBanchoBotMessage, parseLobbyCommand } = require("./banchoBotParser");
 const { login: loginOsu, logout: logoutOsu } = require("./auth/auth");
 
@@ -781,8 +781,8 @@ async function handleOsuLogin(client, message) {
 
 async function handleOsuLogout(client) {
   try {
-    await logoutOsu();
-    sendJson(client, { type: "ack", received: "osu_logout" });
+    const status = await logoutOsu();
+    sendJson(client, { type: "ack", received: "osu_logout", status });
   } catch (error) {
     console.error(`[${formatLogTime()}] osu! logout failed: ${error.message}`);
     sendJson(client, { type: "error", request: "osu_logout", message: "Unable to log out from the osu! API." });
