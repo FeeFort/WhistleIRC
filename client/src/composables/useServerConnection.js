@@ -94,7 +94,11 @@ function requestApi(endpoint) {
     const handleOpen = () => send(socketInstance, { type: "api_request", endpoint });
     const handleMessage = (event) => {
       let message;
-      try { message = JSON.parse(event.data); } catch { return; }
+      try {
+        message = JSON.parse(event.data);
+      } catch {
+        return;
+      }
       if (message.type === "api_response" && message.endpoint === endpoint) finish(resolve, message.response);
       if (message.type === "error" && message.request === "api_request") finish(reject, new Error(message.message || "Server error."));
     };
