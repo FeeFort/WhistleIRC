@@ -1,20 +1,41 @@
-const TEAM_MODES = Object.freeze({
+import {
+  MpSizeCommand,
+  MpSetCommand,
+  RoomInfo,
+  ScoreMode,
+  TeamMode,
+  TeamSettings,
+  SizeConfirmation,
+  TimerMessage,
+  BeatmapInfo,
+  ActiveMods,
+  PlayerJoined,
+  PlayerLeft,
+  PlayerScore,
+  MatchFinished,
+  MatchMetadata,
+  ParsedBanchoBotMessage,
+  ParsedLobbyCommand,
+  PlayerSnapshot,
+} from "./types";
+
+export const TEAM_MODES: Record<number, TeamMode> = Object.freeze({
   0: "HeadToHead",
   1: "TagCoop",
   2: "TeamVs",
   3: "TagTeamVs",
 });
 
-const SCORE_MODES = Object.freeze({
+export const SCORE_MODES: Record<number, ScoreMode> = Object.freeze({
   0: "Score",
   1: "Accuracy",
   2: "Combo",
   3: "ScoreV2",
 });
 
-const QUALIFIER_ALIASES = Object.freeze(["Qualifiers", "Quals", "Qualifier"]);
+export const QUALIFIER_ALIASES: readonly string[] = Object.freeze(["Qualifiers", "Quals", "Qualifier"]);
 
-const MOD_NAMES = Object.freeze({
+const MOD_NAMES: Record<string, string> = Object.freeze({
   EZ: "Easy",
   NF: "NoFail",
   HF: "HalfTime",
@@ -28,17 +49,17 @@ const MOD_NAMES = Object.freeze({
   SO: "SpunOut",
 });
 
-const MOD_CODES = new Map(
+const MOD_CODES: Map<string, string> = new Map(
   Object.entries(MOD_NAMES).flatMap(([code, name]) => [
     [code.toLowerCase(), code],
     [name.toLowerCase(), code],
   ]),
 );
 
-const TEAM_MODE_NAMES = new Map(Object.values(TEAM_MODES).map((value) => [value.toLowerCase(), value]));
-const SCORE_MODE_NAMES = new Map(Object.values(SCORE_MODES).map((value) => [value.toLowerCase(), value]));
+const TEAM_MODE_NAMES: Map<string, TeamMode> = new Map(Object.values(TEAM_MODES).map((value) => [value.toLowerCase(), value]));
+const SCORE_MODE_NAMES: Map<string, ScoreMode> = new Map(Object.values(SCORE_MODES).map((value) => [value.toLowerCase(), value]));
 
-function parseRoomName(text) {
+function parseRoomName(text: string): RoomInfo | null {
   const match = text.match(/^Room name:\s*(.*?)(?:,\s*History:|$)/i);
   if (!match) return null;
 
@@ -55,7 +76,7 @@ function parseRoomName(text) {
   };
 }
 
-function parseNamedModes(teamMode, scoreMode) {
+function parseNamedModes(teamMode: string, scoreMode: string): { teamMode: TeamMode; scoreMode: ScoreMode } | null {
   const normalizedTeamMode = TEAM_MODE_NAMES.get(teamMode.trim().toLowerCase());
   const normalizedScoreMode = SCORE_MODE_NAMES.get(scoreMode.trim().toLowerCase());
   if (!normalizedTeamMode || !normalizedScoreMode) return null;
@@ -66,7 +87,7 @@ function parseNamedModes(teamMode, scoreMode) {
   };
 }
 
-function parseTeamSettings(text) {
+function parseTeamSettings(text: string): TeamSettings | null {
   const line = text.match(/Team mode:\s*([^,]+),\s*Win condition:\s*([^\r\n]+)/i);
   if (line) return parseNamedModes(line[1], line[2]);
 
@@ -78,23 +99,23 @@ function parseTeamSettings(text) {
   return { ...modes, size: Number(changed[1]) };
 }
 
-function parseMpSetCommand(text) {
+function parseMpSetCommand(text: string): MpSetCommand | null {
   const match = text.match(/^\s*!mp\s+set\s+([0-3])\s+([0-3])\s+(\d+)(?:\s|$)/i);
   if (!match) return null;
 
   return {
-    teamMode: TEAM_MODES[match[1]],
-    scoreMode: SCORE_MODES[match[2]],
+    teamMode: TEAM_MODES[Number(match[1])],
+    scoreMode: SCORE_MODES[Number(match[2])],
     size: Number(match[3]),
   };
 }
 
-function parseMpSizeCommand(text) {
+function parseMpSizeCommand(text: string): MpSizeCommand | null {
   const match = text.match(/^\s*!mp\s+size\s+(\d+)(?:\s|$)/i);
   return match ? { size: Number(match[1]) } : null;
 }
 
-function parseSizeConfirmation(text) {
+function parseSizeConfirmation(text: string): SizeConfirmation | null {
   const match = text.match(
     /(?:Changed match settings to|Changed match size to|Changed match to size|match size (?:changed|set) to|room size (?:changed|set) to|lobby size (?:changed|set) to)\s*(\d+)(?:\s*slots?)?|Players:\s*\d+\s*\/\s*(\d+)|(?:Slots?|Size):\s*(\d+)/i,
   );
@@ -103,7 +124,7 @@ function parseSizeConfirmation(text) {
   return { size: Number(size) };
 }
 
-function parseTimerMessage(text) {
+function parseTimerMessage(text: string): TimerMessage | null {
   if (/^Countdown aborted\.?$/i.test(text.trim())) return { type: "aborted" };
   if (/^Countdown finished\.?$/i.test(text.trim())) return { type: "finished" };
 
@@ -117,7 +138,7 @@ function parseTimerMessage(text) {
   };
 }
 
-function parseBeatmap(text) {
+function parseBeatmap(text: string): BeatmapInfo | null {
   const match = text.match(/https?:\/\/osu\.ppy\.sh\/b\/(\d+)\b([^\r\n]*)/i);
   if (!match) return null;
 
@@ -130,27 +151,27 @@ function parseBeatmap(text) {
   return { id: beatmapId, beatmapId, url, title: title || null };
 }
 
-function parseBeatmapMessage(text) {
+function parseBeatmapMessage(text: string): { type: "beatmap"; value: { currentBeatmap: BeatmapInfo } } | null {
   if (!/^(?:Beatmap:|Changed beatmap to\s+)/i.test(text)) return null;
   const beatmap = parseBeatmap(text);
   return beatmap ? { type: "beatmap", value: { currentBeatmap: beatmap } } : null;
 }
 
-function parseActiveMods(text) {
+function parseActiveMods(text: string): ActiveMods | null {
   const match = text.match(/^Active mods:\s*(.+)$/i);
   if (!match) return null;
   const value = match[1].trim();
   return { activeMods: /^none$/i.test(value) ? null : value };
 }
 
-function parseModsConfirmation(text) {
+function parseModsConfirmation(text: string): ActiveMods | null {
   const match = text.match(/^Disabled all mods, enabled\s+(.+)\.?$/i);
   if (match) return { activeMods: match[1].trim() };
   if (/^Disabled all mods\.?$/i.test(text.trim())) return { activeMods: null };
   return null;
 }
 
-function parsePlayerSnapshot(text) {
+function parsePlayerSnapshot(text: string): PlayerSnapshot | null {
   const match = text.match(/^Slot\s+(\d+)\s+(Ready|Not Ready)\s+(https?:\/\/\S+)\s+(.+?)\s*$/i);
   if (!match) return null;
 
@@ -163,7 +184,7 @@ function parsePlayerSnapshot(text) {
     .filter(Boolean);
   const teamPart = detailParts.find((part) => /^Team\s+(Red|Blue)$/i.test(part));
   const teamMatch = teamPart?.match(/^Team\s+(Red|Blue)$/i);
-  const team = teamMatch ? teamMatch[1].toLowerCase() : null;
+  const team = teamMatch ? (teamMatch[1].toLowerCase() as "red" | "blue") : null;
   const mods = detailParts
     .filter((part) => !/^Host$/i.test(part) && !/^Team\s+(Red|Blue)$/i.test(part))
     .flatMap((part) => part.split(/\s*,\s*/))
@@ -185,7 +206,7 @@ function parsePlayerSnapshot(text) {
   };
 }
 
-function parsePlayerJoined(text) {
+function parsePlayerJoined(text: string): PlayerJoined | null {
   const match = text.match(/^(.+?) joined in slot\s+(\d+)\s+for team\s+(red|blue)\.?$/i);
   if (!match) return null;
   return {
@@ -196,12 +217,12 @@ function parsePlayerJoined(text) {
   };
 }
 
-function parsePlayerLeft(text) {
+function parsePlayerLeft(text: string): PlayerLeft | null {
   const match = text.match(/^(.+?) left the game\.?$/i);
   return match ? { username: match[1].trim() } : null;
 }
 
-function parsePlayerScore(text) {
+function parsePlayerScore(text: string): PlayerScore | null {
   const match = text.match(/^(.+?) finished playing\s+\(Score:\s*(\d+),\s*([^)]+)\)\.?$/i);
   if (!match) return null;
   return {
@@ -211,11 +232,11 @@ function parsePlayerScore(text) {
   };
 }
 
-function parseMatchFinished(text) {
+function parseMatchFinished(text: string): MatchFinished | null {
   return /^The match has finished!?$/i.test(text.trim()) ? { finished: true } : null;
 }
 
-function parseMatchMetadata(text) {
+function parseMatchMetadata(text: string): MatchMetadata | null {
   const bestOf = text.match(/^Best of\s*:?\s*(\d+)\b/i);
   if (bestOf) return { bestOf: Number(bestOf[1]) };
 
@@ -223,7 +244,7 @@ function parseMatchMetadata(text) {
   return nextPick ? { nextPickTeam: nextPick[1].trim() } : null;
 }
 
-function parseBanchoBotMessage(text) {
+export function parseBanchoBotMessage(text: string): ParsedBanchoBotMessage {
   const room = parseRoomName(text);
   if (room) return { type: "room", value: room };
 
@@ -266,7 +287,7 @@ function parseBanchoBotMessage(text) {
   return null;
 }
 
-function parseLobbyCommand(text) {
+export function parseLobbyCommand(text: string): ParsedLobbyCommand {
   const settings = parseMpSetCommand(text);
   if (settings) return { type: "settings", value: settings };
 
@@ -275,11 +296,3 @@ function parseLobbyCommand(text) {
 
   return null;
 }
-
-module.exports = {
-  QUALIFIER_ALIASES,
-  SCORE_MODES,
-  TEAM_MODES,
-  parseBanchoBotMessage,
-  parseLobbyCommand,
-};
