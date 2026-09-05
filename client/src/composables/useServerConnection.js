@@ -73,6 +73,43 @@ function requestOsu(payload) {
   });
 }
 
+function requestApi(endpoint) {
+  const existingSocket = socket.value;
+  const socketInstance = existingSocket || new WebSocket(import.meta.env.VITE_WS_URL || getDefaultWebSocketUrl());
+  const ownsSocket = !existingSocket;
+
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const finish = (callback, value) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeoutId);
+      socketInstance.removeEventListener("open", handleOpen);
+      socketInstance.removeEventListener("message", handleMessage);
+      socketInstance.removeEventListener("error", handleError);
+      socketInstance.removeEventListener("close", handleClose);
+      if (ownsSocket && socketInstance.readyState < WebSocket.CLOSING) socketInstance.close();
+      callback(value);
+    };
+    const handleOpen = () => send(socketInstance, { type: "api_request", endpoint });
+    const handleMessage = (event) => {
+      let message;
+      try { message = JSON.parse(event.data); } catch { return; }
+      if (message.type === "api_response" && message.endpoint === endpoint) finish(resolve, message.response);
+      if (message.type === "error" && message.request === "api_request") finish(reject, new Error(message.message || "Server error."));
+    };
+    const handleError = () => finish(reject, new Error("Unable to connect to the WhistleIRC server."));
+    const handleClose = () => finish(reject, new Error("Server connection closed."));
+    const timeoutId = setTimeout(() => finish(reject, new Error("osu! API request timed out.")), loginTimeout);
+
+    socketInstance.addEventListener("open", handleOpen);
+    socketInstance.addEventListener("message", handleMessage);
+    socketInstance.addEventListener("error", handleError);
+    socketInstance.addEventListener("close", handleClose);
+    if (socketInstance.readyState === WebSocket.OPEN) handleOpen();
+  });
+}
+
 function setLobbyScore(channel, teamRedScore, teamBlueScore) {
   return socket.value
     ? send(socket.value, {
@@ -235,6 +272,7 @@ export function useServerConnection() {
     logout,
     loginOsu,
     logoutOsu,
+    requestApi,
     sendMessage,
     joinChannel,
     partChannel,

@@ -5,7 +5,9 @@ const { execFile } = require("node:child_process");
 const express = require("express");
 const { WebSocketServer } = require("ws");
 const { parseBanchoBotMessage, parseLobbyCommand } = require("./banchoBotParser");
-const { login: loginOsu, logout: logoutOsu } = require("./auth/auth");
+const { login: loginOsu, logout: logoutOsu, getAccessToken } = require("./auth/auth");
+const { fetchApi } = require("./osu-api/osuApiClient");
+const { config } = require("./config");
 
 const HTTP_HOST = process.env.HOST || "0.0.0.0";
 const HTTP_PORT = Number(process.env.PORT || 3000);
@@ -694,6 +696,10 @@ function validateMessage(message) {
       return null;
     },
     osu_logout: () => null,
+    api_request: () => {
+      if (!isNonEmptyString(message.endpoint)) return "endpoint must be a non-empty string.";
+      return null;
+    },
     send_message: () => {
       if (!isNonEmptyString(message.channel)) {
         return "channel must be a non-empty string.";
@@ -789,6 +795,23 @@ async function handleOsuLogout(client) {
   }
 }
 
+async function handleApiRequest(client, message) {
+  if (!config.allowedApiEndpoints.some((pattern) => pattern.test(message.endpoint))) {
+    sendJson(client, { type: "error", request: "api_request", message: "Endpoint not allowed" });
+    return;
+  }
+
+  try {
+    const accessToken = await getAccessToken();
+    const response = await fetchApi(accessToken, message.endpoint);
+    sendJson(client, { type: "api_response", endpoint: message.endpoint, response });
+  } catch (error) {
+    console.error(`[${formatLogTime()}] osu! API request failed: ${error.message}`);
+    const messageText = error?.name === "NotAuthenticatedError" ? "You must be logged in to access the osu! API." : error.message || "Unable to reach the osu! API.";
+    sendJson(client, { type: "error", request: "api_request", message: messageText });
+  }
+}
+
 function handleSendMessage(client, message) {
   try {
     banchoConnection.sendMessage(message.channel.trim(), message.message);
@@ -872,6 +895,7 @@ function handleClientMessage(client, message) {
     logout: handleLogout,
     osu_login: handleOsuLogin,
     osu_logout: handleOsuLogout,
+    api_request: handleApiRequest,
     send_message: handleSendMessage,
     join_channel: handleJoinChannel,
     leave_channel: handleLeaveChannel,
