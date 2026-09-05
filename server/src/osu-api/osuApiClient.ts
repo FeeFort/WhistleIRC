@@ -49,3 +49,16 @@ export async function fetchMe(accessToken: string): Promise<OsuUser> {
 
   return { id: raw.id, username: raw.username, avatarUrl: raw.avatar_url };
 }
+
+export async function fetchApi(accessToken: string, endpoint: string): Promise<unknown> {
+  const response = await fetch(OSU_API_URL + endpoint.replace(/^\//, ""), {
+    method: "GET",
+    headers: { Authorization: `Bearer ${accessToken.trim()}` },
+  });
+
+  if (!response.ok) {
+    throw await OsuApiError.fromResponse(response);
+  }
+
+  return response.json();
+}
