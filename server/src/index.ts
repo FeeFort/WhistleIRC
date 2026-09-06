@@ -329,9 +329,10 @@ class BanchoConnection {
     if (changed) this.sendLobbyState(channel, state);
   }
 
-  
   updatePlayers(channel: string, players: Player[]): void {
-    const normalizedPlayers = players.map((player) => ({ ...player })).sort((left, right) => {
+    const normalizedPlayers = players
+      .map((player) => ({ ...player }))
+      .sort((left, right) => {
         const leftSlot = Number.isFinite(left.slot) ? left.slot : Number.POSITIVE_INFINITY;
         const rightSlot = Number.isFinite(right.slot) ? right.slot : Number.POSITIVE_INFINITY;
         if (leftSlot !== rightSlot) return leftSlot - rightSlot;

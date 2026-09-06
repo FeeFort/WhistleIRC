@@ -54,9 +54,7 @@ const nextPickOptions = computed(() => [props.teamAName, props.teamBName].filter
 const resultWinnerOptions = computed(() => [props.teamAName, props.teamBName, "Draw"].filter((team, index, teams) => team && teams.indexOf(team) === index));
 const settingsValid = computed(() => draftBestOf.value === null || (Number.isInteger(draftBestOf.value) && draftBestOf.value > 0));
 const winningScore = computed(() => (Number.isInteger(props.bestOf) && props.bestOf > 0 ? Math.ceil(props.bestOf / 2) : null));
-const hasMissingLobbySettings = computed(
-  () => !Number.isInteger(props.bestOf) || props.bestOf <= 0 || !nextPickOptions.value.includes(props.nextPickTeam),
-);
+const hasMissingLobbySettings = computed(() => !Number.isInteger(props.bestOf) || props.bestOf <= 0 || !nextPickOptions.value.includes(props.nextPickTeam));
 const hasManualScoreChanges = computed(() => manualScoreWarningPending.value);
 const resultScoreDifference = computed(() => {
   const difference = Math.abs(normalizeScore(draftResult.value.beatmapTeamRedScore) - normalizeScore(draftResult.value.beatmapTeamBlueScore));
@@ -318,7 +316,15 @@ async function copyMpLink() {
     </template>
   </Dialog>
 
-  <Dialog v-model:visible="resultVisible" modal dismissableMask class="lobby-settings-dialog lobby-result-dialog" header="Send result" :style="{ width: '32rem' }" :pt="{ mask: { class: 'app-dialog-mask' } }">
+  <Dialog
+    v-model:visible="resultVisible"
+    modal
+    dismissableMask
+    class="lobby-settings-dialog lobby-result-dialog"
+    header="Send result"
+    :style="{ width: '32rem' }"
+    :pt="{ mask: { class: 'app-dialog-mask' } }"
+  >
     <div class="lobby-result__body">
       <div v-if="hasManualScoreChanges" class="lobby-result__warning">
         <AlertTriangle :size="18" class="lobby-result__warning-icon" />
@@ -345,11 +351,25 @@ async function copyMpLink() {
         <div class="lobby-result__scores">
           <label class="lobby-result__field">
             <span class="lobby-result__label">Red score</span>
-            <InputNumber v-model="draftResult.beatmapTeamRedScore" :min="0" :maxFractionDigits="accuracyMode ? 2 : 0" :use-grouping="false" :suffix="accuracyMode ? '%' : ''" aria-label="Beatmap red score" />
+            <InputNumber
+              v-model="draftResult.beatmapTeamRedScore"
+              :min="0"
+              :maxFractionDigits="accuracyMode ? 2 : 0"
+              :use-grouping="false"
+              :suffix="accuracyMode ? '%' : ''"
+              aria-label="Beatmap red score"
+            />
           </label>
           <label class="lobby-result__field">
             <span class="lobby-result__label">Blue score</span>
-            <InputNumber v-model="draftResult.beatmapTeamBlueScore" :min="0" :maxFractionDigits="accuracyMode ? 2 : 0" :use-grouping="false" :suffix="accuracyMode ? '%' : ''" aria-label="Beatmap blue score" />
+            <InputNumber
+              v-model="draftResult.beatmapTeamBlueScore"
+              :min="0"
+              :maxFractionDigits="accuracyMode ? 2 : 0"
+              :use-grouping="false"
+              :suffix="accuracyMode ? '%' : ''"
+              aria-label="Beatmap blue score"
+            />
           </label>
         </div>
 

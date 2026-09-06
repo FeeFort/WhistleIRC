@@ -13,7 +13,20 @@ import NowPlaying from "./NowPlaying.vue";
 
 const { nickColor: baseNickColor } = useNickColor();
 const { primaryColor } = useDarkMode();
-const { highlightReferee, highlightBanchoBot, banchoBotColor, redTeamColor, blueTeamColor, unassignedColorMode, unassignedColor, timestampMode, highlightWords, highlightStyles, highlightColorMode, highlightColor } = useChatSettings();
+const {
+  highlightReferee,
+  highlightBanchoBot,
+  banchoBotColor,
+  redTeamColor,
+  blueTeamColor,
+  unassignedColorMode,
+  unassignedColor,
+  timestampMode,
+  highlightWords,
+  highlightStyles,
+  highlightColorMode,
+  highlightColor,
+} = useChatSettings();
 
 const props = defineProps({
   title: { type: String, default: "Referee chat" },

@@ -194,7 +194,12 @@ function parseActiveMods(text: string): ActiveMods | null {
   const enabled: string[] = [];
   const addEnabled = (value: string) => {
     if (!value || /^none$/i.test(value.trim())) return;
-    enabled.push(...value.split(/\s*,\s*/).map((mod) => mod.trim()).filter(Boolean));
+    enabled.push(
+      ...value
+        .split(/\s*,\s*/)
+        .map((mod) => mod.trim())
+        .filter(Boolean),
+    );
   };
 
   if (!clauses.length) {
@@ -208,9 +213,7 @@ function parseActiveMods(text: string): ActiveMods | null {
     });
   }
 
-  const mods = enabled
-    .map((mod) => MOD_CODES.get(mod.toLowerCase()) || mod)
-    .filter((mod, index, values) => values.findIndex((value) => value.toLowerCase() === mod.toLowerCase()) === index);
+  const mods = enabled.map((mod) => MOD_CODES.get(mod.toLowerCase()) || mod).filter((mod, index, values) => values.findIndex((value) => value.toLowerCase() === mod.toLowerCase()) === index);
 
   return { activeMods: mods.length ? mods.join(", ") : null };
 }

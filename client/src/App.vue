@@ -60,7 +60,20 @@ const pendingLobbyCreatedViaApp = ref(false);
 const pendingJoinChannel = ref(null);
 let pendingJoinTimeout;
 const { primaryColor, setPrimaryColor } = useDarkMode();
-const { highlightReferee, highlightBanchoBot, banchoBotColor, redTeamColor, blueTeamColor, unassignedColorMode, unassignedColor, timestampMode, highlightWords, highlightStyles, highlightColorMode, highlightColor } = useChatSettings();
+const {
+  highlightReferee,
+  highlightBanchoBot,
+  banchoBotColor,
+  redTeamColor,
+  blueTeamColor,
+  unassignedColorMode,
+  unassignedColor,
+  timestampMode,
+  highlightWords,
+  highlightStyles,
+  highlightColorMode,
+  highlightColor,
+} = useChatSettings();
 const { nickColor: baseNickColor } = useNickColor();
 const {
   state: serverState,
@@ -321,14 +334,18 @@ watch(
       }
     }
 
-    appendChatMessage(chatId, {
-      id: nextId++,
-      author: event.nick || "Unknown",
-      text: event.text,
-      time: event.timestamp,
-      team: player?.team || null,
-      mods: player?.mods || [],
-    }, { notify: normalizeIrcNick(event.nick) !== normalizeIrcNick(currentUser.value) });
+    appendChatMessage(
+      chatId,
+      {
+        id: nextId++,
+        author: event.nick || "Unknown",
+        text: event.text,
+        time: event.timestamp,
+        team: player?.team || null,
+        mods: player?.mods || [],
+      },
+      { notify: normalizeIrcNick(event.nick) !== normalizeIrcNick(currentUser.value) },
+    );
   },
   { flush: "sync" },
 );
@@ -435,7 +452,9 @@ function commitHighlightWordsInput() {
 }
 
 function removeHighlightWord(wordToRemove) {
-  const normalized = String(wordToRemove || "").trim().toLowerCase();
+  const normalized = String(wordToRemove || "")
+    .trim()
+    .toLowerCase();
   if (!normalized) return;
   highlightWordsDraft.value = highlightWordsDraft.value.filter((word) => word.toLowerCase() !== normalized);
 }
@@ -458,7 +477,12 @@ function handleHighlightWordsPaste(event) {
   const text = event.clipboardData?.getData("text") || "";
   if (!text) return;
   event.preventDefault();
-  addHighlightWords(text.split(/[,\s]+/).map((word) => word.trim()).filter(Boolean));
+  addHighlightWords(
+    text
+      .split(/[,\s]+/)
+      .map((word) => word.trim())
+      .filter(Boolean),
+  );
   highlightWordsInputDraft.value = "";
 }
 
@@ -531,9 +555,7 @@ function highlightStyleSelected(style) {
 }
 
 function toggleHighlightStyle(style) {
-  const nextStyles = highlightStylesDraft.value.includes(style)
-    ? highlightStylesDraft.value.filter((item) => item !== style)
-    : [...highlightStylesDraft.value, style];
+  const nextStyles = highlightStylesDraft.value.includes(style) ? highlightStylesDraft.value.filter((item) => item !== style) : [...highlightStylesDraft.value, style];
   highlightStylesDraft.value = nextStyles;
 }
 
@@ -799,7 +821,13 @@ const activeNowPlaying = computed(() => {
   return {
     ...map,
     pickedBy: map.pickedBy || activeLobbyState.value?.nextPickTeam || null,
-    pickedByTeam: map.pickedByTeam || (map.pickedBy && normalizeIrcNick(map.pickedBy) === normalizeIrcNick(activeLobbyState.value?.teamRed) ? "red" : map.pickedBy && normalizeIrcNick(map.pickedBy) === normalizeIrcNick(activeLobbyState.value?.teamBlue) ? "blue" : null),
+    pickedByTeam:
+      map.pickedByTeam ||
+      (map.pickedBy && normalizeIrcNick(map.pickedBy) === normalizeIrcNick(activeLobbyState.value?.teamRed)
+        ? "red"
+        : map.pickedBy && normalizeIrcNick(map.pickedBy) === normalizeIrcNick(activeLobbyState.value?.teamBlue)
+          ? "blue"
+          : null),
     mods: activeLobbyState.value?.activeMods || map.mods || [],
   };
 });
@@ -816,9 +844,9 @@ const activeLobbyPlayers = computed(() => {
   if (!lobby?.players) return [];
   const commonMods = lobby.activeMods
     ? lobby.activeMods
-    .split(/\s*,\s*/)
-    .map((mod) => mod.trim())
-    .filter((mod) => mod && !/^(?:enabled|disabled|freemod|fm)$/i.test(mod))
+        .split(/\s*,\s*/)
+        .map((mod) => mod.trim())
+        .filter((mod) => mod && !/^(?:enabled|disabled|freemod|fm)$/i.test(mod))
     : [];
   return [...lobby.players]
     .sort((left, right) => {
@@ -1249,7 +1277,12 @@ async function loadManualNowPlayingMap(chatId, beatmap) {
       totalSeconds: info.total_length ?? null,
       beatmapsetId: info.beatmapset_id || info.beatmapset?.id || null,
       pickedBy: activeLobbyState.value?.nextPickTeam || null,
-      pickedByTeam: activeLobbyState.value?.nextPickTeam && normalizeIrcNick(activeLobbyState.value.nextPickTeam) === normalizeIrcNick(activeLobbyState.value.teamRed) ? "red" : activeLobbyState.value?.nextPickTeam && normalizeIrcNick(activeLobbyState.value.nextPickTeam) === normalizeIrcNick(activeLobbyState.value.teamBlue) ? "blue" : null,
+      pickedByTeam:
+        activeLobbyState.value?.nextPickTeam && normalizeIrcNick(activeLobbyState.value.nextPickTeam) === normalizeIrcNick(activeLobbyState.value.teamRed)
+          ? "red"
+          : activeLobbyState.value?.nextPickTeam && normalizeIrcNick(activeLobbyState.value.nextPickTeam) === normalizeIrcNick(activeLobbyState.value.teamBlue)
+            ? "blue"
+            : null,
       status: "waiting",
       error: null,
     });
@@ -1463,13 +1496,14 @@ function getLobbyTemplateValues(lobby, result = {}) {
   const formatBeatmapScore = (score) => (accuracySuffix && Number.isFinite(score) ? `${roundAccuracy(score)}%` : score);
   const beatmapTeamRedScore = formatBeatmapScore(rawBeatmapTeamRedScore);
   const beatmapTeamBlueScore = formatBeatmapScore(rawBeatmapTeamBlueScore);
-  const availableMaps = pool.value?.maps
-    ?.filter((map) => {
-      const state = getMapState(activeChat.value, map.slot);
-      return !state.picked && !state.banned;
-    })
-    .map((map) => map.slot)
-    .join(", ") || "—";
+  const availableMaps =
+    pool.value?.maps
+      ?.filter((map) => {
+        const state = getMapState(activeChat.value, map.slot);
+        return !state.picked && !state.banned;
+      })
+      .map((map) => map.slot)
+      .join(", ") || "—";
 
   return {
     beatmapWinner,
@@ -1500,7 +1534,12 @@ function handleMappoolPick(map) {
     artist: map.artist || "",
     title: map.name,
     pickedBy: activeLobbyState.value?.nextPickTeam || picker?.team || null,
-    pickedByTeam: activeLobbyState.value?.nextPickTeam && normalizeIrcNick(activeLobbyState.value.nextPickTeam) === normalizeIrcNick(activeLobbyState.value.teamRed) ? "red" : activeLobbyState.value?.nextPickTeam && normalizeIrcNick(activeLobbyState.value.nextPickTeam) === normalizeIrcNick(activeLobbyState.value.teamBlue) ? "blue" : picker?.team || null,
+    pickedByTeam:
+      activeLobbyState.value?.nextPickTeam && normalizeIrcNick(activeLobbyState.value.nextPickTeam) === normalizeIrcNick(activeLobbyState.value.teamRed)
+        ? "red"
+        : activeLobbyState.value?.nextPickTeam && normalizeIrcNick(activeLobbyState.value.nextPickTeam) === normalizeIrcNick(activeLobbyState.value.teamBlue)
+          ? "blue"
+          : picker?.team || null,
     status: "waiting",
     error: null,
   });
@@ -1661,7 +1700,14 @@ function handleSendResult(result) {
                   :aria-selected="item.value === sound"
                 >
                   <button type="button" class="settings-page__sound-dropdown-select" @click="selectNotificationSound(item.value)">{{ item.label }}</button>
-                  <button type="button" class="settings-page__sound-dropdown-preview" :disabled="!soundEnabled" :aria-label="`Preview ${item.label}`" :title="`Preview ${item.label}`" @click.stop="previewNotificationSound(item.value)">
+                  <button
+                    type="button"
+                    class="settings-page__sound-dropdown-preview"
+                    :disabled="!soundEnabled"
+                    :aria-label="`Preview ${item.label}`"
+                    :title="`Preview ${item.label}`"
+                    @click.stop="previewNotificationSound(item.value)"
+                  >
                     <Play :size="13" />
                   </button>
                 </div>
@@ -1676,7 +1722,15 @@ function handleSendResult(result) {
             <p>Choose whether sound plays for every message or only messages containing a highlight word.</p>
           </div>
           <div class="settings-page__setting-control">
-            <SelectButton v-model="soundTrigger" :options="notificationTriggers" optionLabel="label" optionValue="value" :allowEmpty="false" :disabled="!soundEnabled" aria-label="Sound notification scenario" />
+            <SelectButton
+              v-model="soundTrigger"
+              :options="notificationTriggers"
+              optionLabel="label"
+              optionValue="value"
+              :allowEmpty="false"
+              :disabled="!soundEnabled"
+              aria-label="Sound notification scenario"
+            />
           </div>
         </div>
 
@@ -1686,7 +1740,15 @@ function handleSendResult(result) {
             <p>Choose whether toast appears for every message or only messages containing a highlight word.</p>
           </div>
           <div class="settings-page__setting-control">
-            <SelectButton v-model="toastTrigger" :options="notificationTriggers" optionLabel="label" optionValue="value" :allowEmpty="false" :disabled="!toastEnabled" aria-label="Toast notification scenario" />
+            <SelectButton
+              v-model="toastTrigger"
+              :options="notificationTriggers"
+              optionLabel="label"
+              optionValue="value"
+              :allowEmpty="false"
+              :disabled="!toastEnabled"
+              aria-label="Toast notification scenario"
+            />
           </div>
         </div>
       </section>
@@ -2536,7 +2598,9 @@ function handleSendResult(result) {
   font-size: 0.76rem;
   text-align: left;
   cursor: pointer;
-  transition: border-color 0.18s ease, box-shadow 0.18s ease;
+  transition:
+    border-color 0.18s ease,
+    box-shadow 0.18s ease;
 }
 
 .settings-page__sound-dropdown-trigger:not(:disabled):hover,

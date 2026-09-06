@@ -72,14 +72,7 @@ function playerMods(player) {
         <span v-if="player.avatarUrl" class="player-row__avatar" :style="{ backgroundImage: `url(${player.avatarUrl})` }" />
         <span v-else class="player-row__avatar player-row__avatar--placeholder" :style="{ background: colorFor(player) }">{{ initials(player.name) }}</span>
 
-        <a
-          v-if="player.profileUrl"
-          class="player-row__name player-row__name--link"
-          :style="playerNameStyle(player)"
-          :href="player.profileUrl"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
+        <a v-if="player.profileUrl" class="player-row__name player-row__name--link" :style="playerNameStyle(player)" :href="player.profileUrl" target="_blank" rel="noopener noreferrer">
           {{ player.name }}
         </a>
         <span v-else class="player-row__name" :style="playerNameStyle(player)">
