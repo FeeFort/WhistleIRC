@@ -8,6 +8,10 @@ WhistleIRC is an IRC client designed specifically for osu! tournament referees w
 
 It connects to osu!bancho IRC and gives you the things you actually need during a match: custom shortcuts, lobby controls, score tracking, automatic result messages, timers, and more. It works whether you create the lobby yourself or join one that is already running.
 
+> [!WARNING]
+> This project is in **early state** and **active development**. Expect bugs, missing functionality and frequent updates. Please open an issue on [GitHub](https://github.com/FeeFort/WhistleIRC/issues) if you've noticed a bug or have any suggestions.
+> Alternatively, you can contact `@dr1ma` or `@tracexr` on [Discord](https://discord.com/) if you have any questions regarding this project.
+
 ## Features
 
 - Join an existing multiplayer lobby or create a new one.
@@ -124,6 +128,7 @@ This is the list of variables used to show dynamic data. They can be used in sho
 | `{{matchTeamBlueScore}}` | Holds the match score of the team blue. Equals to `0` in the beginning. |
 | `{{matchStatus}}` | Holds the current status of the match. It's either `Next pick` or `Match winner`. |
 | `{{bestOf}}` | Holds the `best of` setting of the match. |
+| `{{availableMaps}}` | Holds the maps that can currently be picked. |
 
 </div>
 
@@ -137,7 +142,7 @@ This part is useful if you want to modify the client. You will need [Node.js](ht
 
 Install dependencies for both client and server:
 
-```powershell
+```bash
 cd client
 npm install
 
@@ -145,31 +150,24 @@ cd ..\server
 npm install
 ```
 
-Start the server in one terminal:
+Start the development client:
 
-```powershell
+```bash
 cd server
-npm start
+npm run start
 ```
 
-Start the development client in a second terminal:
-
-```powershell
-cd client
-npm run dev
-```
-
-Open the development address printed by Vite, usually `http://localhost:5173`. The development client forwards API and WebSocket requests to the local server.
+Then you'll be automatically redirected to the Vite local server webpage (usually `http://localhost:3000`)
 
 To build:
 
-```powershell
-cd client
-npm run build
-
-cd ..\server
+```bash
+cd server
 npm run build
 ```
+
+> [!IMPORTANT]
+> The build script is built around Linux functionality, so it won't launch on any other system! If you're on Windows you can use [WSL](https://learn.microsoft.com/en-us/windows/wsl/install).
 
 The built files go directly into `build` directory.
 
@@ -219,9 +217,11 @@ OSU_CLIENT_SECRET = "<YOU_OSU_CLIENT_SECRET>"
 
 Then run it:
 
-```powershell
+```bash
 python mappool_builder.py
 ```
+
+The script supports arguments `--debug` (which enables additional logging) and `--update /path/to/old/json` (which updates old JSON files to match new schema)
 
 The generated `mappool.json` can then be imported into WhistleIRC.
 
@@ -248,7 +248,3 @@ The browser may have lost its site data, or you may be opening WhistleIRC throug
 This project is licensed under the [MIT license](https://opensource.org/license/MIT).
 
 [TL;DR](https://www.tldrlegal.com/license/mit-license): you can do whatever you want with the code and assets as long as you include original copyright and license notice in all copies and significant portions of the software.
-
-## Afterword
-
-This project right now is in **early state** and **active development**. Expect bugs, missing functionality and frequent updates. Please contact `@dr1ma` or `@tracexr` on [Discord](https://discord.com/) if you have any questions or suggestions regarding this project or if you've noticed a bug. Alternatively, you can open an issue on [GitHub](https://github.com/FeeFort/WhistleIRC/issues).
