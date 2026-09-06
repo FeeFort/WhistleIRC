@@ -17,7 +17,8 @@ import {
   ParsedBanchoBotMessage,
   ParsedLobbyCommand,
   PlayerSnapshot,
-} from "./types";
+  Team,
+} from "./types.js";
 
 export const TEAM_MODES: Record<number, TeamMode> = Object.freeze({
   0: "HeadToHead",
@@ -212,7 +213,7 @@ function parsePlayerJoined(text: string): PlayerJoined | null {
   return {
     username: match[1].trim(),
     slot: Number(match[2]),
-    team: match[3].toLowerCase(),
+    team: match[3].toLowerCase() as Team,
     mods: [],
   };
 }

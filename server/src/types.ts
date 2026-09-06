@@ -82,7 +82,7 @@ export type PlayerSnapshot = {
   mods: string[];
 };
 
-export type PlayerJoined = { username: string; slot: number; team: string; mods: string[] };
+export type PlayerJoined = { username: string; slot: number; team: Team; mods: string[] };
 export type PlayerLeft = { username: string };
 export type PlayerScore = { username: string; score: number; result: string };
 export type MatchFinished = { finished: true };
@@ -110,9 +110,9 @@ export type ParsedBanchoBotMessage =
 export type ParsedLobbyCommand = { type: "settings"; value: MpSetCommand } | { type: "size"; value: MpSizeCommand } | null;
 
 //Server data types
-type Team = "red" | "blue";
+export type Team = "red" | "blue";
 
-type Player = {
+export type Player = {
   username: string;
   profileUrl: string | null;
   userId: number | null;
@@ -123,19 +123,19 @@ type Player = {
   mods: string[];
 };
 
-type LastPlay = {
+export type LastPlay = {
   teamRedScore: number | null;
   teamBlueScore: number | null;
   scoreDifference: number | null;
   winnerTeam: Team | null;
 };
 
-type Timer = {
+export type Timer = {
   active: boolean;
   endsAt: number | null;
 };
 
-type LobbyState = {
+export type LobbyState = {
   id: number | null;
   name: string;
   qualifiers: boolean;
@@ -160,12 +160,26 @@ type LobbyState = {
   status: "active" | "closed";
 };
 
-type IrcCredentials = { login: string; password: string };
+export type IrcCredentials = { login: string; password: string };
 
-type IrcLine = {
+export type IrcLine = {
   prefix: string | null;
   command: string;
   params: string[];
 };
 
-type ConnectionState = "disconnected" | "connecting" | "authenticating" | "ready" | "error";
+export type ConnectionState = "disconnected" | "connecting" | "authenticating" | "ready" | "error";
+
+//WS message type
+export type ClientMessage =
+  | { type: "login"; login: string; password: string }
+  | { type: "logout" }
+  | { type: "osu_login"; clientId: string; clientSecret: string; code: string; redirectUri: string }
+  | { type: "osu_logout" }
+  | { type: "api_request"; endpoint: string }
+  | { type: "send_message"; channel: string; message: string }
+  | { type: "join_channel"; channel: string }
+  | { type: "leave_channel"; channel: string }
+  | { type: "part_channel"; channel: string }
+  | { type: "set_lobby_score"; channel: string; teamRedScore: number; teamBlueScore: number }
+  | { type: "set_lobby_settings"; channel: string; bestOf: number | null; nextPickTeam: string | null };

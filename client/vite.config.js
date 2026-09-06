@@ -35,6 +35,7 @@ export default defineConfig({
     globals: true,
   },
   build: {
+    chunkSizeWarningLimit: 5000,
     outDir: "../server/static",
     emptyOutDir: true,
     cssMinify: false,
