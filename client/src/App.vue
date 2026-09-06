@@ -1243,11 +1243,12 @@ function setNowPlaying(chatId, map) {
   nowPlayingByLobby[chatId] = map;
 }
 
-function nextPickedMap(chatId) {
+function nextPickedMap(chatId, currentMap = null) {
   if (!pool.value) return null;
   return pool.value.maps.find((map) => {
     const state = getMapState(chatId, map.slot);
-    return state.picked && !state.banned;
+    const isCurrentMap = (currentMap?.slot && map.slot === currentMap.slot) || (currentMap?.id && map.id === currentMap.id);
+    return state.picked && !state.banned && !isCurrentMap;
   });
 }
 
@@ -1314,7 +1315,8 @@ function handleNowPlayingEvent(chatId, text) {
     nowPlayingByLobby[chatId].status = "finished";
     window.setTimeout(() => {
       if (nowPlayingByLobby[chatId]?.status === "finished") {
-        const nextMap = nextPickedMap(chatId);
+        const finishedMap = nowPlayingByLobby[chatId];
+        const nextMap = nextPickedMap(chatId, finishedMap);
         nowPlayingByLobby[chatId] = nextMap ? localNowPlayingMap(nextMap) : null;
       }
     }, 3000);
@@ -1502,7 +1504,7 @@ function getLobbyTemplateValues(lobby, result = {}) {
     pool.value?.maps
       ?.filter((map) => {
         const state = getMapState(activeChat.value, map.slot);
-        return !state.picked && !state.banned;
+        return !/^(?:TB|Tiebreaker)\d*$/i.test(String(map.slot).trim()) && !state.picked && !state.banned;
       })
       .map((map) => map.slot)
       .join(", ") || "—";
