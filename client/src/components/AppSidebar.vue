@@ -110,7 +110,7 @@ const profileMenuItems = computed(() => [
                       <span v-if="unreadChats.bancho" class="app-sidebar__chat-unread" role="status" aria-label="New messages" />
                     </SidebarMenuButton>
                   </SidebarMenuItem>
-                  <SidebarMenuItem v-for="chat in directChats" :key="chat.id">
+                  <SidebarMenuItem v-for="chat in directChats" :key="chat.id" class="app-sidebar__chat-item">
                     <SidebarMenuButton :isActive="activeChat === chat.id" @click="emit('select-chat', chat.id)">
                       <MessageSquare :size="15" />
                       <span class="app-sidebar__chat-label">{{ chat.label }}</span>

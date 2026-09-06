@@ -8,8 +8,21 @@ const DEFAULT_RULESET = 0;
 function readStoredState() {
   try {
     const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null");
+    const storedPool = saved?.pool && typeof saved.pool === "object" ? saved.pool : null;
+    const storedMaps = Array.isArray(storedPool?.maps)
+      ? storedPool.maps.map((value) => normalizeMap(String(value?.slot || "").trim(), value)).filter(Boolean)
+      : storedPool?.maps && typeof storedPool.maps === "object"
+        ? Object.entries(storedPool.maps)
+            .map(([slot, value]) => normalizeMap(String(slot).trim(), value))
+            .filter(Boolean)
+        : [];
     return {
-      pool: saved?.pool || null,
+      pool: storedPool
+        ? {
+            ...storedPool,
+            maps: storedMaps,
+          }
+        : null,
       qualificationMode: saved?.qualificationMode === true,
       mapStatesByLobbyId: saved?.mapStatesByLobbyId && typeof saved.mapStatesByLobbyId === "object" ? saved.mapStatesByLobbyId : {},
     };
@@ -60,6 +73,16 @@ function modFromSlot(slot, mods) {
   return normalizeMod(firstMod) || "Other";
 }
 
+function normalizeDuration(value) {
+  if (typeof value === "string") {
+    const text = value.trim();
+    const clock = text.match(/^(\d+):([0-5]\d)$/);
+    if (clock) return Number(clock[1]) * 60 + Number(clock[2]);
+  }
+  const seconds = Number(value);
+  return Number.isFinite(seconds) && seconds > 0 ? seconds : null;
+}
+
 function normalizeMap(slot, value) {
   if (!value || typeof value !== "object") return null;
 
@@ -70,7 +93,7 @@ function normalizeMap(slot, value) {
   const artist = String(value.artist || "").trim();
   const beatmapsetId = Number(value.beatmapset_id ?? value.beatmapsetId ?? value.setId ?? value.beatmapSetId);
   const starRating = Number(value.star_rating ?? value.starRating ?? value.stars);
-  const totalSeconds = Number(value.total_seconds ?? value.totalSeconds ?? value.total_length);
+  const totalSeconds = normalizeDuration(value.total_seconds ?? value.totalSeconds ?? value.total_length ?? value.length ?? value.duration);
 
   if (!Number.isFinite(id) || !name || !diff || !author) return null;
 
@@ -91,7 +114,8 @@ function normalizeMap(slot, value) {
     mapperName: author,
     beatmapsetId: Number.isFinite(beatmapsetId) ? beatmapsetId : null,
     starRating: Number.isFinite(starRating) ? starRating : null,
-    totalSeconds: Number.isFinite(totalSeconds) ? totalSeconds : null,
+    totalSeconds,
+    total_seconds: totalSeconds,
     mods,
     group: modFromSlot(slot, mods),
     additionalCommands: normalizeCommands(value.additionalCommands),

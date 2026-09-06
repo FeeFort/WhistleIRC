@@ -818,8 +818,10 @@ const activeNowPlaying = computed(() => {
   if (!showNowPlaying.value || activeChatKind.value !== "lobby" || roomClosedByChat[activeChat.value]) return null;
   const map = nowPlayingByLobby[activeChat.value];
   if (!map) return null;
+  const totalSeconds = Number(map.totalSeconds ?? map.total_seconds);
   return {
     ...map,
+    totalSeconds: Number.isFinite(totalSeconds) && totalSeconds > 0 ? totalSeconds : null,
     pickedBy: map.pickedBy || activeLobbyState.value?.nextPickTeam || null,
     pickedByTeam:
       map.pickedByTeam ||
@@ -1529,10 +1531,13 @@ function getLobbyTemplateValues(lobby, result = {}) {
 function handleMappoolPick(map) {
   if (activeChatKind.value !== "lobby") return;
   const picker = activeLobbyState.value?.players?.find((player) => normalizeIrcNick(player.username) === normalizeIrcNick(currentUser.value));
+  const totalSeconds = map.totalSeconds ?? map.total_seconds ?? null;
   setNowPlaying(activeChat.value, {
     ...map,
     artist: map.artist || "",
     title: map.name,
+    totalSeconds,
+    total_seconds: totalSeconds,
     pickedBy: activeLobbyState.value?.nextPickTeam || picker?.team || null,
     pickedByTeam:
       activeLobbyState.value?.nextPickTeam && normalizeIrcNick(activeLobbyState.value.nextPickTeam) === normalizeIrcNick(activeLobbyState.value.teamRed)
