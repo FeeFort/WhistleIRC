@@ -183,3 +183,10 @@ export type ClientMessage =
   | { type: "part_channel"; channel: string }
   | { type: "set_lobby_score"; channel: string; teamRedScore: number; teamBlueScore: number }
   | { type: "set_lobby_settings"; channel: string; bestOf: number | null; nextPickTeam: string | null };
+
+export interface PersistedSession {
+  clientId: string;
+  clientSecret: string;
+  refreshToken: string;
+  user: OsuUser;
+}

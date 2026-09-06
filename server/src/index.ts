@@ -5,7 +5,7 @@ import { execFile } from "node:child_process";
 import express, { Request, Response } from "express";
 import { WebSocket, WebSocketServer } from "ws";
 import { parseBanchoBotMessage, parseLobbyCommand } from "./banchoBotParser.js";
-import { login as loginOsu, logout as logoutOsu, getAccessToken } from "./auth/auth.js";
+import { login as loginOsu, logout as logoutOsu, getAccessToken, restoreSession } from "./auth/auth.js";
 import { fetchApi } from "./osu-api/osuApiClient.js";
 import { config } from "./config.js";
 import { ClientMessage, ConnectionState, IrcCredentials, IrcLine, LobbyState, ParsedBanchoBotMessage, Player, PlayerScore } from "./types.js";
@@ -952,6 +952,8 @@ webSocketServer.on("connection", (client) => {
     }
   });
 });
+
+await restoreSession();
 
 httpServer.listen(config.httpPort, config.httpHost, () => {
   console.log(`[${formatLogTime()}] WhistleIRC server listening on http://${config.httpHost}:${config.httpPort}`);
