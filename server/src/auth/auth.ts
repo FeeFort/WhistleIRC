@@ -2,6 +2,7 @@ import { fetchMe, OsuApiError } from "../osu-api/osuApiClient.js";
 import { AuthState, NotAuthenticatedReason, OsuOAuthCredentials, OsuUser } from "../types.js";
 import { exchangeCode, OsuOAuthError, refreshToken as refreshOsuToken } from "./osuOAuthClient.js";
 import { config } from "../config.js";
+import { saveSession, loadSession, clearSession } from "./secureStore.js";
 
 const REFRESH_BUFFER_MS = 60_000;
 export let authState: AuthState = { status: "unauthenticated" };
@@ -21,6 +22,8 @@ export async function login(creds: OsuOAuthCredentials, code: string): Promise<O
     const user = await fetchMe(tokens.accessToken);
 
     authState = { status: "authenticated", tokens, user, credentials: creds };
+
+    await saveSession({ clientId: creds.clientId, clientSecret: creds.clientSecret, refreshToken: tokens.refreshToken, user });
 
     return user;
   } catch (error) {
@@ -48,12 +51,12 @@ export async function logout(): Promise<{ revokedRemotely: boolean }> {
         return { revokedRemotely: false };
       }
     }
-
     return { revokedRemotely: true };
   } catch {
     return { revokedRemotely: false };
   } finally {
     authState = { status: "unauthenticated" };
+    await clearSession();
   }
 }
 
@@ -63,6 +66,8 @@ export async function getAccessToken(): Promise<string> {
   }
 
   const { tokens, credentials } = authState;
+  const { user } = authState;
+
   if (tokens.expiresAt - Date.now() > REFRESH_BUFFER_MS) {
     return tokens.accessToken;
   }
@@ -70,6 +75,7 @@ export async function getAccessToken(): Promise<string> {
   try {
     const newTokens = await refreshOsuToken(credentials, tokens.refreshToken);
     authState = { ...authState, tokens: newTokens };
+    await saveSession({ clientId: credentials.clientId, clientSecret: credentials.clientSecret, refreshToken: newTokens.refreshToken, user });
     return newTokens.accessToken;
   } catch (error) {
     if (error instanceof OsuOAuthError) {
@@ -82,4 +88,32 @@ export async function getAccessToken(): Promise<string> {
 
 export function getState(): AuthState {
   return authState;
+}
+
+export async function restoreSession(): Promise<void> {
+  const persisted = await loadSession();
+  if (!persisted) return;
+
+  try {
+    const tokens = await refreshOsuToken({ clientId: persisted.clientId, clientSecret: persisted.clientSecret }, persisted.refreshToken);
+
+    authState = {
+      status: "authenticated",
+      tokens,
+      user: persisted.user,
+      credentials: { clientId: persisted.clientId, clientSecret: persisted.clientSecret },
+    };
+
+    await saveSession({
+      clientId: persisted.clientId,
+      clientSecret: persisted.clientSecret,
+      refreshToken: tokens.refreshToken,
+      user: persisted.user,
+    });
+  } catch (error) {
+    if (error instanceof OsuOAuthError) {
+      await clearSession();
+    }
+    authState = { status: "unauthenticated" };
+  }
 }

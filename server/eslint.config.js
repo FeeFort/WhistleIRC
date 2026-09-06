@@ -1,9 +1,9 @@
-const js = require("@eslint/js");
-const globals = require("globals");
-const tseslint = require("typescript-eslint");
-const eslintConfigPrettier = require("eslint-config-prettier");
+import js from "@eslint/js";
+import globals from "globals";
+import tseslint from "typescript-eslint";
+import eslintConfigPrettier from "eslint-config-prettier";
 
-module.exports = [
+export default [
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
@@ -11,6 +11,8 @@ module.exports = [
       sourceType: "commonjs",
       globals: {
         ...globals.node,
+        __dirname: "off",
+        __filename: "off",
       },
     },
     rules: {
