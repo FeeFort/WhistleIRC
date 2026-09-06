@@ -18,7 +18,7 @@ export function startOsuAuthorization(clientId) {
   url.searchParams.set("client_id", clientId);
   url.searchParams.set("redirect_uri", getOsuRedirectUri());
   url.searchParams.set("response_type", "code");
-  url.searchParams.set("scope", "identify");
+  url.searchParams.set("scope", "identify public");
   url.searchParams.set("state", state);
   window.location.href = url.toString();
 }

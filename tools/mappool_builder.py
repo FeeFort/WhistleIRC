@@ -11,9 +11,11 @@ client-credentials flow, so no osu! user login is required.
 
 from __future__ import annotations
 
+import argparse
 import json
 import re
 import sys
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -31,6 +33,7 @@ OSU_CLIENT_SECRET = "<YOU_OSU_CLIENT_SECRET>"
 TOKEN_URL = "https://osu.ppy.sh/oauth/token"
 API_URL = "https://osu.ppy.sh/api/v2"
 DEFAULT_OUTPUT = "mappool.json"
+VERSION = 3
 
 KNOWN_RULESETS = {
     "0": "osu!",
@@ -238,12 +241,18 @@ def map_from_api(
     creator: dict | None = None,
 ) -> dict:
     beatmapset = beatmap.get("beatmapset") or {}
-    author = (creator or {}).get("username") or beatmapset.get("creator") or "Unknown creator"
+    # beatmap.user_id is the creator of this difficulty. beatmapset.creator is
+    # only the mapper who created the whole set and can be different.
+    author = (creator or {}).get("username") or "Unknown creator"
     return {
         "id": beatmap["id"],
+        "beatmapset_id": beatmap.get("beatmapset_id"),
         "name": str(beatmapset.get("title") or "Unknown title"),
+        "artist": str(beatmapset.get("artist") or "Unknown artist"),
         "diff": str(beatmap.get("version") or "Unknown difficulty"),
         "author": str(author),
+        "star_rating": beatmap.get("difficulty_rating"),
+        "total_seconds": beatmap.get("total_length"),
         "mods": mods,
         "additionalCommands": commands,
     }
@@ -329,6 +338,7 @@ def build_mappool() -> dict:
         raise RuntimeError("No maps were added; nothing to save.")
 
     return {
+        "version": VERSION,
         "tournament": tournament,
         "stage": stage,
         "ruleset": int(ruleset),
@@ -337,8 +347,106 @@ def build_mappool() -> dict:
     }
 
 
-def main() -> int:
+def update_mappool(path_value: str) -> None:
+    path = Path(path_value)
+    print(f"Reading mappool: {path}")
     try:
+        document = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError as error:
+        raise RuntimeError(f"Mappool file not found: {path}") from error
+    except json.JSONDecodeError as error:
+        raise RuntimeError(f"Mappool file contains invalid JSON: {error}") from error
+
+    current_version = document.get("version", 0)
+    if not isinstance(current_version, int):
+        raise RuntimeError("Mappool version must be an integer.")
+    if current_version >= VERSION:
+        print(f"No update needed: file version {current_version}, script version {VERSION}.")
+        return
+
+    maps = document.get("maps")
+    if not isinstance(maps, dict):
+        raise RuntimeError("Mappool JSON must contain a maps object.")
+
+    token = get_access_token()
+    map_items = list(maps.items())
+    updated = 0
+    failed = False
+
+    for index, (slot, current_map) in enumerate(map_items):
+        beatmap_id = extract_beatmap_id(str(current_map.get("id", ""))) if isinstance(current_map, dict) else None
+        print(f"\n[{index + 1}/{len(map_items)}] {slot}: parsing beatmap {beatmap_id or '?'}...")
+        if beatmap_id is None:
+            print(f"{slot}: skipped — no valid beatmap id.")
+            failed = True
+            continue
+
+        if index:
+            print("Waiting 1 second before the next API request...")
+            time.sleep(1)
+
+        try:
+            beatmap = fetch_beatmap(token, beatmap_id)
+        except ApiError as error:
+            print(f"{slot}: failed — {error}")
+            failed = True
+            continue
+
+        creator = fetch_creator(token, beatmap.get("user_id"))
+        print(f"{slot}: parsed — {beatmap.get('beatmapset_id', '?')} / {beatmap.get('version', '?')}")
+        preserved = current_map if isinstance(current_map, dict) else {}
+        maps[slot] = map_from_api(
+            beatmap,
+            str(slot),
+            preserved.get("mods", []),
+            preserved.get("additionalCommands", []),
+            creator,
+        )
+        updated += 1
+        print(f"{slot}: saved.")
+
+    if not failed:
+        document["version"] = VERSION
+    else:
+        print("Some maps were not updated; keeping the previous file version for a later retry.")
+    path.write_text(json.dumps(document, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    print(f"\nUpdate complete. Updated {updated}/{len(map_items)} maps and saved: {path.resolve()}")
+
+
+def debug_beatmap() -> None:
+    """Fetch one beatmap and print the untouched osu! API response."""
+    map_input = ask("Beatmap ID or osu! beatmap URL")
+    beatmap_id = extract_beatmap_id(map_input)
+    if beatmap_id is None:
+        raise RuntimeError("Could not find a beatmap ID in that input.")
+
+    token = get_access_token()
+    response = fetch_beatmap(token, beatmap_id)
+    print(json.dumps(response, ensure_ascii=False, indent=2))
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Interactive mappool JSON builder for osu! API v2.")
+    parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="fetch one beatmap, print the raw API JSON response, and exit",
+    )
+    parser.add_argument(
+        "--update",
+        metavar="PATH",
+        help="update an existing mappool JSON file in place",
+    )
+    args = parser.parse_args()
+
+    try:
+        if args.debug:
+            debug_beatmap()
+            return 0
+        if args.update:
+            update_mappool(args.update)
+            return 0
+
         document = build_mappool()
         path = save_json(document)
     except (ApiError, RuntimeError, KeyboardInterrupt, EOFError) as error:
