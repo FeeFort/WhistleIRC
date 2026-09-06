@@ -8,6 +8,7 @@
   - Custom win conditions
   - Deprecate current python script tool (>:3c)
   - Add automatic custom multiplier score calculation
+- Add import/export to shortcuts
 
 ## Lazer referee (SignalR)
 
