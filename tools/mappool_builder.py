@@ -27,8 +27,8 @@ from pathlib import Path
 # Create an OAuth application at https://osu.ppy.sh/home/account/edit#oauth
 # and replace both values below.
 # ---------------------------------------------------------------------------
-OSU_CLIENT_ID = "63330"
-OSU_CLIENT_SECRET = "cqVK87J29rrniJLbtHgAuNZwJcYFHakCDKJfjzkz"
+OSU_CLIENT_ID = "<YOUR_OSU_CLIENT_ID>"
+OSU_CLIENT_SECRET = "<YOU_OSU_CLIENT_SECRET>"
 
 TOKEN_URL = "https://osu.ppy.sh/oauth/token"
 API_URL = "https://osu.ppy.sh/api/v2"
