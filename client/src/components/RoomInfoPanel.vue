@@ -7,7 +7,7 @@ const props = defineProps({
   timerSeconds: { type: Number, default: 0 },
   format: { type: String, default: "HeadToHead" },
   winCondition: { type: String, default: "Score" },
-  mode: { type: String, default: "osu" },
+  mode: { type: String, default: "osu!" },
 });
 
 const timerLabel = props.timerActive ? `${props.timerSeconds}s left` : "No timer active";

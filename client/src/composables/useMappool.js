@@ -11,15 +11,17 @@ function readStoredState() {
     return {
       pool: saved?.pool || null,
       qualificationMode: saved?.qualificationMode === true,
+      mapStatesByLobbyId: saved?.mapStatesByLobbyId && typeof saved.mapStatesByLobbyId === "object" ? saved.mapStatesByLobbyId : {},
     };
   } catch {
-    return { pool: null, qualificationMode: false };
+    return { pool: null, qualificationMode: false, mapStatesByLobbyId: {} };
   }
 }
 
 const storedState = readStoredState();
 const pool = ref(storedState.pool);
 const qualificationMode = ref(storedState.qualificationMode);
+const mapStatesByLobbyId = ref(storedState.mapStatesByLobbyId);
 
 watch(
   [pool, qualificationMode],
@@ -29,6 +31,7 @@ watch(
       JSON.stringify({
         pool: pool.value,
         qualificationMode: qualificationMode.value,
+        mapStatesByLobbyId: mapStatesByLobbyId.value,
       }),
     );
   },
@@ -61,9 +64,13 @@ function normalizeMap(slot, value) {
   if (!value || typeof value !== "object") return null;
 
   const id = Number(value.id);
-  const name = String(value.name || "").trim();
+  const name = String(value.name || value.title || "").trim();
   const diff = String(value.diff || "").trim();
   const author = String(value.author || "").trim();
+  const artist = String(value.artist || "").trim();
+  const beatmapsetId = Number(value.beatmapset_id ?? value.beatmapsetId ?? value.setId ?? value.beatmapSetId);
+  const starRating = Number(value.star_rating ?? value.starRating ?? value.stars);
+  const totalSeconds = Number(value.total_seconds ?? value.totalSeconds ?? value.total_length);
 
   if (!Number.isFinite(id) || !name || !diff || !author) return null;
 
@@ -78,8 +85,13 @@ function normalizeMap(slot, value) {
     slot,
     id,
     name,
+    artist,
     diff,
     author,
+    mapperName: author,
+    beatmapsetId: Number.isFinite(beatmapsetId) ? beatmapsetId : null,
+    starRating: Number.isFinite(starRating) ? starRating : null,
+    totalSeconds: Number.isFinite(totalSeconds) ? totalSeconds : null,
     mods,
     group: modFromSlot(slot, mods),
     additionalCommands: normalizeCommands(value.additionalCommands),
@@ -128,11 +140,52 @@ function clearPool() {
   pool.value = null;
 }
 
+function lobbyKey(lobbyId) {
+  return String(lobbyId || "");
+}
+
+function ensureLobbyMapState(lobbyId) {
+  const key = lobbyKey(lobbyId);
+  if (!key) return null;
+  if (!mapStatesByLobbyId.value[key]) {
+    mapStatesByLobbyId.value[key] = {};
+  }
+  return mapStatesByLobbyId.value[key];
+}
+
+function getMapState(lobbyId, slot) {
+  const lobbyState = mapStatesByLobbyId.value[lobbyKey(lobbyId)];
+  return lobbyState?.[slot] || {};
+}
+
+function setMapState(lobbyId, slot, patch) {
+  const lobbyState = ensureLobbyMapState(lobbyId);
+  if (!lobbyState || !slot) return;
+  lobbyState[slot] = {
+    ...getMapState(lobbyId, slot),
+    ...patch,
+  };
+}
+
+function clearLobbyMapState(lobbyId) {
+  const key = lobbyKey(lobbyId);
+  if (!key || !mapStatesByLobbyId.value[key]) return;
+  delete mapStatesByLobbyId.value[key];
+}
+
+function clearAllMapStates() {
+  mapStatesByLobbyId.value = {};
+}
+
 export function useMappool() {
   return {
     pool,
     qualificationMode,
     setPool,
     clearPool,
+    getMapState,
+    setMapState,
+    clearLobbyMapState,
+    clearAllMapStates,
   };
 }

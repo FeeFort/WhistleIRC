@@ -1,16 +1,19 @@
 <script setup>
-import { ref, computed, nextTick, watch, onBeforeUnmount } from "vue";
+import { ref, computed, nextTick, watch, onMounted, onBeforeUnmount } from "vue";
 import Button from "primevue/button";
 import Textarea from "primevue/textarea";
-import ToggleSwitch from "primevue/toggleswitch";
-import { Menu, Send, Hash, Timer, ClipboardCheck, Flag, Gamepad2, GraduationCap } from "@lucide/vue";
+import { Menu, Send, Hash, Timer, ClipboardCheck, Flag, Gamepad2 } from "@lucide/vue";
 import { useNickColor } from "../composables/useNickColor";
 import { useChatSettings } from "../composables/useChatSettings";
+import { highlightTextStyle, messageHasHighlight } from "../composables/useMessageHighlighting";
 import BanchoBotCommandBar from "./BanchoBotCommandBar.vue";
 import CommandBar from "./CommandBar.vue";
+import { useDarkMode } from "../composables/useDarkMode";
+import NowPlaying from "./NowPlaying.vue";
 
 const { nickColor: baseNickColor } = useNickColor();
-const { highlightReferee, highlightBanchoBot, banchoBotColor, redTeamColor, blueTeamColor, unassignedColorMode, unassignedColor, timestampMode } = useChatSettings();
+const { primaryColor } = useDarkMode();
+const { highlightReferee, highlightBanchoBot, banchoBotColor, redTeamColor, blueTeamColor, unassignedColorMode, unassignedColor, timestampMode, highlightWords, highlightStyles, highlightColorMode, highlightColor } = useChatSettings();
 
 const props = defineProps({
   title: { type: String, default: "Referee chat" },
@@ -29,11 +32,14 @@ const props = defineProps({
   timerSeconds: { type: Number, default: 0 },
   format: { type: String, default: "HeadToHead" },
   winCondition: { type: String, default: "Score" },
-  mode: { type: String, default: "osu" },
+  mode: { type: String, default: "osu!" },
   shortcutMode: { type: String, default: "referee" },
   roomClosed: { type: Boolean, default: false },
-  qualificationMode: { type: Boolean, default: false },
-  showQualificationToggle: { type: Boolean, default: true },
+  nowPlaying: { type: Object, default: null },
+  showProgressBar: { type: Boolean, default: true },
+  showProgressTimeLabel: { type: Boolean, default: true },
+  teamRedName: { type: String, default: "" },
+  teamBlueName: { type: String, default: "" },
 });
 
 function formatTimer(seconds) {
@@ -47,9 +53,10 @@ const timerLabel = computed(() => (props.timerActive ? formatTimer(props.timerSe
 
 const statusLabel = computed(() => (props.connected ? "Connected" : "Disconnected"));
 
-const emit = defineEmits(["send", "toggle-sidebar", "send-command", "create-lobby", "update:qualificationMode"]);
+const emit = defineEmits(["send", "toggle-sidebar", "send-command", "create-lobby"]);
 
 const draft = ref("");
+const chatInput = ref(null);
 const listEl = ref(null);
 const shouldAutoScroll = ref(true);
 const AUTO_SCROLL_THRESHOLD = 24;
@@ -58,6 +65,34 @@ let isAutoScrolling = false;
 let animationFrameId;
 let autoScrollTimer;
 let forceAutoScroll = false;
+
+function getChatInputEl() {
+  const el = chatInput.value?.$el || chatInput.value;
+  return el && typeof el.focus === "function" ? el : null;
+}
+
+function focusChatInput() {
+  const el = getChatInputEl();
+  if (!el) return false;
+  el.focus();
+  if (typeof el.setSelectionRange === "function") {
+    const cursor = el.value.length;
+    el.setSelectionRange(cursor, cursor);
+  }
+  return true;
+}
+
+function isTypingTarget(target) {
+  if (!(target instanceof HTMLElement)) return false;
+  return Boolean(target.closest("input, textarea, select, [contenteditable='true'], [role='textbox']"));
+}
+
+function insertDraftText(text) {
+  draft.value += text;
+  nextTick(() => {
+    focusChatInput();
+  });
+}
 
 function nickColor(author, team) {
   if (isReferee(author)) return "var(--app-primary)";
@@ -133,6 +168,16 @@ function displayTime(time, index) {
   if (!shouldShowTime(index)) return "";
   return formatTime(time, timestampMode.value === "full");
 }
+
+function messageTextStyle(text) {
+  return messageHasHighlight(text, highlightWords.value) ? highlightTextStyle(highlightStyles.value, highlightMessageColor.value) : {};
+}
+
+const highlightMessageColor = computed(() => {
+  if (highlightColorMode.value === "accent") return primaryColor.value;
+  if (highlightColorMode.value === "custom") return highlightColor.value;
+  return "#ffffff";
+});
 
 function isNearBottom(el) {
   return el.scrollHeight - el.clientHeight - el.scrollTop <= AUTO_SCROLL_THRESHOLD;
@@ -244,7 +289,41 @@ watch(
   { flush: "post" },
 );
 
-onBeforeUnmount(cancelAutoScroll);
+function onGlobalKeydown(event) {
+  if (props.roomClosed || event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey) return;
+  if (isTypingTarget(event.target)) return;
+
+  if (event.key === "Backspace") {
+    event.preventDefault();
+    draft.value = draft.value.slice(0, -1);
+    nextTick(() => focusChatInput());
+    return;
+  }
+
+  if (event.key === "Enter") {
+    event.preventDefault();
+    focusChatInput();
+    return;
+  }
+
+  if (event.key === " " || (event.key.length === 1 && !event.isComposing)) {
+    event.preventDefault();
+    insertDraftText(event.key === " " ? " " : event.key);
+    return;
+  }
+
+  event.preventDefault();
+  focusChatInput();
+}
+
+onMounted(() => {
+  window.addEventListener("keydown", onGlobalKeydown, true);
+});
+
+onBeforeUnmount(() => {
+  window.removeEventListener("keydown", onGlobalKeydown, true);
+  cancelAutoScroll();
+});
 
 function send() {
   if (props.roomClosed) return;
@@ -281,7 +360,7 @@ function forwardCommand(command) {
         </button>
         <div class="chat-header__titlegroup">
           <span class="chat-title">{{ title }}</span>
-          <div v-if="shortcutMode !== 'bancho'" class="chat-subtitle">
+          <div v-if="shortcutMode === 'referee'" class="chat-subtitle">
             <span class="chat-subtitle__item"><Hash :size="12" />{{ roomSize }}</span>
             <span class="chat-subtitle__dot">·</span>
             <span class="chat-subtitle__item"><Timer :size="12" />{{ timerLabel }}</span>
@@ -295,24 +374,19 @@ function forwardCommand(command) {
         </div>
       </div>
       <div class="chat-header__right">
-        <div v-if="showQualificationToggle" class="chat-qualification-control">
-          <GraduationCap :size="15" />
-          <span>Qualifications</span>
-          <ToggleSwitch :model-value="qualificationMode" class="app-solid-switch" inputId="chat-qualification-mode" @update:model-value="emit('update:qualificationMode', $event)" />
-        </div>
         <div
-          class="chat-status-card"
+          class="chat-status-indicator"
           :class="{
-            'chat-status-card--offline': !connected,
+            'chat-status-indicator--offline': !connected,
           }"
         >
-          <div class="chat-status-card__main">
-            <span class="chat-status-card__dot" aria-hidden="true"></span>
-            <span>{{ statusLabel }}</span>
-          </div>
+          <span class="chat-status-indicator__dot" aria-hidden="true"></span>
+          <span class="chat-status-indicator__label">{{ statusLabel }}</span>
         </div>
       </div>
     </div>
+
+    <NowPlaying :map="nowPlaying" :team-red-name="teamRedName" :team-blue-name="teamBlueName" :show-progress-bar="showProgressBar" :show-progress-time-label="showProgressTimeLabel" />
 
     <div ref="listEl" class="chat-log" @scroll="onScroll" @wheel="onWheel">
       <div class="chat-log__inner">
@@ -332,17 +406,17 @@ function forwardCommand(command) {
               :style="nickStyle(msg.author, msg.team)"
               >{{ msg.author }}</span
             >
-            <span class="chat-line__text">{{ msg.text }}</span>
+            <span class="chat-line__text" :style="messageTextStyle(msg.text)">{{ msg.text }}</span>
           </template>
         </div>
       </div>
     </div>
 
     <BanchoBotCommandBar v-if="shortcutMode === 'bancho'" :disabled="roomClosed" @send-command="forwardCommand" @create="emit('create-lobby')" />
-    <CommandBar v-else docked :disabled="roomClosed" @send-command="forwardCommand" />
+    <CommandBar v-else-if="shortcutMode === 'referee'" docked :disabled="roomClosed" @send-command="forwardCommand" />
 
     <div class="chat-input">
-      <Textarea v-model="draft" placeholder="Write a message" rows="1" autoResize class="chat-input__field" :disabled="roomClosed" @keydown="onKeydown" />
+      <Textarea ref="chatInput" v-model="draft" placeholder="Write a message" rows="1" autoResize class="chat-input__field" :disabled="roomClosed" @keydown="onKeydown" />
       <Button rounded aria-label="Send message" class="chat-input__send" :disabled="roomClosed || !draft.trim()" @click="send">
         <Send :size="17" />
       </Button>
@@ -454,44 +528,31 @@ function forwardCommand(command) {
   flex-shrink: 0;
 }
 
-.chat-status-card {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  min-width: 8rem;
-  padding: 0.45rem 0.65rem;
-  border: 1px solid rgba(84, 213, 150, 0.2);
-  border-radius: 0.65rem;
-  background: rgba(84, 213, 150, 0.08);
-  color: var(--app-green);
-}
-
-.chat-status-card__main {
+.chat-status-indicator {
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
+  width: fit-content;
   font-size: 0.78rem;
   font-weight: 800;
   line-height: 1;
+  white-space: nowrap;
 }
 
-.chat-status-card__dot {
+.chat-status-indicator__dot {
   width: 0.42rem;
   height: 0.42rem;
   flex-shrink: 0;
   border-radius: 50%;
-  background: currentColor;
-  box-shadow: 0 0 0 0.18rem rgba(84, 213, 150, 0.12);
+  background: var(--app-green);
 }
 
-.chat-status-card--offline {
-  border-color: rgba(255, 107, 126, 0.2);
-  background: rgba(255, 107, 126, 0.08);
-  color: var(--app-red);
+.chat-status-indicator__label {
+  color: #fff;
 }
 
-.chat-status-card--offline .chat-status-card__dot {
-  box-shadow: 0 0 0 0.18rem rgba(255, 107, 126, 0.12);
+.chat-status-indicator--offline .chat-status-indicator__dot {
+  background: var(--app-red);
 }
 
 .chat-log {
@@ -567,10 +628,6 @@ function forwardCommand(command) {
 @media (max-width: 640px) {
   .chat-header__right {
     gap: 0.25rem;
-  }
-
-  .chat-status-card {
-    min-width: auto;
   }
 
   .chat-qualification-control {

@@ -5,12 +5,15 @@ import { useToast } from "primevue/usetoast";
 import { Ban, Crosshair, ShieldCheck, Trash2, Upload } from "@lucide/vue";
 import { parseMappool, useMappool } from "../composables/useMappool";
 
-const props = defineProps({ disabled: { type: Boolean, default: false } });
-const emit = defineEmits(["send-command"]);
+const props = defineProps({
+  disabled: { type: Boolean, default: false },
+  lobbyId: { type: String, default: "" },
+});
+const emit = defineEmits(["send-command", "pick-map"]);
 const toast = useToast();
 const fileInput = ref(null);
-const stateBySlot = ref({});
-const { pool, qualificationMode, setPool, clearPool } = useMappool();
+const { pool, qualificationMode, setPool, clearPool, getMapState, setMapState, clearAllMapStates } = useMappool();
+const lobbyKey = computed(() => props.lobbyId || "");
 
 const groups = computed(() => {
   if (!pool.value) return [];
@@ -42,7 +45,7 @@ async function importFile(event) {
   try {
     const parsed = parseMappool(await file.text());
     setPool(parsed);
-    stateBySlot.value = {};
+    clearAllMapStates();
     const skippedText = parsed.skippedMaps ? ` Skipped ${parsed.skippedMaps} invalid map${parsed.skippedMaps === 1 ? "" : "s"}.` : "";
     toast.add({
       severity: "success",
@@ -66,14 +69,7 @@ function send(command) {
 }
 
 function mapState(map) {
-  return stateBySlot.value[map.slot] || {};
-}
-
-function setMapState(map, patch) {
-  stateBySlot.value[map.slot] = {
-    ...mapState(map),
-    ...patch,
-  };
+  return getMapState(lobbyKey.value, map.slot);
 }
 
 function runAction(map, action) {
@@ -81,18 +77,18 @@ function runAction(map, action) {
   const current = mapState(map);
 
   if (action === "ban") {
-    setMapState(map, { banned: !current.banned, picked: false });
+    setMapState(lobbyKey.value, map.slot, { banned: !current.banned, picked: false });
     return;
   }
 
   if (action === "protect") {
-    setMapState(map, { protected: !current.protected });
+    setMapState(lobbyKey.value, map.slot, { protected: !current.protected });
     return;
   }
 
   if (current.banned) return;
   if (current.picked) {
-    setMapState(map, { picked: false });
+    setMapState(lobbyKey.value, map.slot, { picked: false });
     return;
   }
 
@@ -103,7 +99,8 @@ function runAction(map, action) {
     ...(pool.value?.generalAdditionalCommands || []),
   ];
   commands.forEach(send);
-  setMapState(map, { picked: true });
+  setMapState(lobbyKey.value, map.slot, { picked: true });
+  emit("pick-map", { ...map, pickedBy: current.team || null });
   toast.add({
     severity: "success",
     summary: "Pick commands sent",
@@ -119,7 +116,7 @@ function actionLabel(action) {
 function clearImportedPool() {
   if (props.disabled) return;
   clearPool();
-  stateBySlot.value = {};
+  clearAllMapStates();
 }
 </script>
 

@@ -29,6 +29,7 @@ const props = defineProps({
   userAvatar: { type: String, default: "" },
   activeChat: { type: String, default: "referee" },
   unreadChats: { type: Object, default: () => ({}) },
+  directChats: { type: Array, default: () => [] },
   joinedChannels: { type: Array, default: () => [] },
 });
 
@@ -108,6 +109,16 @@ const profileMenuItems = computed(() => [
                       <span class="app-sidebar__chat-label">BanchoBot</span>
                       <span v-if="unreadChats.bancho" class="app-sidebar__chat-unread" role="status" aria-label="New messages" />
                     </SidebarMenuButton>
+                  </SidebarMenuItem>
+                  <SidebarMenuItem v-for="chat in directChats" :key="chat.id">
+                    <SidebarMenuButton :isActive="activeChat === chat.id" @click="emit('select-chat', chat.id)">
+                      <MessageSquare :size="15" />
+                      <span class="app-sidebar__chat-label">{{ chat.label }}</span>
+                      <span v-if="unreadChats[chat.id]" class="app-sidebar__chat-unread" role="status" aria-label="New messages" />
+                    </SidebarMenuButton>
+                    <button type="button" class="app-sidebar__chat-close" :aria-label="`Close ${chat.label} chat`" title="Close chat" @click.stop="requestCloseChat(chat)">
+                      <X :size="11" />
+                    </button>
                   </SidebarMenuItem>
                   <SidebarMenuItem
                     v-for="channel in joinedChannels"

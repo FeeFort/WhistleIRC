@@ -53,6 +53,7 @@ export type NotAuthenticatedReason = "not_logged_in" | "session_expired";
 // BanchoBot parser types
 export type TeamMode = "HeadToHead" | "TagCoop" | "TeamVs" | "TagTeamVs";
 export type ScoreMode = "Score" | "Accuracy" | "Combo" | "ScoreV2";
+export type GameMode = "osu!" | "osu!taiko" | "osu!catch" | "osu!mania";
 
 export type RoomInfo = { name: string; qualifiers: boolean } | { name: string; qualifiers: boolean; teamRed: string; teamBlue: string };
 
@@ -84,6 +85,8 @@ export type PlayerSnapshot = {
 
 export type PlayerJoined = { username: string; slot: number; team: Team; mods: string[] };
 export type PlayerLeft = { username: string };
+export type PlayerTeamChange = { username: string; team: Team };
+export type PlayerSlotChange = { username: string; slot: number };
 export type PlayerScore = { username: string; score: number; result: string };
 export type MatchFinished = { finished: true };
 export type MatchMetadata = { bestOf: number } | { nextPickTeam: string };
@@ -100,11 +103,14 @@ export type ParsedBanchoBotMessage =
   | { type: "player"; value: PlayerSnapshot }
   | { type: "player_joined"; value: PlayerJoined }
   | { type: "player_left"; value: PlayerLeft }
+  | { type: "player_moved"; value: PlayerSlotChange }
+  | { type: "player_team_changed"; value: PlayerTeamChange }
   | { type: "player_score"; value: PlayerScore }
   | { type: "match_finished"; value: MatchFinished }
   | { type: "metadata"; value: MatchMetadata }
   | { type: "size"; value: SizeConfirmation }
   | { type: "timer"; value: TimerMessage }
+  | { type: "mode"; value: GameMode }
   | null;
 
 export type ParsedLobbyCommand = { type: "settings"; value: MpSetCommand } | { type: "size"; value: MpSizeCommand } | null;
@@ -155,6 +161,8 @@ export type LobbyState = {
   host: string | null;
   teamMode: TeamMode;
   scoreMode: ScoreMode;
+  mode: GameMode;
+  slots: (string | null)[];
   size: number;
   timer: Timer;
   status: "active" | "closed";

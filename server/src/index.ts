@@ -8,7 +8,7 @@ import { parseBanchoBotMessage, parseLobbyCommand } from "./banchoBotParser.js";
 import { login as loginOsu, logout as logoutOsu, getAccessToken, restoreSession } from "./auth/auth.js";
 import { fetchApi } from "./osu-api/osuApiClient.js";
 import { config } from "./config.js";
-import { ClientMessage, ConnectionState, IrcCredentials, IrcLine, LobbyState, ParsedBanchoBotMessage, Player, PlayerScore } from "./types.js";
+import { ClientMessage, ConnectionState, IrcCredentials, IrcLine, LobbyState, ParsedBanchoBotMessage, Player, PlayerScore, Team } from "./types.js";
 import { fileURLToPath } from "node:url";
 
 const IRC_HOST = "irc.ppy.sh";
@@ -161,7 +161,9 @@ function createLobbyState(channel: string): LobbyState {
     host: null,
     teamMode: "HeadToHead",
     scoreMode: "Score",
+    mode: "osu!",
     size: 16,
+    slots: Array.from({ length: 16 }, () => null),
     timer: { active: false, endsAt: null },
     status: "active",
   };
@@ -176,6 +178,7 @@ function cloneLobbyState(state: LobbyState): LobbyState {
     teamRedPlayers: [...state.teamRedPlayers],
     teamBluePlayers: [...state.teamBluePlayers],
     players: state.players.map((player) => ({ ...player })),
+    slots: [...state.slots],
   };
 }
 
@@ -283,7 +286,9 @@ class BanchoConnection {
       "host",
       "teamMode",
       "scoreMode",
+      "mode",
       "size",
+      "slots",
       "status",
     ];
 
@@ -324,12 +329,20 @@ class BanchoConnection {
     if (changed) this.sendLobbyState(channel, state);
   }
 
+  
   updatePlayers(channel: string, players: Player[]): void {
-    const normalizedPlayers = players.map((player) => ({ ...player }));
+    const normalizedPlayers = players.map((player) => ({ ...player })).sort((left, right) => {
+        const leftSlot = Number.isFinite(left.slot) ? left.slot : Number.POSITIVE_INFINITY;
+        const rightSlot = Number.isFinite(right.slot) ? right.slot : Number.POSITIVE_INFINITY;
+        if (leftSlot !== rightSlot) return leftSlot - rightSlot;
+        return left.username.localeCompare(right.username);
+      });
+    const slots = Array.from({ length: 16 }, (_, index) => normalizedPlayers.find((player) => player.slot === index + 1)?.username || null);
     this.updateLobbyState(channel, {
       players: normalizedPlayers,
       teamRedPlayers: normalizedPlayers.filter((player) => player.team === "red").map((player) => player.username),
       teamBluePlayers: normalizedPlayers.filter((player) => player.team === "blue").map((player) => player.username),
+      slots,
     });
   }
 
@@ -351,6 +364,14 @@ class BanchoConnection {
         avatarUrl: player.avatarUrl || previous?.avatarUrl || (player.userId ? `https://a.ppy.sh/${player.userId}` : null),
       },
     ]);
+  }
+
+  updatePlayerTeam(channel: string, username: string, team: Team): void {
+    const state = this.getLobbyState(channel);
+    const normalizedName = username.toLowerCase();
+    const existing = state.players.find((item) => item.username.toLowerCase() === normalizedName);
+    if (!existing) return;
+    this.upsertPlayer(channel, { ...existing, team });
   }
 
   removePlayer(channel: string, username: string): void {
@@ -415,12 +436,18 @@ class BanchoConnection {
       });
     } else if (parsed.type === "settings" || parsed.type === "size") {
       this.updateLobbyState(channel, parsed.value);
+    } else if (parsed.type === "mode") {
+      this.updateLobbyState(channel, { mode: parsed.value });
     } else if (parsed.type === "beatmap" || parsed.type === "mods") {
       this.updateLobbyState(channel, parsed.value);
     } else if (parsed.type === "player") {
       this.upsertPlayer(channel, parsed.value);
     } else if (parsed.type === "player_joined") {
       this.upsertPlayer(channel, { ...parsed.value, ready: false });
+    } else if (parsed.type === "player_team_changed") {
+      this.updatePlayerTeam(channel, parsed.value.username, parsed.value.team);
+    } else if (parsed.type === "player_moved") {
+      this.upsertPlayer(channel, parsed.value);
     } else if (parsed.type === "player_left") {
       this.removePlayer(channel, parsed.value.username);
     } else if (parsed.type === "player_score") {
@@ -577,7 +604,8 @@ class BanchoConnection {
       const target = message.params[0];
       const nick = getNick(message.prefix);
       const text = message.params[1];
-      const channel = this.credentials?.login && target.toLowerCase() === this.credentials.login.toLowerCase() ? "BanchoBot" : target;
+      const isDirectMessage = Boolean(this.credentials?.login && target.toLowerCase() === this.credentials.login.toLowerCase());
+      const channel = isDirectMessage ? (nick?.toLowerCase() === "banchobot" ? "BanchoBot" : nick || target) : target;
       if (isMultiplayerChannel(channel)) {
         this.handleLobbyMessage(channel, nick, text);
       }
@@ -587,6 +615,7 @@ class BanchoConnection {
           channel,
           nick,
           text,
+          isDirectMessage,
           timestamp: new Date().toISOString(),
         });
       }

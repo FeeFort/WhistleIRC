@@ -4,6 +4,7 @@ import {
   RoomInfo,
   ScoreMode,
   TeamMode,
+  GameMode,
   TeamSettings,
   SizeConfirmation,
   TimerMessage,
@@ -11,6 +12,8 @@ import {
   ActiveMods,
   PlayerJoined,
   PlayerLeft,
+  PlayerTeamChange,
+  PlayerSlotChange,
   PlayerScore,
   MatchFinished,
   MatchMetadata,
@@ -32,6 +35,13 @@ export const SCORE_MODES: Record<number, ScoreMode> = Object.freeze({
   1: "Accuracy",
   2: "Combo",
   3: "ScoreV2",
+});
+
+export const GAME_MODES: Record<string, GameMode> = Object.freeze({
+  Osu: "osu!",
+  Taiko: "osu!taiko",
+  CatchTheBeat: "osu!catch",
+  OsuMania: "osu!mania",
 });
 
 export const QUALIFIER_ALIASES: readonly string[] = Object.freeze(["Qualifiers", "Quals", "Qualifier"]);
@@ -59,6 +69,15 @@ const MOD_CODES: Map<string, string> = new Map(
 
 const TEAM_MODE_NAMES: Map<string, TeamMode> = new Map(Object.values(TEAM_MODES).map((value) => [value.toLowerCase(), value]));
 const SCORE_MODE_NAMES: Map<string, ScoreMode> = new Map(Object.values(SCORE_MODES).map((value) => [value.toLowerCase(), value]));
+const GAME_MODE_NAMES: Map<string, GameMode> = new Map(Object.values(GAME_MODES).map((value) => [value.toLowerCase(), value]));
+
+function parseGameMode(text: string): GameMode | null {
+  const match = text.match(/^Changed match mode to\s+([^\r\n]+?)\.?$/i);
+  if (!match) return null;
+
+  const mode = GAME_MODE_NAMES.get(match[1].trim().toLowerCase());
+  return mode ?? null;
+}
 
 function parseRoomName(text: string): RoomInfo | null {
   const match = text.match(/^Room name:\s*(.*?)(?:,\s*History:|$)/i);
@@ -160,9 +179,40 @@ function parseBeatmapMessage(text: string): { type: "beatmap"; value: { currentB
 
 function parseActiveMods(text: string): ActiveMods | null {
   const match = text.match(/^Active mods:\s*(.+)$/i);
-  if (!match) return null;
-  const value = match[1].trim();
-  return { activeMods: /^none$/i.test(value) ? null : value };
+  if (match) {
+    const value = match[1].trim();
+    return { activeMods: /^none$/i.test(value) ? null : value };
+  }
+
+  // Newer BanchoBot messages can contain multiple enabled/disabled clauses,
+  // for example: "Enabled DoubleTime, enabled FreeMod".
+  const confirmation = text.match(/^Enabled\s+(.+?)(?:\.)?$/i);
+  if (!confirmation) return null;
+
+  const body = confirmation[1].trim();
+  const clauses = [...body.matchAll(/,\s*(enabled|disabled)\s+/gi)];
+  const enabled: string[] = [];
+  const addEnabled = (value: string) => {
+    if (!value || /^none$/i.test(value.trim())) return;
+    enabled.push(...value.split(/\s*,\s*/).map((mod) => mod.trim()).filter(Boolean));
+  };
+
+  if (!clauses.length) {
+    addEnabled(body);
+  } else {
+    addEnabled(body.slice(0, clauses[0].index));
+    clauses.forEach((clause, index) => {
+      const start = clause.index + clause[0].length;
+      const end = clauses[index + 1]?.index ?? body.length;
+      if (clause[1].toLowerCase() === "enabled") addEnabled(body.slice(start, end));
+    });
+  }
+
+  const mods = enabled
+    .map((mod) => MOD_CODES.get(mod.toLowerCase()) || mod)
+    .filter((mod, index, values) => values.findIndex((value) => value.toLowerCase() === mod.toLowerCase()) === index);
+
+  return { activeMods: mods.length ? mods.join(", ") : null };
 }
 
 function parseModsConfirmation(text: string): ActiveMods | null {
@@ -218,6 +268,26 @@ function parsePlayerJoined(text: string): PlayerJoined | null {
   };
 }
 
+function parsePlayerTeamChange(text: string): PlayerTeamChange | null {
+  const match = text.match(/^(.+?) changed to\s+(red|blue)\.?$/i);
+  if (!match) return null;
+  return {
+    username: match[1].trim(),
+    team: match[2].toLowerCase() as Team,
+  };
+}
+
+function parsePlayerMove(text: string): PlayerSlotChange | null {
+  const match = text.match(/^(.+?) moved to slot\s+(\d{1,2})\.?$/i);
+  if (!match) return null;
+  const slot = Number(match[2]);
+  if (!Number.isInteger(slot) || slot < 1 || slot > 16) return null;
+  return {
+    username: match[1].trim(),
+    slot,
+  };
+}
+
 function parsePlayerLeft(text: string): PlayerLeft | null {
   const match = text.match(/^(.+?) left the game\.?$/i);
   return match ? { username: match[1].trim() } : null;
@@ -249,6 +319,9 @@ export function parseBanchoBotMessage(text: string): ParsedBanchoBotMessage {
   const room = parseRoomName(text);
   if (room) return { type: "room", value: room };
 
+  const gameMode = parseGameMode(text);
+  if (gameMode) return { type: "mode", value: gameMode };
+
   const modes = parseTeamSettings(text);
   if (modes) return { type: "settings", value: modes };
 
@@ -266,6 +339,12 @@ export function parseBanchoBotMessage(text: string): ParsedBanchoBotMessage {
 
   const joined = parsePlayerJoined(text);
   if (joined) return { type: "player_joined", value: joined };
+
+  const teamChanged = parsePlayerTeamChange(text);
+  if (teamChanged) return { type: "player_team_changed", value: teamChanged };
+
+  const moved = parsePlayerMove(text);
+  if (moved) return { type: "player_moved", value: moved };
 
   const left = parsePlayerLeft(text);
   if (left) return { type: "player_left", value: left };

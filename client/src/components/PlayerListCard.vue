@@ -8,7 +8,7 @@ const props = defineProps({
   players: {
     type: Array,
     default: () => [],
-    // each: { name, isHost, isReady, avatarUrl, mods }
+    // each: { name, profileUrl, isHost, isReady, avatarUrl, mods }
     // mods is an optional array of mod acronyms, e.g. ['HD', 'DT'] -
     // rendered as small icons once mod art is wired in
   },
@@ -72,7 +72,17 @@ function playerMods(player) {
         <span v-if="player.avatarUrl" class="player-row__avatar" :style="{ backgroundImage: `url(${player.avatarUrl})` }" />
         <span v-else class="player-row__avatar player-row__avatar--placeholder" :style="{ background: colorFor(player) }">{{ initials(player.name) }}</span>
 
-        <span class="player-row__name" :style="playerNameStyle(player)">
+        <a
+          v-if="player.profileUrl"
+          class="player-row__name player-row__name--link"
+          :style="playerNameStyle(player)"
+          :href="player.profileUrl"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          {{ player.name }}
+        </a>
+        <span v-else class="player-row__name" :style="playerNameStyle(player)">
           {{ player.name }}
         </span>
 
@@ -176,6 +186,14 @@ function playerMods(player) {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.player-row__name--link {
+  text-decoration: none;
+}
+
+.player-row__name--link:hover {
+  text-decoration: underline;
 }
 
 .player-row__mods {

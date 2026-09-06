@@ -3,6 +3,7 @@ import { computed, ref, watch } from "vue";
 export const LOBBY_TEMPLATE_VARIABLES = [
   { key: "beatmapWinner", label: "Beatmap winner" },
   { key: "beatmap", label: "Beatmap link" },
+  { key: "availableMaps", label: "Available mappool maps" },
   { key: "beatmapTeamRedScore", label: "Beatmap red team score" },
   { key: "beatmapTeamBlueScore", label: "Beatmap blue team score" },
   { key: "scoreDifference", label: "Score difference" },
