@@ -81,16 +81,6 @@ watch(
   { immediate: true },
 );
 
-watch(
-  () => [props.teamAScore, props.teamBScore],
-  ([teamAScore, teamBScore]) => {
-    if (props.lobbyId !== committedScoreState.value.lobbyId) return;
-    if (teamAScore !== committedScoreState.value.teamAScore || teamBScore !== committedScoreState.value.teamBScore) {
-      manualScoreWarningPending.value = true;
-    }
-  },
-);
-
 function changeScore(team, delta) {
   if (!props.canEdit) return;
 
@@ -98,6 +88,7 @@ function changeScore(team, delta) {
   const event = team === "a" ? "update:teamAScore" : "update:teamBScore";
   const nextScore = Math.max(0, Math.min(winningScore.value ?? Number.POSITIVE_INFINITY, props[prop] + delta));
   if (nextScore === props[prop]) return;
+  manualScoreWarningPending.value = true;
   emit(event, nextScore);
 }
 

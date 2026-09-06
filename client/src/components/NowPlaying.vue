@@ -28,13 +28,13 @@ function formatElapsed(seconds) {
 }
 
 const mapDuration = computed(() => {
-  const total = Number(props.map?.totalSeconds);
+  const total = Number(props.map?.totalSeconds ?? props.map?.total_seconds);
   return Number.isFinite(total) && total > 0 ? formatElapsed(total) : "";
 });
 
 function updateProgress() {
   const map = props.map;
-  const total = Number(map?.totalSeconds);
+  const total = Number(map?.totalSeconds ?? map?.total_seconds);
   if (!map || !props.showProgressBar || map.status !== "playing" || map.progressAborted || !map.startTimestamp || !Number.isFinite(total) || total <= 0) {
     progressDelayElapsed.value = false;
     progressPercent.value = 0;
@@ -161,7 +161,7 @@ const pickedByStyle = computed(() => {
       </div>
       <Transition name="now-playing-progress">
         <div
-          v-if="showProgressBar && map.status === 'playing' && !map.progressAborted && progressDelayElapsed && Number.isFinite(Number(map.totalSeconds)) && Number(map.totalSeconds) > 0"
+          v-if="showProgressBar && map.status === 'playing' && !map.progressAborted && progressDelayElapsed && mapDuration && Number(map.totalSeconds ?? map.total_seconds) > 0"
           class="now-playing__progress"
           aria-label="Map progress"
         >

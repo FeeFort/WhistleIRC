@@ -31,10 +31,20 @@ function sendChannelCommand(type, channel) {
   return socket.value ? send(socket.value, { type, channel }) : false;
 }
 
-function requestOsu(payload) {
+function getRequestSocket() {
   const existingSocket = socket.value;
-  const socketInstance = existingSocket || new WebSocket(import.meta.env.VITE_WS_URL || getDefaultWebSocketUrl());
-  const ownsSocket = !existingSocket;
+  if (existingSocket && [WebSocket.OPEN, WebSocket.CONNECTING].includes(existingSocket.readyState)) {
+    return { socketInstance: existingSocket, ownsSocket: false };
+  }
+
+  return {
+    socketInstance: new WebSocket(import.meta.env.VITE_WS_URL || getDefaultWebSocketUrl()),
+    ownsSocket: true,
+  };
+}
+
+function requestOsu(payload) {
+  const { socketInstance, ownsSocket } = getRequestSocket();
 
   return new Promise((resolve, reject) => {
     let settled = false;
@@ -74,9 +84,7 @@ function requestOsu(payload) {
 }
 
 function requestApi(endpoint) {
-  const existingSocket = socket.value;
-  const socketInstance = existingSocket || new WebSocket(import.meta.env.VITE_WS_URL || getDefaultWebSocketUrl());
-  const ownsSocket = !existingSocket;
+  const { socketInstance, ownsSocket } = getRequestSocket();
 
   return new Promise((resolve, reject) => {
     let settled = false;
