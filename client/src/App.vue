@@ -21,6 +21,7 @@ import AppSidebar from "./components/AppSidebar.vue";
 import SidebarSectionCard from "./components/SidebarSectionCard.vue";
 import SettingsModal from "./components/SettingsModal.vue";
 import ShortcutImportExportSettings from "./components/ShortcutImportExportSettings.vue";
+import UpdateDialog from "./components/UpdateDialog.vue";
 import { DEFAULT_PRIMARY_COLOR, useDarkMode } from "./composables/useDarkMode";
 import { DEFAULT_CHAT_SETTINGS, useChatSettings } from "./composables/useChatSettings";
 import { HIGHLIGHT_STYLE_OPTIONS, highlightTextStyle, messageHasHighlight, normalizeHighlightStyles, normalizeHighlightWords } from "./composables/useMessageHighlighting";
@@ -47,6 +48,15 @@ const osuClientSecret = ref("");
 const osuProfile = ref(null);
 const sidebarOpen = ref(true);
 const settingsOpen = ref(false);
+const updateDialogVisible = ref(false);
+const updateDialogMode = ref("available");
+const updateInfo = ref({ currentVersion: "", latestVersion: "", releaseNotesUrl: "" });
+const updateDownloadedBytes = ref(0);
+const updateTotalBytes = ref(0);
+const updateSpeedBytesPerSecond = ref(0);
+let updatePreviousBytes = 0;
+let updatePreviousReceivedAt = 0;
+let updateSmoothedSpeed = 0;
 const lobbyMessagesSettingsOpen = ref(false);
 const createLobbyDialogOpen = ref(false);
 const addChannelDialogOpen = ref(false);
@@ -91,6 +101,10 @@ const {
   setLobbyScore,
   setLobbySettings,
   requestApi,
+  checkUpdate,
+  startUpdate,
+  cancelUpdate,
+  confirmInstall,
 } = useServerConnection();
 const connected = computed(() => serverState.value === "ready");
 const toast = useToast();
@@ -597,7 +611,31 @@ function handleLogout() {
   localStorage.removeItem("feeirc-remembered-login");
 }
 
-async function connectWithToast(username, password) {
+async function checkForUpdates() {
+  toast.removeGroup(loginToastGroup);
+  toast.add({ group: loginToastGroup, severity: "info", summary: "Checking for updates", detail: "Checking for updates...", sticky: true });
+  try {
+    const result = await checkUpdate();
+    if (result.available) {
+      updateInfo.value = {
+        currentVersion: result.currentVersion,
+        latestVersion: result.latestVersion,
+        releaseNotesUrl: result.releaseNotesUrl || "",
+      };
+      updateDialogMode.value = "available";
+      updateDialogVisible.value = true;
+      toast.removeGroup(loginToastGroup);
+    } else {
+      toast.removeGroup(loginToastGroup);
+      toast.add({ group: loginToastGroup, severity: "success", summary: "Up to date", detail: "You are using the latest version.", life: 3000 });
+    }
+  } catch (error) {
+    toast.removeGroup(loginToastGroup);
+    toast.add({ group: loginToastGroup, severity: "error", summary: "Update check failed", detail: error.message || "Unable to check for updates.", life: 5000 });
+  }
+}
+
+async function connectWithToast(username, password, { checkUpdates = false } = {}) {
   toast.removeGroup(loginToastGroup);
   toast.add({
     group: loginToastGroup,
@@ -609,14 +647,17 @@ async function connectWithToast(username, password) {
 
   try {
     await loginToServer(username, password);
-    toast.removeGroup(loginToastGroup);
-    toast.add({
-      group: loginToastGroup,
-      severity: "success",
-      summary: "Connected",
-      detail: "Bancho IRC connection is ready.",
-      life: 3000,
-    });
+    if (checkUpdates) await checkForUpdates();
+    else {
+      toast.removeGroup(loginToastGroup);
+      toast.add({
+        group: loginToastGroup,
+        severity: "success",
+        summary: "Connected",
+        detail: "Bancho IRC connection is ready.",
+        life: 3000,
+      });
+    }
     return true;
   } catch (error) {
     toast.removeGroup(loginToastGroup);
@@ -630,6 +671,49 @@ async function connectWithToast(username, password) {
     return false;
   }
 }
+
+function beginUpdateDownload() {
+  updateDownloadedBytes.value = 0;
+  updateTotalBytes.value = 0;
+  updateSpeedBytesPerSecond.value = 0;
+  updatePreviousBytes = 0;
+  updatePreviousReceivedAt = Date.now();
+  updateSmoothedSpeed = 0;
+  updateDialogMode.value = "downloading";
+  updateDialogVisible.value = true;
+  startUpdate();
+}
+
+function cancelUpdateDownload() {
+  cancelUpdate();
+}
+
+watch(lastEvent, (event) => {
+  if (!event) return;
+  if (event.type === "update_progress" && event.stage === "downloading") {
+    const now = Date.now();
+    const elapsedSeconds = (now - updatePreviousReceivedAt) / 1000;
+    updateDownloadedBytes.value = event.downloadedBytes;
+    updateTotalBytes.value = event.totalBytes;
+    if (elapsedSeconds > 0) {
+      const instantSpeed = (event.downloadedBytes - updatePreviousBytes) / elapsedSeconds;
+      const smoothingFactor = updateSmoothedSpeed > 0 ? 0.18 : 1;
+      updateSmoothedSpeed += (instantSpeed - updateSmoothedSpeed) * smoothingFactor;
+      updateSpeedBytesPerSecond.value = updateSmoothedSpeed;
+    }
+    updatePreviousBytes = event.downloadedBytes;
+    updatePreviousReceivedAt = now;
+  }
+  if (event.type === "update_progress" && event.stage === "ready_to_install") {
+    confirmInstall();
+  }
+  if (event.type === "update_error") {
+    updateDialogVisible.value = false;
+    if (event.code !== "DOWNLOAD_CANCELLED") {
+      toast.add({ severity: "error", summary: "Update failed", detail: event.message || "Unable to download the update.", life: 5000 });
+    }
+  }
+});
 
 async function handleLogin({ username, password, rememberMe }) {
   if (loginLoading.value) return;
@@ -701,6 +785,7 @@ function handleCopyCallback() {
 }
 
 onMounted(async () => {
+  await checkForUpdates();
   const [credentials, osuAuth] = await Promise.all([loadRememberedCredentials(), loadOsuAuthData()]);
   osuClientId.value = osuAuth?.clientId || "";
   osuClientSecret.value = osuAuth?.clientSecret || "";
@@ -1690,6 +1775,18 @@ function handleSendResult(result) {
       <CircleX v-else-if="message.severity === 'error'" :size="18" aria-label="Error" />
     </template>
   </Toast>
+  <UpdateDialog
+    v-model:visible="updateDialogVisible"
+    :mode="updateDialogMode"
+    :current-version="updateInfo.currentVersion"
+    :latest-version="updateInfo.latestVersion"
+    :release-notes-url="updateInfo.releaseNotesUrl"
+    :downloaded-bytes="updateDownloadedBytes"
+    :total-bytes="updateTotalBytes"
+    :speed-bytes-per-second="updateSpeedBytesPerSecond"
+    @update="beginUpdateDownload"
+    @cancel="cancelUpdateDownload"
+  />
   <LoginPage
     v-if="!isAuthenticated && !authLoading"
     :initial-login="savedLogin"

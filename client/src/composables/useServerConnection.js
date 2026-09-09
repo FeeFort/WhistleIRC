@@ -144,6 +144,60 @@ function setLobbySettings(channel, bestOf, nextPickTeam) {
     : false;
 }
 
+function sendUpdateCommand(type) {
+  return socket.value ? send(socket.value, { type }) : false;
+}
+
+function requestUpdateCheck() {
+  const { socketInstance, ownsSocket } = getRequestSocket();
+  if (ownsSocket) socket.value = socketInstance;
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const finish = (callback, value) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeoutId);
+      socketInstance.removeEventListener("open", handleOpen);
+      socketInstance.removeEventListener("message", handleMessage);
+      socketInstance.removeEventListener("error", handleError);
+      socketInstance.removeEventListener("close", handleClose);
+      if (ownsSocket && socketInstance.readyState < WebSocket.CLOSING) socketInstance.close();
+      callback(value);
+    };
+    const handleOpen = () => send(socketInstance, { type: "check_update" });
+    const handleMessage = (event) => {
+      let message;
+      try {
+        message = JSON.parse(event.data);
+      } catch {
+        return;
+      }
+      if (message.type === "update_progress" || message.type === "update_error") lastEvent.value = message;
+      if (message.type === "update_check_result") {
+        if (ownsSocket) {
+          settled = true;
+          clearTimeout(timeoutId);
+          socketInstance.removeEventListener("open", handleOpen);
+          socketInstance.removeEventListener("error", handleError);
+          resolve(message);
+        } else {
+          finish(resolve, message);
+        }
+      }
+      if (message.type === "update_error") finish(reject, new Error(message.message || "Unable to check for updates."));
+    };
+    const handleError = () => finish(reject, new Error("Unable to connect to the update service."));
+    const handleClose = () => finish(reject, new Error("Update service connection closed."));
+    const timeoutId = setTimeout(() => finish(reject, new Error("Update check timed out.")), loginTimeout);
+
+    socketInstance.addEventListener("open", handleOpen);
+    socketInstance.addEventListener("message", handleMessage);
+    socketInstance.addEventListener("error", handleError);
+    socketInstance.addEventListener("close", handleClose);
+    if (socketInstance.readyState === WebSocket.OPEN) handleOpen();
+  });
+}
+
 function closeSocket(sendLogout = false) {
   if (pendingLogin) {
     clearTimeout(pendingLogin.timeoutId);
@@ -290,5 +344,9 @@ export function useServerConnection() {
     partChannel,
     setLobbyScore,
     setLobbySettings,
+    checkUpdate: requestUpdateCheck,
+    startUpdate: () => sendUpdateCommand("start_update"),
+    cancelUpdate: () => sendUpdateCommand("cancel_update"),
+    confirmInstall: () => sendUpdateCommand("confirm_install"),
   };
 }

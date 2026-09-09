@@ -313,7 +313,8 @@ html.app-light .app-dialog-mask {
 .create-lobby-dialog,
 .add-channel-dialog,
 .lobby-settings-dialog,
-.command-confirm-dialog {
+.command-confirm-dialog,
+.update-dialog {
   overflow: hidden;
   border: 1px solid var(--app-border) !important;
   border-radius: 0.85rem !important;
@@ -347,7 +348,10 @@ html.app-light .app-dialog-mask {
 .add-channel-dialog .p-dialog-footer,
 .lobby-settings-dialog .p-dialog-header,
 .lobby-settings-dialog .p-dialog-content,
-.lobby-settings-dialog .p-dialog-footer {
+.lobby-settings-dialog .p-dialog-footer,
+.update-dialog .p-dialog-header,
+.update-dialog .p-dialog-content,
+.update-dialog .p-dialog-footer {
   background: transparent !important;
   color: var(--app-text) !important;
 }
@@ -357,7 +361,8 @@ html.app-light .app-dialog-mask {
 .lobby-messages-dialog .p-dialog-header,
 .create-lobby-dialog .p-dialog-header,
 .add-channel-dialog .p-dialog-header,
-.lobby-settings-dialog .p-dialog-header {
+.lobby-settings-dialog .p-dialog-header,
+.update-dialog .p-dialog-header {
   padding: 1.1rem 1.25rem 0.9rem !important;
   border-bottom: 1px solid var(--app-border) !important;
 }
@@ -367,7 +372,8 @@ html.app-light .app-dialog-mask {
 .lobby-messages-dialog .p-dialog-title,
 .create-lobby-dialog .p-dialog-title,
 .add-channel-dialog .p-dialog-title,
-.lobby-settings-dialog .p-dialog-title {
+.lobby-settings-dialog .p-dialog-title,
+.update-dialog .p-dialog-title {
   color: var(--app-text) !important;
   font-size: 1rem;
   font-weight: 800;
@@ -378,7 +384,8 @@ html.app-light .app-dialog-mask {
 .lobby-messages-dialog .p-dialog-content,
 .create-lobby-dialog .p-dialog-content,
 .add-channel-dialog .p-dialog-content,
-.lobby-settings-dialog .p-dialog-content {
+.lobby-settings-dialog .p-dialog-content,
+.update-dialog .p-dialog-content {
   padding: 1.15rem 1.25rem !important;
 }
 
@@ -387,7 +394,8 @@ html.app-light .app-dialog-mask {
 .lobby-messages-dialog .p-dialog-footer,
 .create-lobby-dialog .p-dialog-footer,
 .add-channel-dialog .p-dialog-footer,
-.lobby-settings-dialog .p-dialog-footer {
+.lobby-settings-dialog .p-dialog-footer,
+.update-dialog .p-dialog-footer {
   display: flex;
   gap: 0.55rem;
   padding: 0.9rem 1.25rem 1.1rem !important;
@@ -492,7 +500,8 @@ html.app-light .app-dialog-mask {
 .lobby-messages-dialog .p-dialog-close-button,
 .create-lobby-dialog .p-dialog-close-button,
 .add-channel-dialog .p-dialog-close-button,
-.lobby-settings-dialog .p-dialog-close-button {
+.lobby-settings-dialog .p-dialog-close-button,
+.update-dialog .p-dialog-close-button {
   color: var(--app-muted) !important;
   border-radius: 0.5rem !important;
 }
@@ -502,7 +511,8 @@ html.app-light .app-dialog-mask {
 .lobby-messages-dialog .p-dialog-close-button:hover,
 .create-lobby-dialog .p-dialog-close-button:hover,
 .add-channel-dialog .p-dialog-close-button:hover,
-.lobby-settings-dialog .p-dialog-close-button:hover {
+.lobby-settings-dialog .p-dialog-close-button:hover,
+.update-dialog .p-dialog-close-button:hover {
   color: var(--app-primary-bright) !important;
   background: rgba(var(--app-primary-rgb), 0.12) !important;
 }
@@ -577,7 +587,8 @@ html.app-light .app-dialog-mask {
 .lobby-messages-dialog .p-button:not(.p-button-text),
 .create-lobby-dialog .p-button:not(.p-button-text),
 .add-channel-dialog .p-button:not(.p-button-text),
-.lobby-settings-dialog .p-button:not(.p-button-text) {
+.lobby-settings-dialog .p-button:not(.p-button-text),
+.update-dialog .p-button:not(.p-button-text) {
   border-color: var(--app-primary) !important;
   border-radius: 0.6rem !important;
   background: var(--app-primary) !important;
@@ -589,7 +600,8 @@ html.app-light .app-dialog-mask {
 .lobby-messages-dialog .p-button:not(.p-button-text):hover:not(:disabled),
 .create-lobby-dialog .p-button:not(.p-button-text):hover:not(:disabled),
 .add-channel-dialog .p-button:not(.p-button-text):hover:not(:disabled),
-.lobby-settings-dialog .p-button:not(.p-button-text):hover:not(:disabled) {
+.lobby-settings-dialog .p-button:not(.p-button-text):hover:not(:disabled),
+.update-dialog .p-button:not(.p-button-text):hover:not(:disabled) {
   border-color: var(--app-primary-bright) !important;
   background: var(--app-primary-bright) !important;
 }
@@ -599,7 +611,8 @@ html.app-light .app-dialog-mask {
 .lobby-messages-dialog .p-button.p-button-text,
 .create-lobby-dialog .p-button.p-button-text,
 .add-channel-dialog .p-button.p-button-text,
-.lobby-settings-dialog .p-button.p-button-text {
+.lobby-settings-dialog .p-button.p-button-text,
+.update-dialog .p-button.p-button-text {
   border-color: transparent !important;
   background: transparent !important;
   color: var(--app-muted) !important;
@@ -610,10 +623,24 @@ html.app-light .app-dialog-mask {
 .lobby-messages-dialog .p-button.p-button-text:hover:not(:disabled),
 .create-lobby-dialog .p-button.p-button-text:hover:not(:disabled),
 .add-channel-dialog .p-button.p-button-text:hover:not(:disabled),
-.lobby-settings-dialog .p-button.p-button-text:hover:not(:disabled) {
+.lobby-settings-dialog .p-button.p-button-text:hover:not(:disabled),
+.update-dialog .p-button.p-button-text:hover:not(:disabled) {
   border-color: transparent !important;
   background: rgba(var(--app-primary-rgb), 0.12) !important;
   color: var(--app-primary-bright) !important;
+}
+
+.update-dialog .p-progressbar {
+  height: 0.5rem !important;
+  overflow: hidden;
+  border: 1px solid var(--app-border) !important;
+  border-radius: 999px !important;
+  background: var(--app-control) !important;
+}
+
+.update-dialog .p-progressbar-value {
+  border-radius: 999px !important;
+  background: var(--app-primary) !important;
 }
 
 .lobby-settings-dialog .p-selectbutton {
