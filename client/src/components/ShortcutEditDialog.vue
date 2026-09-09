@@ -8,7 +8,7 @@ import ToggleSwitch from "primevue/toggleswitch";
 import Button from "primevue/button";
 import { FileCheck, FileInput, PenLine, Upload } from "@lucide/vue";
 import { useShortcuts } from "../composables/useShortcuts";
-import { detectConflicts, parseShortcutsFile } from "../composables/useShortcutImportExport";
+import { detectConflicts, normalizeShortcutName, parseShortcutsFile } from "../composables/useShortcutImportExport";
 import { useToast } from "primevue/usetoast";
 
 const props = defineProps({
@@ -36,6 +36,23 @@ const renameMode = ref(false);
 const renameValue = ref("");
 const conflictItems = computed(() => importedItems.value.filter((item) => item.conflictsWith));
 const currentConflict = computed(() => conflictItems.value[conflictIndex.value] || null);
+const renameValidationError = computed(() => {
+  if (!renameMode.value || !currentConflict.value) return "";
+  const normalizedName = normalizeShortcutName(renameValue.value);
+  if (!normalizedName) return "Name can't be empty";
+
+  const existingConflict = props.existingShortcuts.some((existing) => {
+    return normalizeShortcutName(existing.label ?? existing.name) === normalizedName;
+  });
+  if (existingConflict) return "Already exists";
+
+  const duplicateInImport = importedItems.value.some(
+    (item) => item !== currentConflict.value && normalizeShortcutName(item.imported.label) === normalizedName,
+  );
+  if (duplicateInImport) return "Duplicate within this import";
+  return "";
+});
+const canRename = computed(() => renameMode.value && !renameValidationError.value);
 const importCount = computed(() => importedItems.value.filter((item) => item.resolution !== "skip").length);
 const skippedCount = computed(() => importedItems.value.filter((item) => item.resolution === "skip").length);
 
@@ -90,7 +107,13 @@ const colorNoHash = computed({
 
 const previewColor = computed(() => normalizeShortcutColor(form.value.color));
 
-const canSave = computed(() => form.value.label.trim() && form.value.command.trim());
+const formNameError = computed(() => {
+  const normalizedName = normalizeShortcutName(form.value.label);
+  if (!normalizedName) return "Name can't be empty";
+  if (!props.shortcut && props.existingShortcuts.some((existing) => normalizeShortcutName(existing.label ?? existing.name) === normalizedName)) return "A shortcut with this name already exists";
+  return "";
+});
+const canSave = computed(() => Boolean(form.value.command.trim() && !formNameError.value));
 
 function close() {
   emit("update:visible", false);
@@ -140,7 +163,7 @@ function resolveCurrent(resolution) {
   if (!current) return finalizeImport();
   if (resolution === "rename") {
     const value = renameValue.value.trim();
-    if (!value) return;
+    if (!canRename.value) return;
     current.imported = { ...current.imported, label: value };
     current.resolution = "rename";
   } else {
@@ -197,12 +220,19 @@ function remove() {
         <div class="shortcut-dialog__conflict-card">
           <div class="shortcut-dialog__conflict-label"><FileInput :size="15" /><span>From import</span></div>
           <div class="shortcut-dialog__import-name">
-            <InputText v-if="renameMode" v-model="renameValue" :placeholder="currentConflict.imported.label" />
+            <InputText
+              v-if="renameMode"
+              v-model="renameValue"
+              :placeholder="currentConflict.imported.label"
+              :class="{ 'shortcut-dialog__input--invalid': renameValidationError }"
+              aria-label="Imported shortcut name"
+            />
             <strong v-else>{{ currentConflict.imported.label }}</strong>
             <Button v-if="!renameMode" text rounded aria-label="Rename imported shortcut" @click="startRename">
               <PenLine :size="12" />
             </Button>
           </div>
+          <small v-if="renameMode && renameValidationError" class="shortcut-dialog__field-error">{{ renameValidationError }}</small>
           <code class="shortcut-dialog__mono">{{ currentConflict.imported.command }}</code>
         </div>
       </div>
@@ -231,6 +261,7 @@ function remove() {
       <label class="shortcut-dialog__field">
         <span class="shortcut-dialog__label">Name</span>
         <InputText v-model="form.label" placeholder="e.g. GLHF start" />
+        <small v-if="formNameError" class="shortcut-dialog__field-error">{{ formNameError }}</small>
       </label>
 
       <label class="shortcut-dialog__field">
@@ -271,7 +302,7 @@ function remove() {
       <span class="shortcut-dialog__footer-right">
         <template v-if="importMode && currentConflict">
           <Button label="Skip" text severity="secondary" @click="resolveCurrent('skip')" />
-          <Button :label="renameMode ? 'Add as new' : 'Overwrite'" @click="resolveCurrent(renameMode ? 'rename' : 'overwrite')" />
+          <Button :label="renameMode ? 'Add as new' : 'Overwrite'" :disabled="renameMode && !canRename" @click="resolveCurrent(renameMode ? 'rename' : 'overwrite')" />
         </template>
         <Button v-else-if="!importMode" label="Cancel" text severity="secondary" @click="close" />
         <Button v-if="importMode && !importedItems.length" @click="openImportPicker">
@@ -420,6 +451,16 @@ function remove() {
 .shortcut-dialog__conflict-card strong { overflow: hidden; color: var(--app-text); font-size: 0.8rem; text-overflow: ellipsis; white-space: nowrap; }
 .shortcut-dialog__conflict-card code { overflow: hidden; color: var(--app-muted); font-size: 0.7rem; text-overflow: ellipsis; white-space: nowrap; }
 .shortcut-dialog__conflict-card .p-inputtext { width: 100%; min-width: 0; }
+.shortcut-dialog__conflict-card .shortcut-dialog__input--invalid,
+.shortcut-dialog__conflict-card .shortcut-dialog__input--invalid:focus {
+  border-color: var(--app-danger, #f87171) !important;
+  box-shadow: 0 0 0 0.15rem rgba(248, 113, 113, 0.14) !important;
+}
+.shortcut-dialog__field-error {
+  color: var(--app-danger, #f87171);
+  font-size: 0.68rem;
+  line-height: 1.3;
+}
 .shortcut-dialog__import-name { display: flex; align-items: center; gap: 0.25rem; min-width: 0; }
 .shortcut-dialog__import-name .p-button { width: 1.35rem; height: 1.35rem; flex-shrink: 0; padding: 0; color: var(--app-muted); }
 .shortcut-dialog__import-name .p-button:hover { color: var(--app-primary-bright); }

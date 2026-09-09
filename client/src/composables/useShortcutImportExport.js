@@ -2,6 +2,10 @@ import serverPackage from "../../../server/package.json";
 
 const SCHEMA_VERSION = 1;
 
+export function normalizeShortcutName(name) {
+  return String(name ?? "").trim().toLowerCase();
+}
+
 function normalizeShortcut(shortcut) {
   return {
     label: String(shortcut.name ?? shortcut.label ?? "").trim(),
@@ -48,6 +52,15 @@ export async function parseShortcutsFile(file) {
       return normalized;
     });
     if (errors.length) return { valid: false, errors };
+    const names = new Set();
+    if (shortcuts.some((shortcut) => {
+      const normalizedName = normalizeShortcutName(shortcut.label);
+      if (names.has(normalizedName)) return true;
+      names.add(normalizedName);
+      return false;
+    })) {
+      return { valid: false, errors: ["Duplicate names found in import file"] };
+    }
     return { valid: true, shortcuts };
   } catch {
     return { valid: false, errors: ["Invalid JSON file"] };
@@ -58,7 +71,7 @@ export function detectConflicts(importedShortcuts, existingShortcuts) {
   return importedShortcuts.map((imported) => ({
     imported,
     conflictsWith: existingShortcuts.find(
-      (existing) => String(existing.label ?? existing.name ?? "").trim().toLowerCase() === imported.label.trim().toLowerCase(),
+      (existing) => normalizeShortcutName(existing.label ?? existing.name) === normalizeShortcutName(imported.label),
     ) || null,
   }));
 }

@@ -4,7 +4,7 @@ import Button from "primevue/button";
 import { Download, Upload } from "@lucide/vue";
 import { useToast } from "primevue/usetoast";
 import { useShortcuts } from "../composables/useShortcuts";
-import { exportShortcuts, parseShortcutsFile } from "../composables/useShortcutImportExport";
+import { exportShortcuts, normalizeShortcutName, parseShortcutsFile } from "../composables/useShortcutImportExport";
 import ShortcutEditDialog from "./ShortcutEditDialog.vue";
 
 const { customShortcuts, addCustomShortcut, updateCustomShortcut } = useShortcuts();
@@ -38,7 +38,7 @@ async function handleFileSelected(event) {
 }
 
 function handleImport({ items, skipped }) {
-  const usedNames = new Set(customShortcuts.value.map((shortcut) => shortcut.label.trim().toLowerCase()));
+  const usedNames = new Set(customShortcuts.value.map((shortcut) => normalizeShortcutName(shortcut.label)));
   let imported = 0;
   items.forEach(({ imported: item, conflictsWith, resolution }) => {
     if (resolution === "skip") return;
@@ -49,10 +49,10 @@ function handleImport({ items, skipped }) {
       if (resolution === "rename") {
         const base = item.label;
         let suffix = 2;
-        while (usedNames.has(data.label.trim().toLowerCase())) data = { ...item, label: `${base} (${suffix++})` };
+        while (usedNames.has(normalizeShortcutName(data.label))) data = { ...item, label: `${base} (${suffix++})` };
       }
       addCustomShortcut(data);
-      usedNames.add(data.label.trim().toLowerCase());
+      usedNames.add(normalizeShortcutName(data.label));
     }
     imported += 1;
   });
