@@ -10,10 +10,22 @@ import { fetchApi } from "./osu-api/osuApiClient.js";
 import { config } from "./config.js";
 import { ClientMessage, ConnectionState, IrcCredentials, IrcLine, LobbyState, ParsedBanchoBotMessage, Player, PlayerScore, Team } from "./types.js";
 import { fileURLToPath } from "node:url";
+import { UpdateError, UpdateManager } from "./updater/updateManager.js";
+import { applyPendingUpdate } from "./updater/applyUpdate.js";
 
 const IRC_HOST = "irc.ppy.sh";
 const IRC_PORT = 6667;
 const AUTH_ERROR = "Login or password is incorrect.";
+
+if (process.argv[2] === "--apply-update") {
+  try {
+    await applyPendingUpdate(process.argv[3], process.argv[4]);
+    process.exit(0);
+  } catch (error) {
+    console.error(`Update installation failed: ${(error as Error).message}`);
+    process.exit(1);
+  }
+}
 
 function formatLogTime(date = new Date()): string {
   return date.toTimeString().slice(0, 8);
@@ -713,6 +725,7 @@ class BanchoConnection {
 }
 
 const banchoConnection = new BanchoConnection();
+const updateManager = new UpdateManager();
 let shuttingDown = false;
 
 function isNonEmptyString(value: unknown): value is string {
@@ -810,6 +823,10 @@ function validateMessage(message: unknown): string | null {
       }
       return null;
     },
+    check_update: () => null,
+    start_update: () => null,
+    cancel_update: () => null,
+    confirm_install: () => null,
   };
 
   const validator = validators[message.type];
@@ -818,6 +835,44 @@ function validateMessage(message: unknown): string | null {
   }
 
   return validator();
+}
+
+function sendUpdateError(client: WebSocket, error: unknown): void {
+  const updateError = error instanceof UpdateError ? error : new UpdateError("UPDATE_FAILED", (error as Error).message);
+  sendJson(client, { type: "update_error", code: updateError.code, message: updateError.message });
+}
+
+async function handleCheckUpdate(client: WebSocket): Promise<void> {
+  try {
+    sendJson(client, await updateManager.check());
+  } catch (error) {
+    sendUpdateError(client, error);
+  }
+}
+
+async function handleStartUpdate(client: WebSocket): Promise<void> {
+  try {
+    await updateManager.download((payload) => sendJson(client, payload));
+  } catch (error) {
+    sendUpdateError(client, error);
+  }
+}
+
+async function handleCancelUpdate(client: WebSocket): Promise<void> {
+  try {
+    await updateManager.cancel();
+  } catch (error) {
+    sendUpdateError(client, error);
+  }
+}
+
+function handleConfirmInstall(client: WebSocket): void {
+  try {
+    updateManager.install((payload) => sendJson(client, payload));
+    setTimeout(() => shutdown("update"), 250);
+  } catch (error) {
+    sendUpdateError(client, error);
+  }
 }
 
 function handleLogin(client: WebSocket, message: ClientMessage): void {
@@ -983,6 +1038,10 @@ function handleClientMessage(client: WebSocket, rawMessage: unknown): void {
     part_channel: handlePartChannel,
     set_lobby_score: handleSetLobbyScore,
     set_lobby_settings: handleSetLobbySettings,
+    check_update: handleCheckUpdate,
+    start_update: handleStartUpdate,
+    cancel_update: handleCancelUpdate,
+    confirm_install: handleConfirmInstall,
   };
 
   handlers[message.type](client, message);

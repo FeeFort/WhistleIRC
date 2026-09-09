@@ -193,7 +193,11 @@ export type ClientMessage =
   | { type: "leave_channel"; channel: string }
   | { type: "part_channel"; channel: string }
   | { type: "set_lobby_score"; channel: string; teamRedScore: number; teamBlueScore: number }
-  | { type: "set_lobby_settings"; channel: string; bestOf: number | null; nextPickTeam: string | null };
+  | { type: "set_lobby_settings"; channel: string; bestOf: number | null; nextPickTeam: string | null }
+  | { type: "check_update" }
+  | { type: "start_update" }
+  | { type: "cancel_update" }
+  | { type: "confirm_install" };
 
 export interface PersistedSession {
   clientId: string;
@@ -203,3 +207,43 @@ export interface PersistedSession {
 }
 
 export type AllowedMethods = "GET" | "POST";
+
+//Updater
+
+export interface GithubAsset {
+  name: string;
+  browser_download_url: string;
+  size: number;
+  digest?: string;
+}
+
+export interface GithubRelease {
+  tag_name: string;
+  html_url?: string;
+  published_at?: string;
+  assets: GithubAsset[];
+}
+
+export interface UpdateInfo {
+  version: string;
+  asset: GithubAsset;
+  releaseNotesUrl?: string;
+  publishedAt?: string;
+}
+
+export type UpdateProgress =
+  | { type: "update_progress"; stage: "downloading"; totalBytes: number; downloadedBytes: number }
+  | { type: "update_progress"; stage: "verifying" | "ready_to_install" | "installing" };
+
+export type UpdateCheckResult = {
+  type: "update_check_result";
+  available: boolean;
+  currentVersion: string;
+  latestVersion?: string;
+  releaseNotesUrl?: string;
+  publishedAt?: string;
+};
+
+export type UpdaterState = "idle" | "checking" | "available" | "downloading" | "ready_to_install" | "installing";
+export type UpdateProgressSender = (payload: UpdateProgress) => void;
+export type ApplyUpdate = (parentPid: number, assetPath: string) => Promise<void>;
