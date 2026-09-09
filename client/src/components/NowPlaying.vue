@@ -82,6 +82,10 @@ onBeforeUnmount(() => {
 
 const statusIcon = computed(() => (props.map?.status === "playing" ? Play : props.map?.status === "finished" ? Check : Clock3));
 const statusLabel = computed(() => (props.map?.status === "playing" ? "Playing" : props.map?.status === "finished" ? "Finished" : props.map?.error ? "Unable to load map" : "Waiting for start"));
+const beatmapUrl = computed(() => {
+  const beatmapId = props.map?.beatmapId ?? props.map?.id;
+  return beatmapId ? `https://osu.ppy.sh/b/${beatmapId}` : "";
+});
 const backgroundImage = computed(() => (props.map?.beatmapsetId ? `url(https://assets.ppy.sh/beatmaps/${props.map.beatmapsetId}/covers/card@2x.jpg)` : ""));
 const modLabels = Object.freeze({
   easy: "EZ",
@@ -142,8 +146,13 @@ const pickedByStyle = computed(() => {
         <div class="now-playing__details">
           <div v-if="map.error" class="now-playing__title">{{ map.error }}</div>
           <div v-else class="now-playing__title">
-            {{ map.artist || "Unknown artist" }} - {{ map.title || "Unknown title" }} <span v-if="map.diff">[{{ map.diff }}]</span
-            ><span v-if="map.mapperName" class="now-playing__mapper">mapped by {{ map.mapperName }}</span>
+            <a v-if="beatmapUrl" class="now-playing__beatmap-link" :href="beatmapUrl" target="_blank" rel="noopener noreferrer">
+              {{ map.artist || "Unknown artist" }} - {{ map.title || "Unknown title" }} <span v-if="map.diff">[{{ map.diff }}]</span>
+            </a>
+            <template v-else>
+              {{ map.artist || "Unknown artist" }} - {{ map.title || "Unknown title" }} <span v-if="map.diff">[{{ map.diff }}]</span>
+            </template>
+            <span v-if="map.mapperName" class="now-playing__mapper">mapped by {{ map.mapperName }}</span>
           </div>
           <div class="now-playing__meta">
             <span v-if="map.starRating != null">★ {{ Number(map.starRating).toFixed(2) }}</span>
@@ -227,6 +236,13 @@ const pickedByStyle = computed(() => {
   white-space: nowrap;
   font-size: 0.8rem;
   font-weight: 800;
+}
+.now-playing__beatmap-link {
+  color: inherit;
+  text-decoration: none;
+}
+.now-playing__beatmap-link:hover {
+  text-decoration: underline;
 }
 .now-playing__mapper {
   margin-left: 0.375rem;

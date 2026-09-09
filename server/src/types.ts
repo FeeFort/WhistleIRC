@@ -83,7 +83,7 @@ export type PlayerSnapshot = {
   mods: string[];
 };
 
-export type PlayerJoined = { username: string; slot: number; team: Team; mods: string[] };
+export type PlayerJoined = { username: string; slot: number; team: Team | null; mods: string[] };
 export type PlayerLeft = { username: string };
 export type PlayerTeamChange = { username: string; team: Team };
 export type PlayerSlotChange = { username: string; slot: number };
@@ -91,6 +91,7 @@ export type PlayerScore = { username: string; score: number; result: string };
 export type MatchFinished = { finished: true };
 export type MatchMetadata = { bestOf: number } | { nextPickTeam: string };
 export type SizeConfirmation = { size: number };
+export type SlotLockState = { slot: number; locked: boolean };
 export type TimerMessage = { type: "aborted" } | { type: "finished" } | { type: "started"; seconds: number };
 export type MpSetCommand = { teamMode: TeamMode; scoreMode: ScoreMode; size: number };
 export type MpSizeCommand = { size: number };
@@ -109,6 +110,7 @@ export type ParsedBanchoBotMessage =
   | { type: "match_finished"; value: MatchFinished }
   | { type: "metadata"; value: MatchMetadata }
   | { type: "size"; value: SizeConfirmation }
+  | { type: "slot_lock"; value: SlotLockState }
   | { type: "timer"; value: TimerMessage }
   | { type: "mode"; value: GameMode }
   | null;
@@ -163,6 +165,7 @@ export type LobbyState = {
   scoreMode: ScoreMode;
   mode: GameMode;
   slots: (string | null)[];
+  slotLocks: boolean[];
   size: number;
   timer: Timer;
   status: "active" | "closed";
@@ -184,7 +187,7 @@ export type ClientMessage =
   | { type: "logout" }
   | { type: "osu_login"; clientId: string; clientSecret: string; code: string; redirectUri: string }
   | { type: "osu_logout" }
-  | { type: "api_request"; endpoint: string }
+  | { type: "api_request"; endpoint: string; method?: AllowedMethods; body?: unknown }
   | { type: "send_message"; channel: string; message: string }
   | { type: "join_channel"; channel: string }
   | { type: "leave_channel"; channel: string }
@@ -198,3 +201,5 @@ export interface PersistedSession {
   refreshToken: string;
   user: OsuUser;
 }
+
+export type AllowedMethods = "GET" | "POST";

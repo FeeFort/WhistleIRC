@@ -7,6 +7,7 @@ import {
   GameMode,
   TeamSettings,
   SizeConfirmation,
+  SlotLockState,
   TimerMessage,
   BeatmapInfo,
   ActiveMods,
@@ -144,6 +145,14 @@ function parseSizeConfirmation(text: string): SizeConfirmation | null {
   return { size: Number(size) };
 }
 
+function parseSlotLockState(text: string): SlotLockState | null {
+  const match = text.match(/^Slot\s+(\d+)\s+(?:is\s+)?(locked|open|opened|unlocked)\.?$/i);
+  if (!match) return null;
+  const slot = Number(match[1]);
+  if (!Number.isInteger(slot) || slot < 1 || slot > 16) return null;
+  return { slot, locked: /locked/i.test(match[2]) };
+}
+
 function parseTimerMessage(text: string): TimerMessage | null {
   if (/^Countdown aborted\.?$/i.test(text.trim())) return { type: "aborted" };
   if (/^Countdown finished\.?$/i.test(text.trim())) return { type: "finished" };
@@ -261,12 +270,12 @@ function parsePlayerSnapshot(text: string): PlayerSnapshot | null {
 }
 
 function parsePlayerJoined(text: string): PlayerJoined | null {
-  const match = text.match(/^(.+?) joined in slot\s+(\d+)\s+for team\s+(red|blue)\.?$/i);
+  const match = text.match(/^(.+?) joined in slot\s+(\d+)(?:\s+for team\s+(red|blue))?\.?$/i);
   if (!match) return null;
   return {
     username: match[1].trim(),
     slot: Number(match[2]),
-    team: match[3].toLowerCase() as Team,
+    team: match[3] ? (match[3].toLowerCase() as Team) : null,
     mods: [],
   };
 }
@@ -319,6 +328,8 @@ function parseMatchMetadata(text: string): MatchMetadata | null {
 }
 
 export function parseBanchoBotMessage(text: string): ParsedBanchoBotMessage {
+  const slotLock = parseSlotLockState(text);
+  if (slotLock) return { type: "slot_lock", value: slotLock };
   const room = parseRoomName(text);
   if (room) return { type: "room", value: room };
 

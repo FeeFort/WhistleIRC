@@ -8,7 +8,7 @@ import SelectButton from "primevue/selectbutton";
 import Toast from "primevue/toast";
 import ToggleSwitch from "primevue/toggleswitch";
 import { useToast } from "primevue/usetoast";
-import { ArrowLeft, Check, ChevronDown, CircleX, DoorOpen, Map, Play, RotateCcw, Settings2, Sparkles } from "@lucide/vue";
+import { ArrowLeft, Check, ChevronDown, CircleX, DoorOpen, Map as MapIcon, Play, RotateCcw, Settings2, Sparkles } from "@lucide/vue";
 import ChatWindow from "./components/ChatWindow.vue";
 import AddChannelDialog from "./components/AddChannelDialog.vue";
 import CreateLobbyDialog from "./components/CreateLobbyDialog.vue";
@@ -19,6 +19,8 @@ import MappoolCard from "./components/MappoolCard.vue";
 import PlayerListCard from "./components/PlayerListCard.vue";
 import AppSidebar from "./components/AppSidebar.vue";
 import SidebarSectionCard from "./components/SidebarSectionCard.vue";
+import SettingsModal from "./components/SettingsModal.vue";
+import ShortcutImportExportSettings from "./components/ShortcutImportExportSettings.vue";
 import { DEFAULT_PRIMARY_COLOR, useDarkMode } from "./composables/useDarkMode";
 import { DEFAULT_CHAT_SETTINGS, useChatSettings } from "./composables/useChatSettings";
 import { HIGHLIGHT_STYLE_OPTIONS, highlightTextStyle, messageHasHighlight, normalizeHighlightStyles, normalizeHighlightWords } from "./composables/useMessageHighlighting";
@@ -73,6 +75,7 @@ const {
   highlightStyles,
   highlightColorMode,
   highlightColor,
+  fullSlots,
 } = useChatSettings();
 const { nickColor: baseNickColor } = useNickColor();
 const {
@@ -850,7 +853,7 @@ const activeLobbyPlayers = computed(() => {
         .map((mod) => mod.trim())
         .filter((mod) => mod && !/^(?:enabled|disabled|freemod|fm)$/i.test(mod))
     : [];
-  return [...lobby.players]
+  const players = [...lobby.players]
     .sort((left, right) => {
       const leftSlot = Number.isFinite(left.slot) ? left.slot : Number.POSITIVE_INFINITY;
       const rightSlot = Number.isFinite(right.slot) ? right.slot : Number.POSITIVE_INFINITY;
@@ -869,6 +872,25 @@ const activeLobbyPlayers = computed(() => {
         .filter((mod) => !/^(?:enabled|disabled|freemod|fm)$/i.test(String(mod).trim()))
         .filter((mod, index, mods) => mods.findIndex((candidate) => candidate.toLowerCase() === mod.toLowerCase()) === index),
     }));
+  if (!fullSlots.value) return players;
+  const playersBySlot = new Map(players.filter((player) => Number.isInteger(player.slot)).map((player) => [player.slot, player]));
+  return Array.from({ length: 16 }, (_, index) => {
+    const slot = index + 1;
+    const player = playersBySlot.get(slot);
+    if (player) return player;
+    return {
+      name: `Slot ${slot}`,
+      slot,
+      isSlot: true,
+      isLocked: Boolean(lobby.slotLocks?.[index]),
+      profileUrl: "",
+      isHost: false,
+      isReady: false,
+      avatarUrl: "",
+      team: null,
+      mods: [],
+    };
+  });
 });
 const activeLobbyReferees = computed(() => {
   const channel = joinedChannels.value.find((item) => item.id === activeChat.value);
@@ -947,6 +969,7 @@ function createDefaultLobbyState(channelName) {
     scoreMode: "Score",
     mode: "osu!",
     size: 16,
+    slotLocks: Array.from({ length: 16 }, () => false),
     timer: { active: false, endsAt: null },
     status: "active",
   };
@@ -1044,7 +1067,11 @@ function applyLobbyState(event) {
     teamRedPlayers: Array.isArray(incomingLobby.teamRedPlayers) ? [...incomingLobby.teamRedPlayers] : currentLobby.teamRedPlayers,
     teamBluePlayers: Array.isArray(incomingLobby.teamBluePlayers) ? [...incomingLobby.teamBluePlayers] : currentLobby.teamBluePlayers,
     players: Array.isArray(incomingLobby.players) ? incomingLobby.players.map((player) => ({ ...player })) : currentLobby.players,
+    slotLocks: Array.isArray(incomingLobby.slotLocks) ? [...incomingLobby.slotLocks] : currentLobby.slotLocks,
   };
+  if (!Array.isArray(incomingLobby.slotLocks) && Number.isInteger(nextLobby.size)) {
+    nextLobby.slotLocks = Array.from({ length: 16 }, (_, index) => index >= nextLobby.size);
+  }
   channel.lobby = nextLobby;
   lobbyStates[eventChannelId] = nextLobby;
   channel.closed = channel.lobby.status === "closed";
@@ -1199,8 +1226,12 @@ function notificationMatchesTrigger(trigger, message) {
   return trigger === "always" || messageHasHighlight(message.text, highlightWords.value);
 }
 
+function isAppFocused() {
+  return document.visibilityState === "visible" && document.hasFocus();
+}
+
 function notifyIncomingMessage(chatId, message) {
-  if (activeChat.value === chatId) return;
+  if (activeChat.value === chatId && isAppFocused()) return;
   if (ignoreBanchoBot.value && message.author?.toLowerCase() === "banchobot") return;
 
   if (soundEnabled.value && notificationMatchesTrigger(soundTrigger.value, message)) {
@@ -1222,8 +1253,8 @@ function appendChatMessage(chatId, message, { notify = false } = {}) {
   list.push(message);
   if (activeChat.value !== chatId) {
     unreadChats[chatId] = true;
-    if (notify) notifyIncomingMessage(chatId, message);
   }
+  if (notify) notifyIncomingMessage(chatId, message);
 }
 
 function localNowPlayingMap(map, pickedBy = null) {
@@ -1243,14 +1274,86 @@ function setNowPlaying(chatId, map) {
   nowPlayingByLobby[chatId] = map;
 }
 
-function nextPickedMap(chatId, currentMap = null) {
-  if (!pool.value) return null;
-  return pool.value.maps.find((map) => {
-    const state = getMapState(chatId, map.slot);
-    const isCurrentMap = (currentMap?.slot && map.slot === currentMap.slot) || (currentMap?.id && map.id === currentMap.id);
-    return state.picked && !state.banned && !isCurrentMap;
-  });
+const MOD_ALIASES = Object.freeze({
+  easy: "EZ",
+  nofail: "NF",
+  halftime: "HT",
+  hardrock: "HR",
+  suddendeath: "SD",
+  perfect: "PF",
+  doubletime: "DT",
+  nightcore: "NC",
+  hidden: "HD",
+  flashlight: "FL",
+  relax: "RX",
+  autopilot: "AP",
+  spunout: "SO",
+  touchdevice: "TD",
+  freemod: "FM",
+});
+const MODS_WITHOUT_STAR_RATING_EFFECT = new Set(["FM", "NF", "RX", "SO", "AP", "SD"]);
+
+function normalizeMapMods(value) {
+  const values = Array.isArray(value) ? value : String(value || "").split(/\s*,\s*|\s+/);
+  return values
+    .map((mod) => String(mod).trim())
+    .filter(Boolean)
+    .filter((mod) => !/^(?:enabled|disabled|none)$/i.test(mod))
+    .map((mod) => MOD_ALIASES[mod.toLowerCase()] || mod.toUpperCase())
+    .filter((mod, index, mods) => mods.indexOf(mod) === index);
 }
+
+async function refreshNowPlayingMapAttributes(chatId, map) {
+  if (!map || !chatId || !map.baseBeatmapLoaded) return;
+  const lobby = lobbyStates[chatId];
+  const mods = normalizeMapMods(lobby?.activeMods || map.mods);
+  const baseDuration = Number(map.baseTotalSeconds ?? map.totalSeconds ?? map.total_seconds);
+  const baseStarRating = Number(map.baseStarRating ?? map.starRating);
+  const hasDoubleTime = mods.includes("DT");
+
+  if (Number.isFinite(baseStarRating)) {
+    map.starRating = baseStarRating;
+  }
+
+  if (Number.isFinite(baseDuration) && baseDuration > 0) {
+    const adjustedDuration = hasDoubleTime ? baseDuration * 0.67 : baseDuration;
+    map.totalSeconds = adjustedDuration;
+    map.total_seconds = adjustedDuration;
+  }
+
+  const beatmapId = map.beatmapId || map.id;
+  if (!beatmapId) return;
+  const requestKey = `${chatId}:${beatmapId}:${mods.join(",")}`;
+  const sameModsAsLastRequest = map.attributesModsKey === requestKey;
+  if (!sameModsAsLastRequest) {
+    map.attributesRequestVersion = (map.attributesRequestVersion || 0) + 1;
+    map.attributesModsKey = requestKey;
+  }
+
+  const affectingMods = mods.filter((mod) => !MODS_WITHOUT_STAR_RATING_EFFECT.has(mod));
+  if (!affectingMods.length || sameModsAsLastRequest) return;
+
+  const requestVersion = map.attributesRequestVersion;
+
+  try {
+    const response = await requestApi(`/beatmaps/${beatmapId}/attributes`, "POST", { mods: affectingMods });
+    const starRating = Number(response?.attributes?.star_rating ?? response?.star_rating);
+    if (Number.isFinite(starRating) && nowPlayingByLobby[chatId] === map && map.attributesRequestVersion === requestVersion) {
+      map.starRating = starRating;
+    }
+  } catch {
+    // Keep the base map data when modded attributes are unavailable.
+  }
+}
+
+watch(
+  () => [activeChat.value, activeLobbyState.value?.activeMods, nowPlayingByLobby[activeChat.value]?.beatmapId],
+  () => {
+    const chatId = activeChat.value;
+    const map = nowPlayingByLobby[chatId];
+    if (map?.baseBeatmapLoaded) refreshNowPlayingMapAttributes(chatId, map);
+  },
+);
 
 async function loadManualNowPlayingMap(chatId, beatmap) {
   const beatmapId = beatmap?.beatmapId || beatmap?.id;
@@ -1270,7 +1373,7 @@ async function loadManualNowPlayingMap(chatId, beatmap) {
         // The map itself is still usable when the optional mapper lookup fails.
       }
     }
-    setNowPlaying(chatId, {
+    const nextMap = {
       ...beatmap,
       title: info.title || info.beatmapset?.title || "Unknown title",
       artist: info.artist || info.beatmapset?.artist || "Unknown artist",
@@ -1288,7 +1391,12 @@ async function loadManualNowPlayingMap(chatId, beatmap) {
             : null,
       status: "waiting",
       error: null,
-    });
+    };
+    nextMap.baseTotalSeconds = nextMap.totalSeconds;
+    nextMap.baseStarRating = nextMap.starRating;
+    nextMap.baseBeatmapLoaded = true;
+    setNowPlaying(chatId, nextMap);
+    refreshNowPlayingMapAttributes(chatId, nextMap);
   } catch (error) {
     if (!previousMap) {
       setNowPlaying(chatId, { ...beatmap, status: "waiting", error: error.message || "Unable to load map" });
@@ -1315,9 +1423,7 @@ function handleNowPlayingEvent(chatId, text) {
     nowPlayingByLobby[chatId].status = "finished";
     window.setTimeout(() => {
       if (nowPlayingByLobby[chatId]?.status === "finished") {
-        const finishedMap = nowPlayingByLobby[chatId];
-        const nextMap = nextPickedMap(chatId, finishedMap);
-        nowPlayingByLobby[chatId] = nextMap ? localNowPlayingMap(nextMap) : null;
+        nowPlayingByLobby[chatId] = null;
       }
     }, 3000);
   }
@@ -1534,12 +1640,15 @@ function handleMappoolPick(map) {
   if (activeChatKind.value !== "lobby") return;
   const picker = activeLobbyState.value?.players?.find((player) => normalizeIrcNick(player.username) === normalizeIrcNick(currentUser.value));
   const totalSeconds = map.totalSeconds ?? map.total_seconds ?? null;
-  setNowPlaying(activeChat.value, {
+  const nextMap = {
     ...map,
     artist: map.artist || "",
     title: map.name,
     totalSeconds,
     total_seconds: totalSeconds,
+    baseTotalSeconds: totalSeconds,
+    baseStarRating: map.starRating,
+    baseBeatmapLoaded: true,
     pickedBy: activeLobbyState.value?.nextPickTeam || picker?.team || null,
     pickedByTeam:
       activeLobbyState.value?.nextPickTeam && normalizeIrcNick(activeLobbyState.value.nextPickTeam) === normalizeIrcNick(activeLobbyState.value.teamRed)
@@ -1549,7 +1658,9 @@ function handleMappoolPick(map) {
           : picker?.team || null,
     status: "waiting",
     error: null,
-  });
+  };
+  setNowPlaying(activeChat.value, nextMap);
+  refreshNowPlayingMapAttributes(activeChat.value, nextMap);
 }
 
 function handleSendResult(result) {
@@ -1609,17 +1720,8 @@ function handleSendResult(result) {
     @open-add-channel="addChannelDialogOpen = true"
     @close-chat="closeActiveChat"
   >
-    <div v-if="settingsOpen" class="settings-page">
-      <header class="settings-page__header">
-        <button type="button" class="settings-page__back" aria-label="Back to chat" @click="closeSettings">
-          <ArrowLeft :size="18" />
-        </button>
-        <div class="settings-page__title">
-          <Settings2 :size="20" />
-          <h1>Settings</h1>
-        </div>
-      </header>
-
+    <SettingsModal v-model:visible="settingsOpen">
+      <template #app>
       <section class="settings-page__section">
         <div class="settings-page__section-heading">
           <h2>App settings</h2>
@@ -1642,6 +1744,10 @@ function handleSendResult(result) {
         </div>
       </section>
 
+      </template>
+
+      <template #notifications>
+
       <section class="settings-page__section settings-page__section--notifications">
         <div class="settings-page__section-heading">
           <h2>Notifications</h2>
@@ -1650,7 +1756,7 @@ function handleSendResult(result) {
         <div class="settings-page__setting">
           <div class="settings-page__setting-info">
             <h3>Sound notifications</h3>
-            <p>Play a sound when a message arrives in a chat that is not currently open.</p>
+            <p>Play a sound when a message arrives in a chat that is not currently open or when the app is out of focus.</p>
           </div>
           <div class="settings-page__setting-control">
             <ToggleSwitch v-model="soundEnabled" inputId="notification-sound-enabled" class="app-solid-switch" />
@@ -1660,7 +1766,7 @@ function handleSendResult(result) {
         <div class="settings-page__setting">
           <div class="settings-page__setting-info">
             <h3>Toast notifications</h3>
-            <p>Show a toast when a message arrives in a chat that is not currently open.</p>
+            <p>Show a toast when a message arrives in a chat that is not currently open or when the app is out of focus.</p>
           </div>
           <div class="settings-page__setting-control">
             <ToggleSwitch v-model="toastEnabled" inputId="notification-toast-enabled" class="app-solid-switch" />
@@ -1760,6 +1866,10 @@ function handleSendResult(result) {
         </div>
       </section>
 
+      </template>
+
+      <template #now-playing>
+
       <section class="settings-page__section">
         <div class="settings-page__section-heading">
           <h2>Now Playing</h2>
@@ -1793,6 +1903,10 @@ function handleSendResult(result) {
         </div>
       </section>
 
+      </template>
+
+      <template #lobby>
+
       <section class="settings-page__section settings-page__section--lobby">
         <div class="settings-page__section-heading">
           <h2>Lobby settings</h2>
@@ -1810,9 +1924,31 @@ function handleSendResult(result) {
             </Button>
           </div>
         </div>
+        <div class="settings-page__setting">
+          <div class="settings-page__setting-info">
+            <h3>Slot display</h3>
+            <p>Show only occupied players or display all 16 lobby slots with their open/locked state.</p>
+          </div>
+          <div class="settings-page__setting-control">
+            <SelectButton v-model="fullSlots" :options="[{ label: 'Short slots', value: false }, { label: 'Full slots', value: true }]" optionLabel="label" optionValue="value" :allowEmpty="false" aria-label="Slot display mode" />
+          </div>
+        </div>
       </section>
 
       <LobbyMessagesSettings v-model:visible="lobbyMessagesSettingsOpen" />
+
+      </template>
+
+      <template #shortcuts>
+      <section class="settings-page__section">
+        <div class="settings-page__section-heading">
+          <h2>Shortcuts</h2>
+        </div>
+        <ShortcutImportExportSettings />
+      </section>
+      </template>
+
+      <template #chat>
 
       <section class="settings-page__section settings-page__section--chat">
         <div class="settings-page__section-heading">
@@ -2058,9 +2194,10 @@ function handleSendResult(result) {
           </button>
         </div>
       </Popover>
-    </div>
+      </template>
+    </SettingsModal>
 
-    <div v-else class="app-layout">
+    <div class="app-layout">
       <ChatWindow
         :title="activeChatTitle"
         :connected="connected"
@@ -2108,7 +2245,7 @@ function handleSendResult(result) {
           />
         </SidebarSectionCard>
         <PlayerListCard :players="activeLobbyPlayers" :current-user="currentUser" />
-        <SidebarSectionCard title="Mappool" :icon="Map" scrollable>
+        <SidebarSectionCard title="Mappool" :icon="MapIcon" scrollable>
           <MappoolCard :disabled="Boolean(roomClosedByChat[activeChat])" :lobby-id="activeChat" @send-command="handleCommand" @pick-map="handleMappoolPick" />
         </SidebarSectionCard>
       </div>

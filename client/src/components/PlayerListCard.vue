@@ -1,6 +1,6 @@
 <script setup>
 import { computed } from "vue";
-import { Users } from "@lucide/vue";
+import { Lock, LockOpen, Users } from "@lucide/vue";
 import { useNickColor } from "../composables/useNickColor";
 import { useChatSettings } from "../composables/useChatSettings";
 
@@ -33,6 +33,7 @@ const MOD_CODES = Object.freeze({
 });
 
 const visiblePlayers = computed(() => props.players.filter((player) => !player.isReferee));
+const realPlayerCount = computed(() => visiblePlayers.value.filter((player) => !player.isSlot).length);
 
 function colorFor(player) {
   if (player.team === "red") return redTeamColor.value;
@@ -45,6 +46,7 @@ function initials(name) {
 }
 
 function playerNameStyle(player) {
+  if (player.isSlot) return { color: "var(--app-muted)" };
   if (player.team === "red") return { color: redTeamColor.value };
   if (player.team === "blue") return { color: blueTeamColor.value };
   return { color: nickColor(player.name, props.currentUser) };
@@ -64,12 +66,16 @@ function playerMods(player) {
   <div class="player-list">
     <div class="player-list__header">
       <span class="player-list__heading"><Users :size="18" /> Players</span>
-      <span class="player-list__count">{{ visiblePlayers.length }}</span>
+      <span class="player-list__count">{{ realPlayerCount }}</span>
     </div>
 
     <ul class="player-list__items" :class="{ 'player-list__items--scrollable': visiblePlayers.length > 5 }">
       <li v-for="player in visiblePlayers" :key="player.name" class="player-row">
-        <span v-if="player.avatarUrl" class="player-row__avatar" :style="{ backgroundImage: `url(${player.avatarUrl})` }" />
+        <span v-if="player.isSlot" class="player-row__avatar player-row__avatar--slot" :class="{ 'player-row__avatar--locked': player.isLocked }" :title="player.isLocked ? 'Locked slot' : 'Open slot'">
+          <Lock v-if="player.isLocked" :size="13" />
+          <LockOpen v-else :size="13" />
+        </span>
+        <span v-else-if="player.avatarUrl" class="player-row__avatar" :style="{ backgroundImage: `url(${player.avatarUrl})` }" />
         <span v-else class="player-row__avatar player-row__avatar--placeholder" :style="{ background: colorFor(player) }">{{ initials(player.name) }}</span>
 
         <a v-if="player.profileUrl" class="player-row__name player-row__name--link" :style="playerNameStyle(player)" :href="player.profileUrl" target="_blank" rel="noopener noreferrer">
@@ -78,6 +84,9 @@ function playerMods(player) {
         <span v-else class="player-row__name" :style="playerNameStyle(player)">
           {{ player.name }}
         </span>
+        <span v-if="player.isSlot" class="player-row__slot-state" :class="{ 'player-row__slot-state--locked': player.isLocked }">
+          {{ player.isLocked ? 'Locked' : 'Open' }}
+        </span>
 
         <span v-if="playerMods(player).length" class="player-row__mods">
           <span v-for="mod in playerMods(player)" :key="mod" class="player-row__mod">
@@ -85,7 +94,7 @@ function playerMods(player) {
           </span>
         </span>
 
-        <span class="player-row__ready" :data-ready="player.isReady" />
+        <span v-if="!player.isSlot" class="player-row__ready" :data-ready="player.isReady" />
       </li>
 
       <li v-if="!visiblePlayers.length" class="player-list__empty">No players yet</li>
@@ -174,11 +183,34 @@ function playerMods(player) {
   color: #fff;
 }
 
+.player-row__avatar--slot {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #737985;
+  background: var(--app-surface-hover);
+}
+
+.player-row__avatar--slot.player-row__avatar--locked {
+  color: #4d535f;
+}
+
 .player-row__name {
   flex: 1 1 auto;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.player-row__slot-state {
+  flex-shrink: 0;
+  color: #737985;
+  font-size: 0.68rem;
+  font-weight: 600;
+}
+
+.player-row__slot-state--locked {
+  color: #4d535f;
 }
 
 .player-row__name--link {

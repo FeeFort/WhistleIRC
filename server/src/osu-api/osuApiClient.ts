@@ -1,4 +1,4 @@
-import { OsuApiMeResponse, OsuUser } from "../types.js";
+import { AllowedMethods, OsuApiMeResponse, OsuUser } from "../types.js";
 
 const OSU_API_URL = "https://osu.ppy.sh/api/v2/";
 
@@ -50,10 +50,13 @@ export async function fetchMe(accessToken: string): Promise<OsuUser> {
   return { id: raw.id, username: raw.username, avatarUrl: raw.avatar_url };
 }
 
-export async function fetchApi(accessToken: string, endpoint: string): Promise<unknown> {
+export async function fetchApi(accessToken: string, endpoint: string, method?: AllowedMethods, body?: Record<string, unknown>): Promise<unknown> {
+  if (!method) method = "GET";
+  
   const response = await fetch(OSU_API_URL + endpoint.replace(/^\//, ""), {
-    method: "GET",
-    headers: { Authorization: `Bearer ${accessToken.trim()}` },
+    method: method,
+    headers: { Authorization: `Bearer ${accessToken.trim()}`, ...(method === "GET" ? {} : { "Content-Type": "application/json" }) },
+    body: body ? JSON.stringify(body) : undefined,
   });
 
   if (!response.ok) {

@@ -83,7 +83,7 @@ function requestOsu(payload) {
   });
 }
 
-function requestApi(endpoint) {
+function requestApi(endpoint, method = "GET", body = undefined) {
   const { socketInstance, ownsSocket } = getRequestSocket();
 
   return new Promise((resolve, reject) => {
@@ -99,7 +99,7 @@ function requestApi(endpoint) {
       if (ownsSocket && socketInstance.readyState < WebSocket.CLOSING) socketInstance.close();
       callback(value);
     };
-    const handleOpen = () => send(socketInstance, { type: "api_request", endpoint });
+    const handleOpen = () => send(socketInstance, { type: "api_request", endpoint, method, body });
     const handleMessage = (event) => {
       let message;
       try {

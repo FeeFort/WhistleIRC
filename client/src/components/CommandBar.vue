@@ -296,7 +296,7 @@ const builtinSettingsVisible = ref(false);
       <SlidersHorizontal :size="15" />
     </button>
 
-    <ShortcutEditDialog v-model:visible="editorVisible" :shortcut="editingShortcut" @save="handleSave" @delete="removeCustomShortcut" />
+    <ShortcutEditDialog v-model:visible="editorVisible" :shortcut="editingShortcut" :existing-shortcuts="customShortcuts" @save="handleSave" @import="handleImport" @delete="removeCustomShortcut" />
     <BuiltinShortcutsSettings v-model:visible="builtinSettingsVisible" />
   </div>
 </template>

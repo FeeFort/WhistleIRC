@@ -2,7 +2,7 @@
 import { ref, computed, nextTick, watch, onMounted, onBeforeUnmount } from "vue";
 import Button from "primevue/button";
 import Textarea from "primevue/textarea";
-import { Menu, Send, Hash, Timer, ClipboardCheck, Flag, Gamepad2 } from "@lucide/vue";
+import { Menu, Send, Hash, Timer, ClipboardCheck, Flag, Gamepad2, Link, ArrowDown } from "@lucide/vue";
 import { useNickColor } from "../composables/useNickColor";
 import { useChatSettings } from "../composables/useChatSettings";
 import { highlightTextStyle, messageHasHighlight } from "../composables/useMessageHighlighting";
@@ -72,6 +72,7 @@ const draft = ref("");
 const chatInput = ref(null);
 const listEl = ref(null);
 const shouldAutoScroll = ref(true);
+const newMessageCount = ref(0);
 const AUTO_SCROLL_THRESHOLD = 24;
 const AUTO_SCROLL_DURATION = 650;
 let isAutoScrolling = false;
@@ -186,6 +187,46 @@ function messageTextStyle(text) {
   return messageHasHighlight(text, highlightWords.value) ? highlightTextStyle(highlightStyles.value, highlightMessageColor.value) : {};
 }
 
+const URL_PATTERN = /https?:\/\/[^\s<]+/gi;
+const TRAILING_URL_PUNCTUATION = /[.,!?;:]+$/;
+
+function isValidUrl(value) {
+  try {
+    const url = new URL(value);
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+function messageSegments(text) {
+  const value = String(text || "");
+  const segments = [];
+  let lastIndex = 0;
+
+  for (const match of value.matchAll(URL_PATTERN)) {
+    const rawUrl = match[0];
+    const start = match.index ?? 0;
+    const url = rawUrl.replace(TRAILING_URL_PUNCTUATION, "");
+    if (!url || !isValidUrl(url)) continue;
+
+    if (start > lastIndex) {
+      segments.push({ type: "text", value: value.slice(lastIndex, start) });
+    }
+    segments.push({ type: "link", value: url });
+    if (url.length < rawUrl.length) {
+      segments.push({ type: "text", value: rawUrl.slice(url.length) });
+    }
+    lastIndex = start + rawUrl.length;
+  }
+
+  if (lastIndex < value.length) {
+    segments.push({ type: "text", value: value.slice(lastIndex) });
+  }
+
+  return segments.length ? segments : [{ type: "text", value }];
+}
+
 const highlightMessageColor = computed(() => {
   if (highlightColorMode.value === "accent") return primaryColor.value;
   if (highlightColorMode.value === "custom") return highlightColor.value;
@@ -268,7 +309,9 @@ function scrollToBottom() {
 
 function onScroll() {
   if (!isAutoScrolling && listEl.value) {
-    shouldAutoScroll.value = isNearBottom(listEl.value);
+    const nearBottom = isNearBottom(listEl.value);
+    shouldAutoScroll.value = nearBottom;
+    if (nearBottom) newMessageCount.value = 0;
   }
 }
 
@@ -283,14 +326,29 @@ function onWheel(event) {
 
 watch(
   () => props.messages.length,
-  () => {
-    const stickToBottom = forceAutoScroll || !listEl.value || isAutoScrolling || isNearBottom(listEl.value);
+  (messageLength, previousMessageLength) => {
+    const nearBottom = !listEl.value || isNearBottom(listEl.value);
+    const addedMessages = Math.max(0, messageLength - (previousMessageLength ?? messageLength));
+    if (addedMessages > 0 && !nearBottom && !forceAutoScroll) {
+      newMessageCount.value += addedMessages;
+    } else if (nearBottom || forceAutoScroll) {
+      newMessageCount.value = 0;
+    }
+
+    const stickToBottom = forceAutoScroll || !listEl.value || isAutoScrolling || nearBottom;
     forceAutoScroll = false;
     if (!stickToBottom) return;
     shouldAutoScroll.value = true;
     scrollToBottom();
   },
 );
+
+function scrollToLatestMessages() {
+  newMessageCount.value = 0;
+  forceAutoScroll = true;
+  shouldAutoScroll.value = true;
+  scrollToBottom();
+}
 
 watch(
   () => props.autoScrollToken,
@@ -419,10 +477,24 @@ function forwardCommand(command) {
               :style="nickStyle(msg.author, msg.team)"
               >{{ msg.author }}</span
             >
-            <span class="chat-line__text" :style="messageTextStyle(msg.text)">{{ msg.text }}</span>
+            <span class="chat-line__text" :style="messageTextStyle(msg.text)">
+              <template v-for="(segment, segmentIndex) in messageSegments(msg.text)" :key="`${msg.id}-${segmentIndex}`">
+                <a v-if="segment.type === 'link'" class="chat-line__link" :href="segment.value" target="_blank" rel="noopener noreferrer">
+                  <Link :size="12" aria-hidden="true" />
+                  <span>{{ segment.value }}</span>
+                </a>
+                <template v-else>{{ segment.value }}</template>
+              </template>
+            </span>
           </template>
         </div>
       </div>
+      <Transition name="chat-new-messages">
+        <button v-if="newMessageCount > 0" type="button" class="chat-new-messages" @click="scrollToLatestMessages">
+          <ArrowDown :size="14" aria-hidden="true" />
+          <span>{{ newMessageCount }} new message{{ newMessageCount === 1 ? '' : 's' }}</span>
+        </button>
+      </Transition>
     </div>
 
     <BanchoBotCommandBar v-if="shortcutMode === 'bancho'" :disabled="roomClosed" @send-command="forwardCommand" @create="emit('create-lobby')" />
@@ -575,7 +647,7 @@ function forwardCommand(command) {
   position: relative;
   z-index: 0;
   padding: 1rem 1.25rem;
-  font-family: "DM Sans", sans-serif;
+  font-family: "Onest", sans-serif;
   background: var(--app-log-background);
 }
 
@@ -583,6 +655,60 @@ function forwardCommand(command) {
   display: flex;
   flex-direction: column;
   gap: 0.15rem;
+}
+
+.chat-new-messages {
+  position: sticky;
+  bottom: 0.85rem;
+  display: flex;
+  width: fit-content;
+  align-items: center;
+  gap: 0.35rem;
+  margin: 0.7rem auto 0;
+  padding: 0.42rem 0.75rem;
+  border: 1px solid rgba(var(--app-primary-rgb), 0.45);
+  border-radius: 999px;
+  background: var(--app-panel);
+  color: var(--app-primary);
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 800;
+  line-height: 1;
+  box-shadow: 0 0.35rem 1rem rgba(0, 0, 0, 0.24);
+  cursor: pointer;
+  z-index: 2;
+  transition:
+    background-color 180ms ease,
+    color 180ms ease,
+    border-color 180ms ease,
+    box-shadow 180ms ease,
+    transform 180ms ease;
+}
+
+.chat-new-messages:hover {
+  background: var(--app-primary-dark);
+  color: var(--app-primary-bright);
+  border-color: var(--app-primary);
+  box-shadow: 0 0.45rem 1.2rem rgba(var(--app-primary-rgb), 0.24);
+  transform: translateY(-1px);
+}
+
+.chat-new-messages:focus-visible {
+  outline: 2px solid var(--app-primary-bright);
+  outline-offset: 2px;
+}
+
+.chat-new-messages-enter-active,
+.chat-new-messages-leave-active {
+  transition:
+    opacity 260ms ease-out,
+    transform 260ms ease-out;
+}
+
+.chat-new-messages-enter-from,
+.chat-new-messages-leave-to {
+  opacity: 0;
+  transform: translateY(1rem);
 }
 
 .chat-line {
@@ -629,6 +755,24 @@ function forwardCommand(command) {
   overflow-wrap: anywhere;
   word-break: break-word;
   white-space: pre-wrap;
+}
+
+.chat-line__link {
+  display: inline;
+  color: var(--app-primary);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.chat-line__link:hover {
+  color: var(--app-primary-bright);
+  text-decoration: underline;
+}
+
+.chat-line__link svg {
+  display: inline-block;
+  margin-right: 0.22rem;
+  vertical-align: -0.15em;
 }
 
 .chat-line--system {

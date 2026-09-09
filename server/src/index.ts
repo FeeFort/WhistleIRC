@@ -164,6 +164,7 @@ function createLobbyState(channel: string): LobbyState {
     mode: "osu!",
     size: 16,
     slots: Array.from({ length: 16 }, () => null),
+    slotLocks: Array.from({ length: 16 }, () => false),
     timer: { active: false, endsAt: null },
     status: "active",
   };
@@ -179,6 +180,7 @@ function cloneLobbyState(state: LobbyState): LobbyState {
     teamBluePlayers: [...state.teamBluePlayers],
     players: state.players.map((player) => ({ ...player })),
     slots: [...state.slots],
+    slotLocks: [...state.slotLocks],
   };
 }
 
@@ -289,6 +291,7 @@ class BanchoConnection {
       "mode",
       "size",
       "slots",
+      "slotLocks",
       "status",
     ];
 
@@ -309,6 +312,15 @@ class BanchoConnection {
         changed = true;
       }
       state.timer = nextTimer;
+    }
+
+    if (update.size !== undefined) {
+      const size = Math.max(0, Math.min(16, Number(update.size) || 0));
+      const slotLocks = Array.from({ length: 16 }, (_, index) => index >= size);
+      if (JSON.stringify(state.slotLocks) !== JSON.stringify(slotLocks)) {
+        state.slotLocks = slotLocks;
+        changed = true;
+      }
     }
 
     const matchStatus = getMatchStatus(state);
@@ -358,7 +370,7 @@ class BanchoConnection {
         ...previous,
         ...player,
         ready: player.ready ?? previous?.ready ?? false,
-        team: player.team ?? previous?.team ?? null,
+        team: Object.prototype.hasOwnProperty.call(player, "team") ? player.team ?? null : previous?.team ?? null,
         mods: player.mods?.length || !previous?.mods ? (player.mods ?? []) : previous.mods,
         profileUrl: player.profileUrl || previous?.profileUrl || null,
         userId: player.userId ?? previous?.userId ?? null,
@@ -437,6 +449,10 @@ class BanchoConnection {
       });
     } else if (parsed.type === "settings" || parsed.type === "size") {
       this.updateLobbyState(channel, parsed.value);
+    } else if (parsed.type === "slot_lock") {
+      const slotLocks = [...this.getLobbyState(channel).slotLocks];
+      slotLocks[parsed.value.slot - 1] = parsed.value.locked;
+      this.updateLobbyState(channel, { slotLocks });
     } else if (parsed.type === "mode") {
       this.updateLobbyState(channel, { mode: parsed.value });
     } else if (parsed.type === "beatmap" || parsed.type === "mods") {
@@ -716,6 +732,10 @@ function validateMessage(message: unknown): string | null {
     return "Message type must be a non-empty string.";
   }
 
+  if (message.method === "POST" && message.body === undefined) {
+    return "body is required.";
+  }
+
   const validators: Record<string, () => string | null> = {
     login: () => {
       if (!isNonEmptyString(message.login)) {
@@ -838,15 +858,25 @@ async function handleOsuLogout(client: WebSocket): Promise<void> {
 }
 
 async function handleApiRequest(client: WebSocket, message: ClientMessage): Promise<void> {
-  const { endpoint } = message as Extract<ClientMessage, { type: "api_request" }>;
+  const { endpoint, method, body } = message as Extract<ClientMessage, { type: "api_request" }>;
   if (!config.allowedApiEndpoints.some((pattern) => pattern.test(endpoint))) {
     sendJson(client, { type: "error", request: "api_request", message: "Endpoint not allowed" });
     return;
   }
 
+  if (body !== undefined && (!body || typeof body !== "object" || Array.isArray(body))) {
+    sendJson(client, { type: "error", request: "api_request", message: "Request body must be an object" });
+    return;
+  }
+
+  if (method !== undefined && method !== "GET" && method !== "POST") {
+    sendJson(client, { type: "error", request: "api_request", message: "Unsupported HTTP method" });
+    return;
+  }
+
   try {
     const accessToken = await getAccessToken();
-    const response = await fetchApi(accessToken, endpoint);
+    const response = await fetchApi(accessToken, endpoint, method, body as Record<string, unknown>);
     sendJson(client, { type: "api_response", endpoint, response });
   } catch (error) {
     console.error(`[${formatLogTime()}] osu! API request failed: ${(error as Error).message}`);
