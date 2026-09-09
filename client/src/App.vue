@@ -706,6 +706,7 @@ watch(lastEvent, (event) => {
   }
   if (event.type === "update_progress" && event.stage === "ready_to_install") {
     confirmInstall();
+    setTimeout(() => window.close(), 700);
   }
   if (event.type === "update_error") {
     updateDialogVisible.value = false;

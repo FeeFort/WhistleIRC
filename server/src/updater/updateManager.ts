@@ -168,10 +168,22 @@ export class UpdateManager {
     }
     this.#state = "installing";
     send({ type: "update_progress", stage: "installing" });
-    const helper = spawn(process.execPath, ["--apply-update", String(process.pid), this.#downloadPath], {
+    const helperPath = path.join(this.#stagingDirectory || os.tmpdir(), `whistleirc-update-helper-${process.pid}`);
+    try {
+      fs.copyFileSync(process.execPath, helperPath);
+      fs.chmodSync(helperPath, 0o755);
+    } catch (error) {
+      this.#state = "ready_to_install";
+      throw new UpdateError("HELPER_PREPARE_FAILED", `Unable to prepare the update helper: ${(error as Error).message}`);
+    }
+    const helper = spawn(helperPath, ["--apply-update", String(process.pid), this.#downloadPath], {
       detached: true,
       stdio: "ignore",
       windowsHide: true,
+      env: { ...process.env, WHISTLEIRC_UPDATE_HELPER: "1" },
+    });
+    helper.once("error", (error) => {
+      fs.appendFileSync(`${os.tmpdir()}/whistleirc-update-error.log`, `${new Date().toISOString()} Helper spawn failed: ${error.stack || error.message}\n`);
     });
     helper.unref();
   }
