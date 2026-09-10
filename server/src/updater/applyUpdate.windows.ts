@@ -33,6 +33,6 @@ export async function applyWindowsUpdate(parentPid: number, assetPath: string): 
     await rm(path.dirname(pending), { recursive: true, force: true });
     await rm(path.dirname(assetPath), { recursive: true, force: true });
   }
-  const child = spawn(target, [], { detached: true, stdio: "ignore", windowsHide: true });
+  const child = spawn(target, ["--updated"], { detached: true, stdio: "ignore", windowsHide: true });
   child.unref();
 }

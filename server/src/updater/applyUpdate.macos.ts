@@ -40,6 +40,6 @@ export async function applyMacosUpdate(parentPid: number, assetPath: string): Pr
     await rm(extractDirectory, { recursive: true, force: true });
     await rm(path.dirname(assetPath), { recursive: true, force: true });
   }
-  const child = spawn(process.execPath, [], { detached: true, stdio: "ignore" });
+  const child = spawn(process.execPath, ["--updated"], { detached: true, stdio: "ignore" });
   child.unref();
 }

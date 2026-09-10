@@ -18,6 +18,7 @@ import { createTray } from "./tray.js";
 const IRC_HOST = "irc.ppy.sh";
 const IRC_PORT = 6667;
 const AUTH_ERROR = "Login or password is incorrect.";
+const launchedAfterUpdate = process.argv.includes("--updated");
 
 if (process.argv[2] === "--apply-update") {
   try {
@@ -1080,7 +1081,7 @@ httpServer.listen(config.httpPort, config.httpHost, () => {
   console.log(`[${formatLogTime()}] WhistleIRC server listening on http://${config.httpHost}:${config.httpPort}`);
   console.log(`[${formatLogTime()}] WebSocket endpoint: ws://${config.httpHost}:${config.httpPort}/ws`);
 
-  const browserUrl = `http://localhost:${config.httpPort}`;
+  const browserUrl = `http://localhost:${config.httpPort}${launchedAfterUpdate ? "?updated=1" : ""}`;
 
   openInBrowser(browserUrl)
 });

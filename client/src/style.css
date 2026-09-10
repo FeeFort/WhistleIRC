@@ -641,6 +641,9 @@ html.app-light .app-dialog-mask {
 .update-dialog .p-progressbar-value {
   border-radius: 999px !important;
   background: var(--app-primary) !important;
+  /* Download events may arrive several times per frame. A width transition
+     restarts for every event and leaves the bar far behind the real value. */
+  transition: none !important;
 }
 
 .lobby-settings-dialog .p-selectbutton {

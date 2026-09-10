@@ -54,9 +54,8 @@ const updateInfo = ref({ currentVersion: "", latestVersion: "", releaseNotesUrl:
 const updateDownloadedBytes = ref(0);
 const updateTotalBytes = ref(0);
 const updateSpeedBytesPerSecond = ref(0);
-let updatePreviousBytes = 0;
-let updatePreviousReceivedAt = 0;
-let updateSmoothedSpeed = 0;
+const UPDATE_SPEED_WINDOW_MS = 2000;
+let updateSpeedSamples = [];
 const lobbyMessagesSettingsOpen = ref(false);
 const createLobbyDialogOpen = ref(false);
 const addChannelDialogOpen = ref(false);
@@ -109,6 +108,7 @@ const {
 const connected = computed(() => serverState.value === "ready");
 const toast = useToast();
 const loginToastGroup = "irc-login";
+const launchedAfterUpdate = new URLSearchParams(window.location.search).has("updated");
 const { activePreset } = useLobbyMessages();
 const { pool, getMapState, qualificationMode } = useMappool();
 const { soundEnabled, toastEnabled, ignoreBanchoBot, sound, soundTrigger, toastTrigger } = useNotifications();
@@ -676,9 +676,7 @@ function beginUpdateDownload() {
   updateDownloadedBytes.value = 0;
   updateTotalBytes.value = 0;
   updateSpeedBytesPerSecond.value = 0;
-  updatePreviousBytes = 0;
-  updatePreviousReceivedAt = Date.now();
-  updateSmoothedSpeed = 0;
+  updateSpeedSamples = [];
   updateDialogMode.value = "downloading";
   updateDialogVisible.value = true;
   startUpdate();
@@ -692,19 +690,22 @@ watch(lastEvent, (event) => {
   if (!event) return;
   if (event.type === "update_progress" && event.stage === "downloading") {
     const now = Date.now();
-    const elapsedSeconds = (now - updatePreviousReceivedAt) / 1000;
     updateDownloadedBytes.value = event.downloadedBytes;
     updateTotalBytes.value = event.totalBytes;
-    if (elapsedSeconds > 0) {
-      const instantSpeed = (event.downloadedBytes - updatePreviousBytes) / elapsedSeconds;
-      const smoothingFactor = updateSmoothedSpeed > 0 ? 0.18 : 1;
-      updateSmoothedSpeed += (instantSpeed - updateSmoothedSpeed) * smoothingFactor;
-      updateSpeedBytesPerSecond.value = updateSmoothedSpeed;
+
+    updateSpeedSamples.push({ t: now, bytes: event.downloadedBytes });
+    while (updateSpeedSamples.length > 2 && now - updateSpeedSamples[0].t > UPDATE_SPEED_WINDOW_MS) {
+      updateSpeedSamples.shift();
     }
-    updatePreviousBytes = event.downloadedBytes;
-    updatePreviousReceivedAt = now;
+
+    const oldest = updateSpeedSamples[0];
+    const elapsedSeconds = (now - oldest.t) / 1000;
+    if (updateSpeedSamples.length > 1 && elapsedSeconds > 0) {
+      updateSpeedBytesPerSecond.value = (event.downloadedBytes - oldest.bytes) / elapsedSeconds;
+    }
   }
   if (event.type === "update_progress" && event.stage === "ready_to_install") {
+    updateDialogMode.value = "installing";
     confirmInstall();
     setTimeout(() => window.close(), 700);
   }
@@ -786,7 +787,14 @@ function handleCopyCallback() {
 }
 
 onMounted(async () => {
-  await checkForUpdates();
+  if (launchedAfterUpdate) {
+    const url = new URL(window.location.href);
+    url.searchParams.delete("updated");
+    window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
+    toast.add({ severity: "success", summary: "Update complete", detail: "The update was installed successfully!", life: 5000 });
+  } else {
+    await checkForUpdates();
+  }
   const [credentials, osuAuth] = await Promise.all([loadRememberedCredentials(), loadOsuAuthData()]);
   osuClientId.value = osuAuth?.clientId || "";
   osuClientSecret.value = osuAuth?.clientSecret || "";

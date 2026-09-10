@@ -57,7 +57,7 @@ function openReleaseNotes() {
       <div class="update-dialog__heading">
         <Download v-if="mode === 'available'" :size="20" />
         <RefreshCw v-else :size="20" class="update-dialog__spin" />
-        <h2>{{ mode === "available" ? "Update available" : "Downloading update" }}</h2>
+        <h2>{{ mode === "available" ? "Update available" : mode === "downloading" ? "Downloading update" : "Installing update" }}</h2>
       </div>
     </template>
     <div v-if="mode === 'available'" class="update-dialog__content">
@@ -69,12 +69,16 @@ function openReleaseNotes() {
         <Button label="Update now" @click="emit('update')" />
       </div>
     </div>
-    <div v-else class="update-dialog__content">
+    <div v-else-if="mode === 'downloading'" class="update-dialog__content">
       <p class="update-dialog__subtitle">Don't close the app while this is in progress</p>
       <div class="update-dialog__progress-meta"><span>{{ downloadedMb }} MB of {{ totalMb }} MB</span><strong>{{ Math.round(progress) }}%</strong></div>
       <ProgressBar :value="progress" :show-value="false" class="update-dialog__progress" />
       <p class="update-dialog__download-meta">{{ speedMb }} · {{ eta }} left</p>
       <Button label="Cancel" text severity="secondary" class="update-dialog__cancel" @click="emit('cancel')" />
+    </div>
+    <div v-else class="update-dialog__content">
+      <p class="update-dialog__subtitle">The update is being installed now.</p>
+      <p class="update-dialog__installing-message">This window will close shortly and the updated app will open. Please wait.</p>
     </div>
   </Dialog>
 </template>
@@ -95,6 +99,7 @@ function openReleaseNotes() {
 .update-dialog__progress { height: 0.5rem; margin-top: 0.05rem; overflow: hidden; border-radius: 999px; }
 .update-dialog__download-meta { margin: 0.05rem 0 0.75rem; color: var(--app-muted); opacity: 0.72; font-size: 0.72rem; }
 .update-dialog__cancel { align-self: flex-end; }
+.update-dialog__installing-message { margin: 0.2rem 0 0.35rem; color: var(--app-muted); font-size: 0.78rem; line-height: 1.45; }
 .update-dialog__spin { animation: update-dialog-spin 1.2s linear infinite; }
 @keyframes update-dialog-spin { to { transform: rotate(360deg); } }
 </style>
