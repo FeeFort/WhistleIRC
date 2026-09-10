@@ -57,7 +57,7 @@ export async function applyLinuxUpdate(parentPid: number, assetPath: string): Pr
       await rm(pending, { force: true });
     }
     await rm(path.dirname(assetPath), { recursive: true, force: true });
-    const child = spawn(target, [], { detached: true, stdio: "ignore" });
+    const child = spawn(target, ["--updated"], { detached: true, stdio: "ignore" });
     child.unref();
   } catch (error) {
     await log(`Linux update failed: ${(error as Error).stack || (error as Error).message}`);
