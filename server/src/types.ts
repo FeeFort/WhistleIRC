@@ -247,3 +247,27 @@ export type UpdateCheckResult = {
 export type UpdaterState = "idle" | "checking" | "available" | "downloading" | "ready_to_install" | "installing";
 export type UpdateProgressSender = (payload: UpdateProgress) => void;
 export type ApplyUpdate = (parentPid: number, assetPath: string) => Promise<void>;
+
+export interface MenuItem {
+  title: string;
+  tooltip: string;
+  checked: boolean;
+  enabled: boolean;
+  click?: () => void;
+}
+
+export interface SysTrayOptions {
+  menu: { icon: string; title: string; tooltip: string; items: MenuItem[] };
+  debug?: boolean;
+  copyDir?: boolean;
+}
+
+export interface ClickAction {
+  item: MenuItem;
+}
+
+export interface SysTrayInstance {
+  onClick(callback: (action: ClickAction) => void): void;
+  ready(): Promise<void>;
+  kill(exitNode?: boolean): void;
+}

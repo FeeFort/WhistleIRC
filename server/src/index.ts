@@ -12,6 +12,8 @@ import { ClientMessage, ConnectionState, IrcCredentials, IrcLine, LobbyState, Pa
 import { fileURLToPath } from "node:url";
 import { UpdateError, UpdateManager } from "./updater/updateManager.js";
 import { applyPendingUpdate } from "./updater/applyUpdate.js";
+import { openInBrowser } from "./browser.js";
+import { createTray } from "./tray.js";
 
 const IRC_HOST = "irc.ppy.sh";
 const IRC_PORT = 6667;
@@ -1080,16 +1082,10 @@ httpServer.listen(config.httpPort, config.httpHost, () => {
 
   const browserUrl = `http://localhost:${config.httpPort}`;
 
-  if (process.platform === "win32") {
-    execFile("cmd", ["/c", "start", "", browserUrl], {
-      windowsHide: true,
-    });
-  } else if (process.platform === "darwin") {
-    execFile("open", [browserUrl]);
-  } else {
-    execFile("xdg-open", [browserUrl]);
-  }
+  openInBrowser(browserUrl)
 });
+
+createTray({ port: config.httpPort, onQuit: () => shutdown("tray") })
 
 function shutdown(signal?: string): void {
   if (shuttingDown) {
