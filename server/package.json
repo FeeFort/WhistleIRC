@@ -44,6 +44,9 @@
     "assets": [
       "static/**/*",
       "node_modules/systray2/traybin/**/*",
+      "icon.png",
+      "icon.ico",
+      "icon.icns",
       "icon.*"
     ],
     "targets": [
@@ -58,6 +61,7 @@
   },
   "allowScripts": {
     "esbuild@0.28.2": true,
-    "esbuild@0.24.2": true
+    "esbuild@0.24.2": true,
+    "usocket@0.3.0": true
   }
 }

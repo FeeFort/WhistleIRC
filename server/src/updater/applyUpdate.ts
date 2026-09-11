@@ -18,10 +18,7 @@ export async function applyPendingUpdate(parentPid: string | undefined, assetPat
   try {
     await getApplyUpdate()(pid, assetPath);
   } catch (error) {
-    await appendFile(
-      `${os.tmpdir()}/whistleirc-update-error.log`,
-      `${new Date().toISOString()} ${(error as Error).stack || (error as Error).message}\n`,
-    ).catch(() => undefined);
+    await appendFile(`${os.tmpdir()}/whistleirc-update-error.log`, `${new Date().toISOString()} ${(error as Error).stack || (error as Error).message}\n`).catch(() => undefined);
     throw error;
   }
 }

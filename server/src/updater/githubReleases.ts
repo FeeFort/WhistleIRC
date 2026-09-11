@@ -16,15 +16,11 @@ function getExpectedAssetPattern(): { extension: string; archToken: string } {
 
 function findMatchingAsset(assets: GithubAsset[]): GithubAsset | null {
   const { extension, archToken } = getExpectedAssetPattern();
-  return (
-    assets.find((asset) => asset.name.endsWith(extension) && asset.name.includes(archToken)) ?? null
-  );
+  return assets.find((asset) => asset.name.endsWith(extension) && asset.name.includes(archToken)) ?? null;
 }
 
 export async function checkForUpdate(): Promise<UpdateInfo | null> {
-  const response = await fetch(
-    `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases/latest`,
-  );
+  const response = await fetch(`https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases/latest`);
   if (!response.ok) {
     throw new Error(`GitHub API responded with ${response.status}`);
   }

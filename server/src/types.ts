@@ -232,8 +232,7 @@ export interface UpdateInfo {
 }
 
 export type UpdateProgress =
-  | { type: "update_progress"; stage: "downloading"; totalBytes: number; downloadedBytes: number }
-  | { type: "update_progress"; stage: "verifying" | "ready_to_install" | "installing" };
+  { type: "update_progress"; stage: "downloading"; totalBytes: number; downloadedBytes: number } | { type: "update_progress"; stage: "verifying" | "ready_to_install" | "installing" };
 
 export type UpdateCheckResult = {
   type: "update_check_result";
@@ -270,4 +269,18 @@ export interface SysTrayInstance {
   onClick(callback: (action: ClickAction) => void): void;
   ready(): Promise<void>;
   kill(exitNode?: boolean): void;
+}
+
+export type DbusModule = typeof import("dbus-next");
+export interface TrayOptions {
+  port: number;
+  onQuit: () => void;
+}
+export interface KdeTrayOptions {
+  port: number;
+  onQuit: () => void;
+}
+export interface KdeTrayInstance {
+  ready(): Promise<void>;
+  kill(): void;
 }

@@ -1,7 +1,6 @@
 import http from "node:http";
 import net from "node:net";
 import path from "node:path";
-import { execFile } from "node:child_process";
 import express, { Request, Response } from "express";
 import { WebSocket, WebSocketServer } from "ws";
 import { parseBanchoBotMessage, parseLobbyCommand } from "./banchoBotParser.js";
@@ -13,7 +12,7 @@ import { fileURLToPath } from "node:url";
 import { UpdateError, UpdateManager } from "./updater/updateManager.js";
 import { applyPendingUpdate } from "./updater/applyUpdate.js";
 import { openInBrowser } from "./browser.js";
-import { createTray } from "./tray.js";
+import { createTray } from "./tray/index.js";
 
 const IRC_HOST = "irc.ppy.sh";
 const IRC_PORT = 6667;
@@ -385,7 +384,7 @@ class BanchoConnection {
         ...previous,
         ...player,
         ready: player.ready ?? previous?.ready ?? false,
-        team: Object.prototype.hasOwnProperty.call(player, "team") ? player.team ?? null : previous?.team ?? null,
+        team: Object.prototype.hasOwnProperty.call(player, "team") ? (player.team ?? null) : (previous?.team ?? null),
         mods: player.mods?.length || !previous?.mods ? (player.mods ?? []) : previous.mods,
         profileUrl: player.profileUrl || previous?.profileUrl || null,
         userId: player.userId ?? previous?.userId ?? null,
@@ -1083,10 +1082,10 @@ httpServer.listen(config.httpPort, config.httpHost, () => {
 
   const browserUrl = `http://localhost:${config.httpPort}${launchedAfterUpdate ? "?updated=1" : ""}`;
 
-  openInBrowser(browserUrl)
+  openInBrowser(browserUrl);
 });
 
-createTray({ port: config.httpPort, onQuit: () => shutdown("tray") })
+createTray({ port: config.httpPort, onQuit: () => shutdown("tray") });
 
 function shutdown(signal?: string): void {
   if (shuttingDown) {
