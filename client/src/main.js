@@ -2,7 +2,7 @@ import { createApp } from "vue";
 import "./style.css";
 import App from "./App.vue";
 import PrimeVue from "primevue/config";
-import Tooltip from "primevue/tooltip";
+import Tooltip from "./directives/tooltip";
 import Aura from "@primeuix/themes/aura";
 import ConfirmationService from "primevue/confirmationservice";
 import ToastService from "primevue/toastservice";

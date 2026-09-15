@@ -1039,8 +1039,9 @@ const activeLobbyPlayers = computed(() => {
     .map((player) => ({
       name: player.username,
       profileUrl: player.profileUrl || playerProfilesByLobbyId[activeChat.value]?.[normalizeIrcNick(player.username)]?.profileUrl || (player.userId ? `https://osu.ppy.sh/u/${player.userId}` : ""),
-      isHost: false,
+      isHost: Boolean(player.isHost) || normalizeIrcNick(player.username) === normalizeIrcNick(lobby.host),
       isReady: Boolean(player.ready),
+      noMap: Boolean(player.noMap),
       avatarUrl: player.avatarUrl || playerProfilesByLobbyId[activeChat.value]?.[normalizeIrcNick(player.username)]?.avatarUrl || (player.userId ? `https://a.ppy.sh/${player.userId}` : ""),
       team: player.team || null,
       slot: player.slot ?? null,
@@ -1790,6 +1791,22 @@ function toggleLobbyPlayerTeam({ username, team }) {
   handleCommand('!mp team ' + username + ' ' + team);
 }
 
+function kickLobbyPlayer({ username }) {
+  if (!activeLobbyState.value || roomClosedByChat[activeChat.value]) return;
+  handleCommand('!mp kick ' + username);
+}
+
+function setLobbyHost({ username }) {
+  if (!activeLobbyState.value || roomClosedByChat[activeChat.value]) return;
+  const player = activeLobbyState.value.players.find((item) => normalizeIrcNick(item.username) === normalizeIrcNick(username));
+  if (!player) return;
+  updateActiveLobbyPlayers((players, lobby) => {
+    players.forEach((item) => { item.isHost = normalizeIrcNick(item.username) === normalizeIrcNick(username); });
+    lobby.host = username;
+  });
+  handleCommand('!mp host ' + username);
+}
+
 function sendLobbySetup(command) {
   if (!activeLobbyState.value || roomClosedByChat[activeChat.value]) return;
   handleCommand(command);
@@ -2099,7 +2116,7 @@ function handleSendResult(result) {
                     class="settings-page__sound-dropdown-preview"
                     :disabled="!soundEnabled"
                     :aria-label="`Preview ${item.label}`"
-                    :title="`Preview ${item.label}`"
+                    v-tooltip.top="`Preview ${item.label}`"
                     @click.stop="previewNotificationSound(item.value)"
                   >
                     <Play :size="13" />
@@ -2528,7 +2545,7 @@ function handleSendResult(result) {
             @configure-lobby="openLobbySetup"
           />
         </SidebarSectionCard>
-        <PlayerListCard :players="activeLobbyDisplayPlayers" :current-user="currentUser" @open-players="playersDialogOpen = true" />
+        <PlayerListCard :players="activeLobbyDisplayPlayers" :current-user="currentUser" :disabled="Boolean(roomClosedByChat[activeChat])" @open-players="playersDialogOpen = true" />
         <SidebarSectionCard title="Mappool" :icon="MapIcon" scrollable>
           <MappoolCard :disabled="Boolean(roomClosedByChat[activeChat])" :lobby-id="activeChat" :qualification-mode="activeQualificationMode" @send-command="handleCommand" @pick-map="handleMappoolPick" />
         </SidebarSectionCard>
@@ -2544,6 +2561,8 @@ function handleSendResult(result) {
         :disabled="Boolean(roomClosedByChat[activeChat])"
         @move-player="moveLobbyPlayer"
         @toggle-team="toggleLobbyPlayerTeam"
+        @kick-player="kickLobbyPlayer"
+        @set-host="setLobbyHost"
       />
       <LobbySetupDialog v-model:visible="lobbySetupDialogOpen" :disabled="Boolean(roomClosedByChat[activeChat])" :initial-game-mode="lobbySetupGameMode" :initial-win-condition="lobbySetupWinCondition" :initial-open-slots="lobbySetupOpenSlots" @send="sendLobbySetup" />
     </div>

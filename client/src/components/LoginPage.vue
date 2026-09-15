@@ -141,7 +141,7 @@ watch(
             <TriangleAlert :size="15" class="login-callback-warning__icon" />
             <div class="login-callback-warning__content">
               <span>Create an OAuth application and set this callback URL:</span>
-              <button type="button" class="login-callback" title="Copy callback URL" @click="copyCallbackUrl">
+              <button type="button" class="login-callback" v-tooltip.top="'Copy callback URL'" @click="copyCallbackUrl">
                 <Copy :size="14" />
                 <code>{{ redirectUri }}</code>
               </button>
@@ -155,7 +155,7 @@ watch(
             <TriangleAlert :size="15" class="login-callback-warning__icon" />
             <div class="login-callback-warning__content">
               <span>Use this exact callback URL in your osu! application:</span>
-              <button type="button" class="login-callback" title="Copy callback URL" @click="copyCallbackUrl">
+              <button type="button" class="login-callback" v-tooltip.top="'Copy callback URL'" @click="copyCallbackUrl">
                 <Copy :size="14" />
                 <code>{{ redirectUri }}</code>
               </button>
@@ -173,7 +173,7 @@ watch(
         <div>
           <span>osu! account</span><strong>{{ osuProfile.username }}</strong>
         </div>
-        <Button text class="login-form__osu-logout" aria-label="Log out from osu!" title="Log out from osu!" @click="logoutFromOsu">
+        <Button text class="login-form__osu-logout" v-tooltip.top="'Log out from osu!'" aria-label="Log out from osu!" @click="logoutFromOsu">
           <LogOut :size="15" />
         </Button>
       </div>

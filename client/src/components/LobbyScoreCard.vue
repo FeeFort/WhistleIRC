@@ -271,7 +271,7 @@ async function copyMpLink() {
       <span>Lobby Settings</span>
     </Button>
 
-    <Button :label="copied ? 'Copied' : 'Copy MP Link'" text class="lobby-score-card__copy" :disabled="disabled" @click="copyMpLink">
+    <Button :label="copied ? 'Copied' : 'Copy MP Link'" text class="lobby-score-card__copy" @click="copyMpLink">
       <Check v-if="copied" :size="14" />
       <Copy v-else :size="14" />
       <span>{{ copied ? "Copied" : "Copy MP Link" }}</span>
@@ -285,7 +285,7 @@ async function copyMpLink() {
           <strong>Lobby configuration</strong>
           <span>Change the game mode, win condition, or open slots.</span>
         </div>
-        <Button text severity="secondary" aria-label="Configure lobby" title="Configure lobby" @click="configureLobby">
+        <Button text severity="secondary" v-tooltip.top="'Configure lobby'" aria-label="Configure lobby" @click="configureLobby">
           <SlidersHorizontal :size="15" />
           <span>Configure</span>
         </Button>

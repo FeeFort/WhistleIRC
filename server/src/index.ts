@@ -383,6 +383,19 @@ class BanchoConnection {
     });
   }
 
+  setLobbyHost(channel: string, username: string | null): void {
+    const state = this.getLobbyState(channel);
+    const normalizedName = username?.toLowerCase() ?? null;
+    this.updatePlayers(
+      channel,
+      state.players.map((player) => ({
+        ...player,
+        isHost: normalizedName !== null && player.username.toLowerCase() === normalizedName,
+      })),
+    );
+    this.updateLobbyState(channel, { host: username });
+  }
+
   upsertPlayer(channel: string, player: Partial<Player> & Pick<Player, "username" | "slot">): void {
     const state = this.getLobbyState(channel);
     const normalizedName = player.username.toLowerCase();
@@ -394,6 +407,8 @@ class BanchoConnection {
         ...previous,
         ...player,
         ready: player.ready ?? previous?.ready ?? false,
+        noMap: player.noMap ?? previous?.noMap ?? false,
+        isHost: player.isHost ?? previous?.isHost ?? false,
         team: Object.prototype.hasOwnProperty.call(player, "team") ? (player.team ?? null) : (previous?.team ?? null),
         mods: player.mods?.length || !previous?.mods ? (player.mods ?? []) : previous.mods,
         profileUrl: player.profileUrl || previous?.profileUrl || null,
@@ -527,8 +542,11 @@ class BanchoConnection {
       this.updateLobbyState(channel, parsed.value);
     } else if (parsed.type === "player") {
       this.upsertPlayer(channel, parsed.value);
+      if (parsed.value.isHost) this.setLobbyHost(channel, parsed.value.username);
+    } else if (parsed.type === "host") {
+      this.setLobbyHost(channel, parsed.value.host);
     } else if (parsed.type === "player_joined") {
-      this.upsertPlayer(channel, { ...parsed.value, ready: false });
+      this.upsertPlayer(channel, { ...parsed.value, ready: false, noMap: false, isHost: false });
     } else if (parsed.type === "player_team_changed") {
       this.updatePlayerTeam(channel, parsed.value.username, parsed.value.team);
     } else if (parsed.type === "player_moved") {

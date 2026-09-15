@@ -169,13 +169,17 @@ function parseTimerMessage(text: string): TimerMessage | null {
   if (/^Countdown aborted\.?$/i.test(text.trim())) return { type: "aborted" };
   if (/^Countdown finished\.?$/i.test(text.trim())) return { type: "finished" };
 
-  const match = text.match(/^Countdown ends in\s+(\d+)\s+(minute|minutes|second|seconds)\.?$/i);
+  const match = text.match(/^Countdown ends in\s+(.+?)\.?$/i);
   if (!match) return null;
 
-  const value = Number(match[1]);
+  const minutes = Number(match[1].match(/(\d+)\s+minutes?/i)?.[1] || 0);
+  const seconds = Number(match[1].match(/(\d+)\s+seconds?/i)?.[1] || 0);
+  const totalSeconds = minutes * 60 + seconds;
+  if (!totalSeconds) return null;
+
   return {
     type: "started",
-    seconds: match[2].toLowerCase().startsWith("minute") ? value * 60 : value,
+    seconds: totalSeconds,
   };
 }
 
@@ -247,7 +251,7 @@ function parseModsConfirmation(text: string): ActiveMods | null {
 }
 
 function parsePlayerSnapshot(text: string): PlayerSnapshot | null {
-  const match = text.match(/^Slot\s+(\d+)\s+(Ready|Not Ready)\s+(https?:\/\/\S+)\s+(.+?)\s*$/i);
+  const match = text.match(/^Slot\s+(\d+)\s+(Ready|Not Ready|No Map)\s+(https?:\/\/\S+)\s+(.+?)\s*$/i);
   if (!match) return null;
 
   const playerDetails = match[4].match(/^(.*?)\s*\[([^\]]+)\]\s*$/);
@@ -265,6 +269,7 @@ function parsePlayerSnapshot(text: string): PlayerSnapshot | null {
     .flatMap((part) => part.split(/\s*,\s*/))
     .map((mod) => MOD_CODES.get(mod.trim().toLowerCase()) || mod.trim())
     .filter(Boolean);
+  const isHost = detailParts.some((part) => /^Host$/i.test(part));
 
   const profileIdMatch = match[3].match(/\/u\/(\d+)(?:[/?#]|$)/i);
   const userId = profileIdMatch ? Number(profileIdMatch[1]) : null;
@@ -276,6 +281,8 @@ function parsePlayerSnapshot(text: string): PlayerSnapshot | null {
     avatarUrl: userId ? `https://a.ppy.sh/${userId}` : null,
     slot: Number(match[1]),
     ready: match[2].toLowerCase() === "ready",
+    noMap: match[2].toLowerCase() === "no map",
+    ...(isHost ? { isHost: true as const } : {}),
     team,
     mods,
   };
@@ -327,6 +334,12 @@ function parsePlayerScore(text: string): PlayerScore | null {
   };
 }
 
+function parseHostChange(text: string): { host: string | null } | null {
+  if (/^Cleared match host\.?$/i.test(text.trim())) return { host: null };
+  const match = text.match(/^Changed match host to\s+(.+?)\.?$/i);
+  return match ? { host: match[1].trim() } : null;
+}
+
 function parseMatchFinished(text: string): MatchFinished | null {
   return /^The match has finished!?$/i.test(text.trim()) ? { finished: true } : null;
 }
@@ -359,6 +372,9 @@ export function parseBanchoBotMessage(text: string): ParsedBanchoBotMessage {
 
   const mods = parseModsConfirmation(text);
   if (mods) return { type: "mods", value: mods };
+
+  const host = parseHostChange(text);
+  if (host) return { type: "host", value: host };
 
   const player = parsePlayerSnapshot(text);
   if (player) return { type: "player", value: player };

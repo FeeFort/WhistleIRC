@@ -2,7 +2,7 @@
 import { computed, ref } from "vue";
 import Button from "primevue/button";
 import Dialog from "primevue/dialog";
-import { Lock, LockOpen, Menu, RefreshCcw } from "@lucide/vue";
+import { Lock, LockOpen, Menu, RefreshCcw, UserRoundX } from "@lucide/vue";
 import { useNickColor } from "../composables/useNickColor";
 import { useChatSettings } from "../composables/useChatSettings";
 
@@ -12,7 +12,7 @@ const props = defineProps({
   disabled: { type: Boolean, default: false },
 });
 
-const emit = defineEmits(["update:visible", "move-player", "toggle-team"]);
+const emit = defineEmits(["update:visible", "move-player", "toggle-team", "kick-player", "set-host"]);
 const draggedPlayer = ref(null);
 const dragTargetSlot = ref(null);
 const hasPlayers = computed(() => props.players.some((player) => !player.isSlot));
@@ -51,6 +51,14 @@ function toggleTeam(player) {
   if (props.disabled || player.isSlot || !player.team) return;
   emit("toggle-team", { username: player.name, team: player.team === "red" ? "blue" : "red" });
 }
+function kickPlayer(player) {
+  if (props.disabled || player.isSlot) return;
+  emit("kick-player", { username: player.name });
+}
+function setHost(player) {
+  if (props.disabled || player.isSlot || player.isHost) return;
+  emit("set-host", { username: player.name });
+}
 
 function initials(name) {
   return String(name || "").slice(0, 2).toUpperCase();
@@ -67,6 +75,12 @@ function avatarStyle(player) {
   if (player.avatarUrl) return { backgroundImage: "url(" + player.avatarUrl + ")" };
   const background = player.team === "red" ? redTeamColor.value : player.team === "blue" ? blueTeamColor.value : nickColor(player.name, "");
   return { background };
+}
+
+function switchTeamStyle(player) {
+  if (player.team === "red") return { color: blueTeamColor.value };
+  if (player.team === "blue") return { color: redTeamColor.value };
+  return undefined;
 }
 </script>
 
@@ -94,10 +108,25 @@ function avatarStyle(player) {
         </span>
         <span v-else-if="player.avatarUrl" class="players-dialog__avatar" :style="avatarStyle(player)" />
         <span v-else class="players-dialog__avatar players-dialog__avatar--placeholder" :style="avatarStyle(player)">{{ initials(player.name) }}</span>
-        <span class="players-dialog__name" :class="{ 'players-dialog__name--slot': player.isSlot }" :style="playerNameStyle(player)">{{ player.name }}</span>
+        <span class="players-dialog__identity">
+          <span class="players-dialog__name" :class="{ 'players-dialog__name--slot': player.isSlot }" :style="playerNameStyle(player)">{{ player.name }}</span>
+          <svg v-if="player.isHost" class="players-dialog__host" width="14" height="14" viewBox="0 0 24 24" fill="currentColor" role="img" aria-label="Host">
+            <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+            <path d="M19 19h-14c-.5 0 -.9 -.3 -1 -.8l-2 -10c0 -.4 .1 -.8 .5 -1.1c.4 -.2 .8 -.2 1.1 0l4.1 3.3l3.4 -5.1c.4 -.6 1.3 -.6 1.7 0l3.4 5.1l4.1 -3.3c.3 -.3 .8 -.3 1.1 0c.4 .2 .5 .6 .5 1.1l-2 10c0 .5 -.5 .8 -1 .8z" />
+          </svg>
+        </span>
         <span v-if="player.isSlot" class="players-dialog__state" :class="{ 'players-dialog__state--locked': player.isLocked }">{{ player.isLocked ? 'Locked' : 'Open' }}</span>
-        <Button v-if="!player.isSlot" text rounded severity="secondary" class="players-dialog__team-button" :disabled="disabled || !player.team" :aria-label="'Switch ' + player.name + ' team'" title="Switch team" @click.stop="toggleTeam(player)">
+        <Button v-if="!player.isSlot" text rounded severity="secondary" class="players-dialog__team-button" v-tooltip.top="'Switch team'" :style="switchTeamStyle(player)" :disabled="disabled || !player.team" :aria-label="'Switch ' + player.name + ' team'" @click.stop="toggleTeam(player)">
           <RefreshCcw :size="15" />
+        </Button>
+        <Button v-if="!player.isSlot" text rounded severity="secondary" class="players-dialog__action-button players-dialog__action-button--host" v-tooltip.top="'Make host'" :disabled="disabled || player.isHost" :aria-label="'Make ' + player.name + ' host'" @click.stop="setHost(player)">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+            <path d="M12 6l4 6l5 -4l-2 10h-14l-2 -10l5 4l4 -6" />
+          </svg>
+        </Button>
+        <Button v-if="!player.isSlot" text rounded severity="danger" class="players-dialog__action-button players-dialog__action-button--kick" v-tooltip.top="'Kick player'" :disabled="disabled" :aria-label="'Kick ' + player.name" @click.stop="kickPlayer(player)">
+          <UserRoundX :size="15" />
         </Button>
       </div>
     </div>
@@ -120,11 +149,17 @@ function avatarStyle(player) {
 .players-dialog__drag { display: inline-flex; align-items: center; justify-content: center; width: 1rem; height: 1.7rem; flex: 0 0 1rem; color: var(--app-muted); pointer-events: none; }
 .players-dialog__drag--empty { visibility: hidden; }
 .players-dialog__list:not(.players-dialog__list--with-players) .players-dialog__drag { display: none; }
-.players-dialog__name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.players-dialog__identity { display: flex; align-items: center; flex: 1; min-width: 0; gap: .3rem; }
+.players-dialog__name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .players-dialog__name--slot { color: var(--app-muted); }
+.players-dialog__host { flex: 0 0 auto; color: var(--p-yellow-400, #eab308); }
 .players-dialog__state { flex: 0 0 4.5rem; color: var(--app-muted); font-size: .7rem; text-align: right; }
 .players-dialog__state--locked { opacity: .55; }
 .players-dialog__team-button { width: 1.8rem; height: 1.8rem; padding: 0; border: 0 !important; background: transparent !important; color: var(--app-muted); }
-.players-dialog__team-button:hover { color: var(--app-primary-bright); }
+.players-dialog__team-button:hover { filter: brightness(1.2); }
 .players-dialog__team-button:hover { background: rgba(var(--app-primary-rgb), .1) !important; }
+.players-dialog__action-button { width: 1.8rem; height: 1.8rem; padding: 0; border: 0 !important; background: transparent !important; color: var(--app-muted); }
+.players-dialog__action-button--host.p-button { color: var(--p-yellow-400, #eab308) !important; }
+.players-dialog__action-button--host.p-button:hover { color: var(--p-yellow-400, #eab308) !important; background: rgba(234, 179, 8, .1) !important; }
+.players-dialog__action-button--kick:hover { color: var(--p-red-400, #f87171) !important; background: rgba(239, 68, 68, .1) !important; }
 </style>

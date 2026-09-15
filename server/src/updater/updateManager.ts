@@ -12,7 +12,7 @@ import { GithubAsset, GithubRelease, UpdateCheckResult, UpdateInfo, UpdateProgre
 declare const __APP_VERSION__: string;
 
 const GITHUB_OWNER = "FeeFort";
-const GITHUB_REPO = "WhistleIRC-test";
+const GITHUB_REPO = "WhistleIRC";
 
 export class UpdateError extends Error {
   constructor(

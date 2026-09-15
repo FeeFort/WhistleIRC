@@ -1025,3 +1025,62 @@ html.app-light .app-dialog-mask {
   outline: 2px solid rgba(var(--app-primary-rgb), 0.45);
   outline-offset: 2px;
 }
+
+/* PrimeVue removes the leading border from adjacent SelectButton segments.
+   Keep every segment self-contained so each option has a visible left edge. */
+.p-selectbutton.p-selectbutton .p-togglebutton {
+  border-left: 1px solid var(--app-border) !important;
+}
+
+.app-tooltip {
+  position: fixed;
+  z-index: 10000;
+  max-width: min(18rem, calc(100vw - 1rem));
+  padding: 0.42rem 0.68rem;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 0.4rem;
+  background: #11141d;
+  box-shadow: 0 0.45rem 1.1rem rgba(0, 0, 0, 0.34);
+  color: #fff;
+  font-size: 0.72rem;
+  line-height: 1.25;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 130ms ease;
+}
+
+.app-tooltip--visible {
+  opacity: 1;
+}
+
+.app-tooltip::after {
+  position: absolute;
+  width: 0;
+  height: 0;
+  border: 0.32rem solid transparent;
+  content: "";
+}
+
+.app-tooltip[data-position="top"]::after {
+  bottom: -0.63rem;
+  left: calc(50% - 0.32rem);
+  border-top-color: #11141d;
+}
+
+.app-tooltip[data-position="bottom"]::after {
+  top: -0.63rem;
+  left: calc(50% - 0.32rem);
+  border-bottom-color: #11141d;
+}
+
+.app-tooltip[data-position="left"]::after {
+  top: calc(50% - 0.32rem);
+  right: -0.63rem;
+  border-left-color: #11141d;
+}
+
+.app-tooltip[data-position="right"]::after {
+  top: calc(50% - 0.32rem);
+  left: -0.63rem;
+  border-right-color: #11141d;
+}

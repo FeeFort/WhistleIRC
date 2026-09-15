@@ -79,6 +79,8 @@ export type PlayerSnapshot = {
   avatarUrl: string | null;
   slot: number;
   ready: boolean;
+  noMap: boolean;
+  isHost?: true;
   team: "red" | "blue" | null;
   mods: string[];
 };
@@ -88,6 +90,7 @@ export type PlayerLeft = { username: string };
 export type PlayerTeamChange = { username: string; team: Team };
 export type PlayerSlotChange = { username: string; slot: number };
 export type PlayerScore = { username: string; score: number; result: string };
+export type HostChange = { host: string | null };
 export type MatchFinished = { finished: true };
 export type MatchMetadata = { bestOf: number } | { nextPickTeam: string };
 export type SizeConfirmation = { size: number };
@@ -107,6 +110,7 @@ export type ParsedBanchoBotMessage =
   | { type: "player_moved"; value: PlayerSlotChange }
   | { type: "player_team_changed"; value: PlayerTeamChange }
   | { type: "player_score"; value: PlayerScore }
+  | { type: "host"; value: HostChange }
   | { type: "match_finished"; value: MatchFinished }
   | { type: "metadata"; value: MatchMetadata }
   | { type: "size"; value: SizeConfirmation }
@@ -127,6 +131,8 @@ export type Player = {
   avatarUrl: string | null;
   slot: number;
   ready: boolean;
+  noMap: boolean;
+  isHost: boolean;
   team: Team | null;
   mods: string[];
 };

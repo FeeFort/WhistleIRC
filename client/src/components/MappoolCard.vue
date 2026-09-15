@@ -187,7 +187,7 @@ onBeforeUnmount(() => {
         </Teleport>
       </div>
       <div class="mappool-card__toolbar-actions">
-        <Button text rounded class="mappool-card__settings" aria-label="Open mappools" title="Open mappools" :disabled="disabled" @click="mappoolsVisible = true"><Settings :size="16" /></Button>
+        <Button text rounded class="mappool-card__settings" v-tooltip.top="'Open mappools'" aria-label="Open mappools" :disabled="disabled" @click="mappoolsVisible = true"><Settings :size="16" /></Button>
       </div>
     </div>
     <MappoolsModal v-model:visible="mappoolsVisible" />
@@ -227,7 +227,7 @@ onBeforeUnmount(() => {
                   'mappool-map__action--active': mapState(map).banned,
                 }"
                 :aria-label="`${mapState(map).banned ? 'Unban' : 'Ban'} ${map.slotId}`"
-                :title="`${mapState(map).banned ? 'Unban' : 'Ban'} ${map.slotId}`"
+                v-tooltip.top="`${mapState(map).banned ? 'Unban' : 'Ban'} ${map.slotId}`"
                 :disabled="disabled"
                 @click="runAction(map, 'ban')"
               >
@@ -241,7 +241,7 @@ onBeforeUnmount(() => {
                   'mappool-map__action--active': mapState(map).protected,
                 }"
                 :aria-label="`${actionLabel('protect')} ${map.slotId}`"
-                :title="`${mapState(map).protected ? 'Unprotect' : 'Protect'} ${map.slotId}`"
+                v-tooltip.top="`${mapState(map).protected ? 'Unprotect' : 'Protect'} ${map.slotId}`"
                 :disabled="disabled"
                 @click="runAction(map, 'protect')"
               >
@@ -256,7 +256,7 @@ onBeforeUnmount(() => {
                 }"
                 :aria-label="`${actionLabel('pick')} ${map.slotId}`"
                 :disabled="disabled || mapState(map).banned"
-                :title="`${mapState(map).picked ? 'Unpick' : 'Pick'} ${map.slotId}`"
+                v-tooltip.top="`${mapState(map).picked ? 'Unpick' : 'Pick'} ${map.slotId}`"
                 @click="runAction(map, 'pick')"
               >
                 <Crosshair :size="13" />
@@ -281,11 +281,13 @@ onBeforeUnmount(() => {
   gap: 0.8rem;
   height: 100%;
   min-height: 0;
+  min-width: 0;
   flex: 1 1 auto;
-  width: auto;
-  margin-right: -1.2rem;
+  width: 100%;
+  max-width: 100%;
+  margin-right: 0;
   overflow: visible;
-  padding-right: 1.2rem;
+  padding-right: 0;
 }
 
 .mappool-card__toolbar,
@@ -579,11 +581,15 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
+  min-width: 0;
 }
 
 .mappool-map {
-  justify-content: space-between;
+  display: grid;
+  align-items: center;
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: 0.45rem;
+  width: 100%;
   min-width: 0;
   padding: 0.45rem 0.35rem;
   border: 1px solid transparent;
@@ -610,6 +616,7 @@ onBeforeUnmount(() => {
 
 .mappool-map__info {
   display: flex;
+  flex: 1 1 auto;
   flex-direction: column;
   min-width: 0;
   gap: 0.12rem;
@@ -649,6 +656,7 @@ onBeforeUnmount(() => {
 
 .mappool-map__actions {
   display: flex;
+  min-width: 0;
   flex-shrink: 0;
   gap: 0.2rem;
 }

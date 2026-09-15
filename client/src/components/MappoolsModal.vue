@@ -568,11 +568,11 @@ watch(editing, (value) => {
 <template>
   <Dialog :visible="visible" modal :dismissable-mask="true" header="Mappools" class="mappools-dialog" :style="{ width: '46rem' }" :pt="{ mask: { class: 'app-dialog-mask' } }" @update:visible="handleMainDialogVisibility">
     <div class="mappools__toolbar">
-      <Button text rounded title="Add mappool" aria-label="Add mappool" @click="newPool"><Plus :size="17" /></Button
+      <Button text rounded v-tooltip.top="'Add mappool'" aria-label="Add mappool" @click="newPool"><Plus :size="17" /></Button
       ><input ref="importInput" hidden type="file" accept=".json,application/json" @change="importPool" /><Button
         text
         rounded
-        title="Import mappool"
+        v-tooltip.top="'Import mappool'"
         aria-label="Import mappool"
         @click="importInput.click()"
         ><Upload :size="17"
@@ -580,7 +580,7 @@ watch(editing, (value) => {
     </div>
     <article v-for="pool in mappools" :key="pool.id" class="mappool">
       <header role="button" tabindex="0" :aria-expanded="expanded.has(pool.id)" @click="toggle(pool)" @keydown.enter.prevent="toggle(pool)" @keydown.space.prevent="toggle(pool)">
-        <Button text rounded :title="expanded.has(pool.id) ? 'Collapse mappool' : 'Expand mappool'" :aria-label="expanded.has(pool.id) ? 'Collapse mappool' : 'Expand mappool'"
+        <Button text rounded v-tooltip.top="expanded.has(pool.id) ? 'Collapse mappool' : 'Expand mappool'" :aria-label="expanded.has(pool.id) ? 'Collapse mappool' : 'Expand mappool'"
           ><ChevronDown v-if="expanded.has(pool.id)" :size="15" /><ChevronRight v-else :size="15"
         /></Button>
         <div>
@@ -588,10 +588,10 @@ watch(editing, (value) => {
           ><small>{{ pool.stage }}</small>
         </div>
         <span class="mappool__actions" @click.stop
-          ><Button text rounded title="Add category" aria-label="Add category" @click="addCategory(pool)"><Plus :size="16" /></Button
-          ><Button text rounded title="Edit mappool" aria-label="Edit mappool" @click="editing = { ...pool, globalCommands: [...pool.globalCommands], freeModMultipliers: multiplierRows(pool.freeModMultipliers) }"><Pencil :size="15" /></Button
-          ><Button text rounded title="Export mappool" aria-label="Export mappool" @click="exportPool(pool)"><Download :size="15" /></Button
-          ><Button text rounded severity="danger" title="Delete mappool" aria-label="Delete mappool" @click="requestDelete(pool, { type: 'pool' })"><Trash2 :size="15" /></Button
+          ><Button text rounded v-tooltip.top="'Add category'" aria-label="Add category" @click="addCategory(pool)"><Plus :size="16" /></Button
+          ><Button text rounded v-tooltip.top="'Edit mappool'" aria-label="Edit mappool" @click="editing = { ...pool, globalCommands: [...pool.globalCommands], freeModMultipliers: multiplierRows(pool.freeModMultipliers) }"><Pencil :size="15" /></Button
+          ><Button text rounded v-tooltip.top="'Export mappool'" aria-label="Export mappool" @click="exportPool(pool)"><Download :size="15" /></Button
+          ><Button text rounded severity="danger" v-tooltip.top="'Delete mappool'" aria-label="Delete mappool" @click="requestDelete(pool, { type: 'pool' })"><Trash2 :size="15" /></Button
         ></span>
       </header>
       <Transition :css="false" @enter="onSlotsEnter" @after-enter="onSlotsAfterEnter" @leave="onSlotsLeave" @after-leave="onSlotsAfterLeave"
@@ -610,7 +610,7 @@ watch(editing, (value) => {
                 <Button
                   text
                   rounded
-                  :title="categoryIsExpanded(pool, category.name) ? 'Collapse category' : 'Expand category'"
+                  v-tooltip.top="categoryIsExpanded(pool, category.name) ? 'Collapse category' : 'Expand category'"
                   :aria-label="categoryIsExpanded(pool, category.name) ? 'Collapse category' : 'Expand category'"
                   ><ChevronDown v-if="categoryIsExpanded(pool, category.name)" :size="14" /><ChevronRight v-else :size="14" /></Button
                 ><InputText
@@ -627,14 +627,14 @@ watch(editing, (value) => {
                   v-if="editingCategory?.poolId === pool.id && editingCategory.oldName === category.name"
                   text
                   rounded
-                  title="Save category name"
+                  v-tooltip.top="'Save category name'"
                   aria-label="Save category name"
                   @click.stop="applyCategoryRename(pool, category.name)"
                   ><Check :size="12" /></Button
-                ><Button v-else text rounded title="Rename category" aria-label="Rename category" @click.stop="startCategoryRename(pool, category.name)"><Pencil :size="13" /></Button
+                ><Button v-else text rounded v-tooltip.top="'Rename category'" aria-label="Rename category" @click.stop="startCategoryRename(pool, category.name)"><Pencil :size="13" /></Button
                 ><small>{{ category.slots.length }}</small
-                ><Button text rounded title="Add beatmap" aria-label="Add beatmap" @click.stop="addSlot(pool, category.name)"><Plus :size="15" /></Button
-                ><Button text rounded severity="danger" title="Delete category" aria-label="Delete category" @click.stop="deleteCategory(pool, category.name)"><Trash2 :size="15" /></Button>
+                ><Button text rounded v-tooltip.top="'Add beatmap'" aria-label="Add beatmap" @click.stop="addSlot(pool, category.name)"><Plus :size="15" /></Button
+                ><Button text rounded severity="danger" v-tooltip.top="'Delete category'" aria-label="Delete category" @click.stop="deleteCategory(pool, category.name)"><Trash2 :size="15" /></Button>
               </header>
               <Transition :css="false" @enter="onSlotsEnter" @after-enter="onSlotsAfterEnter" @leave="onSlotsLeave" @after-leave="onSlotsAfterLeave"
                 ><div v-show="categoryIsExpanded(pool, category.name)" class="mappool__category-slots">
@@ -666,13 +666,13 @@ watch(editing, (value) => {
                       </div>
                     </Transition>
                     <span class="slot__actions" @click.stop
-                      ><Button text rounded title="Edit beatmap commands and win condition" aria-label="Edit beatmap commands and win condition" @click="editSlot(pool, slot)"
+                      ><Button text rounded v-tooltip.top="'Edit beatmap commands and win condition'" aria-label="Edit beatmap commands and win condition" @click="editSlot(pool, slot)"
                         ><Pencil :size="15" /></Button
                       ><Button
                         text
                         rounded
                         severity="danger"
-                        title="Delete beatmap"
+                        v-tooltip.top="'Delete beatmap'"
                         aria-label="Delete beatmap"
                         @click="requestDelete(pool, { type: 'slot', slotId: slot.slotId })"
                         ><Trash2 :size="15" /></Button
@@ -730,16 +730,16 @@ watch(editing, (value) => {
         <div v-for="(row, index) in editing.freeModMultipliers" :key="index" class="mappools-multiplier-row">
           <InputText v-model="row.mods" placeholder="EZ+RX" aria-label="Mod combination" />
           <InputText v-model="row.multiplier" type="number" min="0" step="0.01" placeholder="1.5" aria-label="Multiplier" />
-          <Button text rounded severity="danger" title="Delete multiplier" aria-label="Delete multiplier" @click="editing.freeModMultipliers.splice(index, 1)"><Trash2 :size="14" /></Button>
+          <Button text rounded severity="danger" v-tooltip.top="'Delete multiplier'" aria-label="Delete multiplier" @click="editing.freeModMultipliers.splice(index, 1)"><Trash2 :size="14" /></Button>
         </div>
-        <Button text label="Add multiplier" class="mappools-dialog__configure" title="Add FreeMod multiplier" @click="editing.freeModMultipliers.push({ mods: '', multiplier: 1 })" />
+        <Button text label="Add multiplier" class="mappools-dialog__configure" v-tooltip.top="'Add FreeMod multiplier'" @click="editing.freeModMultipliers.push({ mods: '', multiplier: 1 })" />
       </div>
     </div>
     <template #footer
-      ><Button text label="Cancel" class="mappools-dialog__cancel" title="Cancel mappool editing" @click="cancelPoolEdit" /><Button
+      ><Button text label="Cancel" class="mappools-dialog__cancel" v-tooltip.top="'Cancel mappool editing'" @click="cancelPoolEdit" /><Button
         label="Save"
         class="mappools-dialog__save"
-        title="Save mappool"
+        v-tooltip.top="'Save mappool'"
         @click="savePool" /></template
   ></Dialog>
   <Dialog
@@ -784,7 +784,7 @@ watch(editing, (value) => {
           text
           rounded
           class="mappools-dialog__configure"
-          title="Configure custom win condition"
+          v-tooltip.top="'Configure custom win condition'"
           aria-label="Configure custom win condition"
           @click="configureWinCondition"
           >Configure</Button
@@ -796,10 +796,10 @@ watch(editing, (value) => {
       </div>
     </div>
     <template #footer
-      ><Button text label="Cancel" class="mappools-dialog__cancel" title="Cancel beatmap editing" @click="cancelSlotEdit" /><Button
+      ><Button text label="Cancel" class="mappools-dialog__cancel" v-tooltip.top="'Cancel beatmap editing'" @click="cancelSlotEdit" /><Button
         label="Save"
         class="mappools-dialog__save"
-        title="Save beatmap"
+        v-tooltip.top="'Save beatmap'"
         @click="saveSlot" /></template
   ></Dialog>
   <Dialog
@@ -831,8 +831,8 @@ watch(editing, (value) => {
       <span>Never ask me again for this mappool</span>
     </label>
     <template #footer>
-      <Button text label="Cancel" class="mappools-dialog__cancel" title="Cancel deletion" @click="cancelDelete" />
-      <Button label="Delete" severity="danger" title="Confirm deletion" @click="confirmDelete" />
+      <Button text label="Cancel" class="mappools-dialog__cancel" v-tooltip.top="'Cancel deletion'" @click="cancelDelete" />
+      <Button label="Delete" severity="danger" v-tooltip.top="'Confirm deletion'" @click="confirmDelete" />
     </template>
   </Dialog>
   <Dialog v-if="invalidMappoolsConfirmation" :visible="Boolean(invalidMappoolsConfirmation)" modal :dismissable-mask="false" :close-on-escape="false" :show-header="false" class="mappools-dialog mappools-delete-confirm-dialog mappools-invalid-confirm-dialog" :pt="{ mask: { class: 'app-dialog-mask' } }">
@@ -847,8 +847,8 @@ watch(editing, (value) => {
       </p>
     </div>
     <template #footer>
-      <Button text label="Delete" class="mappools-invalid-confirm-dialog__delete" title="Delete invalid mappools" @click="confirmRemoveInvalidMappools" />
-      <Button label="Stay" class="mappools-invalid-confirm-dialog__stay" title="Keep editing mappools" @click="keepInvalidMappools" />
+      <Button text label="Delete" class="mappools-invalid-confirm-dialog__delete" v-tooltip.top="'Delete invalid mappools'" @click="confirmRemoveInvalidMappools" />
+      <Button label="Stay" class="mappools-invalid-confirm-dialog__stay" v-tooltip.top="'Keep editing mappools'" @click="keepInvalidMappools" />
     </template>
   </Dialog>
 </template>
@@ -1531,36 +1531,36 @@ watch(editing, (value) => {
 .mappool__category-header strong {
   flex: 0 1 auto;
 }
-.mappool__category-header .p-button[title="Rename category"] {
+.mappool__category-header .p-button[aria-label="Rename category"] {
   width: 1.35rem !important;
   height: 1.35rem !important;
   color: var(--app-text) !important;
 }
-.mappool__category-header .p-button[title="Rename category"] svg {
+.mappool__category-header .p-button[aria-label="Rename category"] svg {
   width: 11px;
   height: 11px;
 }
-.mappool__category-header .p-button[title="Rename category"]:hover {
+.mappool__category-header .p-button[aria-label="Rename category"]:hover {
   color: var(--app-text) !important;
 }
 .mappool__category-header small {
   margin-left: auto;
 }
-.mappool__category-header .p-button[title="Rename category"] {
+.mappool__category-header .p-button[aria-label="Rename category"] {
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.16s linear;
 }
-.mappool__category:hover .p-button[title="Rename category"] {
+.mappool__category:hover .p-button[aria-label="Rename category"] {
   opacity: 1;
   pointer-events: auto;
 }
-.mappool__category-header .p-button[title="Save category name"] {
+.mappool__category-header .p-button[aria-label="Save category name"] {
   width: 1.35rem !important;
   height: 1.35rem !important;
   color: var(--app-text) !important;
 }
-.mappool__category-header .p-button[title="Save category name"] svg {
+.mappool__category-header .p-button[aria-label="Save category name"] svg {
   width: 12px;
   height: 12px;
 }
