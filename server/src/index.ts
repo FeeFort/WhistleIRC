@@ -1,7 +1,6 @@
 import http from "node:http";
 import net from "node:net";
 import path from "node:path";
-import { execFile } from "node:child_process";
 import express, { Request, Response } from "express";
 import { WebSocket, WebSocketServer } from "ws";
 import { parseBanchoBotMessage, parseLobbyCommand } from "./banchoBotParser.js";
@@ -10,10 +9,26 @@ import { fetchApi } from "./osu-api/osuApiClient.js";
 import { config } from "./config.js";
 import { ClientMessage, ConnectionState, IrcCredentials, IrcLine, LobbyState, ParsedBanchoBotMessage, Player, PlayerScore, Team } from "./types.js";
 import { fileURLToPath } from "node:url";
+import { UpdateError, UpdateManager } from "./updater/updateManager.js";
+import { applyPendingUpdate } from "./updater/applyUpdate.js";
+import { openInBrowser } from "./browser.js";
+import { createTray } from "./tray/index.js";
+import { evaluateWinCondition, WinConditionContext } from "./winConditionRunner.js";
 
 const IRC_HOST = "irc.ppy.sh";
 const IRC_PORT = 6667;
 const AUTH_ERROR = "Login or password is incorrect.";
+const launchedAfterUpdate = process.argv.includes("--updated");
+
+if (process.argv[2] === "--apply-update") {
+  try {
+    await applyPendingUpdate(process.argv[3], process.argv[4]);
+    process.exit(0);
+  } catch (error) {
+    console.error(`Update installation failed: ${(error as Error).message}`);
+    process.exit(1);
+  }
+}
 
 function formatLogTime(date = new Date()): string {
   return date.toTimeString().slice(0, 8);
@@ -91,9 +106,15 @@ function getNick(prefix: string | null): string | null {
 }
 
 function normalizeChannel(channel: string | null | undefined): string {
-  return String(channel || "")
+  const normalized = String(channel || "")
     .replace(/^:/, "")
     .toLowerCase();
+  // The UI identifies multiplayer tabs as `mp-<id>`, while IRC sends
+  // `#mp_<id>`. Keep one canonical key for state, score buffers and active
+  // win conditions so a script selected from the UI survives until the IRC
+  // match-finished event arrives.
+  const multiplayer = normalized.match(/^#?mp[-_](\d+)$/);
+  return multiplayer ? `#mp_${multiplayer[1]}` : normalized;
 }
 
 function getMultiplayerId(channel: string): number | null {
@@ -164,6 +185,7 @@ function createLobbyState(channel: string): LobbyState {
     mode: "osu!",
     size: 16,
     slots: Array.from({ length: 16 }, () => null),
+    slotLocks: Array.from({ length: 16 }, () => false),
     timer: { active: false, endsAt: null },
     status: "active",
   };
@@ -179,6 +201,7 @@ function cloneLobbyState(state: LobbyState): LobbyState {
     teamBluePlayers: [...state.teamBluePlayers],
     players: state.players.map((player) => ({ ...player })),
     slots: [...state.slots],
+    slotLocks: [...state.slotLocks],
   };
 }
 
@@ -199,6 +222,7 @@ class BanchoConnection {
   clients: Set<WebSocket> = new Set();
   lobbyStates: Map<string, LobbyState> = new Map();
   matchScoreBuffers: Map<string, Map<string, number>> = new Map();
+  activeWinConditions: Map<string, { beatmapId: number; source: string }> = new Map();
   pendingAutoSettings: Set<string> = new Set();
 
   addClient(client: WebSocket): void {
@@ -246,6 +270,7 @@ class BanchoConnection {
     if (!this.lobbyStates.has(key) || reset) {
       this.lobbyStates.set(key, createLobbyState(channel));
       this.matchScoreBuffers.set(key, new Map());
+      this.activeWinConditions.delete(key);
     }
     return this.lobbyStates.get(key)!;
   }
@@ -289,6 +314,7 @@ class BanchoConnection {
       "mode",
       "size",
       "slots",
+      "slotLocks",
       "status",
     ];
 
@@ -311,6 +337,15 @@ class BanchoConnection {
       state.timer = nextTimer;
     }
 
+    if (update.size !== undefined) {
+      const size = Math.max(0, Math.min(16, Number(update.size) || 0));
+      const slotLocks = Array.from({ length: 16 }, (_, index) => index >= size);
+      if (JSON.stringify(state.slotLocks) !== JSON.stringify(slotLocks)) {
+        state.slotLocks = slotLocks;
+        changed = true;
+      }
+    }
+
     const matchStatus = getMatchStatus(state);
     if (state.matchStatus !== matchStatus) {
       state.matchStatus = matchStatus;
@@ -326,6 +361,7 @@ class BanchoConnection {
     state.status = "closed";
     state.timer = { active: false, endsAt: null };
     this.matchScoreBuffers.set(normalizeChannel(channel), new Map());
+    this.activeWinConditions.delete(normalizeChannel(channel));
     if (changed) this.sendLobbyState(channel, state);
   }
 
@@ -347,6 +383,19 @@ class BanchoConnection {
     });
   }
 
+  setLobbyHost(channel: string, username: string | null): void {
+    const state = this.getLobbyState(channel);
+    const normalizedName = username?.toLowerCase() ?? null;
+    this.updatePlayers(
+      channel,
+      state.players.map((player) => ({
+        ...player,
+        isHost: normalizedName !== null && player.username.toLowerCase() === normalizedName,
+      })),
+    );
+    this.updateLobbyState(channel, { host: username });
+  }
+
   upsertPlayer(channel: string, player: Partial<Player> & Pick<Player, "username" | "slot">): void {
     const state = this.getLobbyState(channel);
     const normalizedName = player.username.toLowerCase();
@@ -358,7 +407,9 @@ class BanchoConnection {
         ...previous,
         ...player,
         ready: player.ready ?? previous?.ready ?? false,
-        team: player.team ?? previous?.team ?? null,
+        noMap: player.noMap ?? previous?.noMap ?? false,
+        isHost: player.isHost ?? previous?.isHost ?? false,
+        team: Object.prototype.hasOwnProperty.call(player, "team") ? (player.team ?? null) : (previous?.team ?? null),
         mods: player.mods?.length || !previous?.mods ? (player.mods ?? []) : previous.mods,
         profileUrl: player.profileUrl || previous?.profileUrl || null,
         userId: player.userId ?? previous?.userId ?? null,
@@ -388,23 +439,62 @@ class BanchoConnection {
     this.matchScoreBuffers.set(key, scores);
   }
 
-  finishMatch(channel: string): void {
+  async finishMatch(channel: string): Promise<void> {
     const state = this.getLobbyState(channel);
-    const scores = this.matchScoreBuffers.get(normalizeChannel(channel)) || new Map();
-    if (!scores.size) return;
+    const channelKey = normalizeChannel(channel);
+    const scores = this.matchScoreBuffers.get(channelKey) || new Map();
+    if (!scores.size) {
+      this.activeWinConditions.delete(channelKey);
+      return;
+    }
 
     const sumTeam = (players: string[]) => players.reduce((total, username) => total + (scores.get(username.toLowerCase()) || 0), 0);
     const teamRedScore = sumTeam(state.teamRedPlayers);
     const teamBlueScore = sumTeam(state.teamBluePlayers);
-    const winnerTeam = teamRedScore === teamBlueScore ? null : teamRedScore > teamBlueScore ? "red" : "blue";
-    const scoreDifference = winnerTeam ? Math.abs(teamRedScore - teamBlueScore) : 0;
+    let winnerTeam: Team | null = teamRedScore === teamBlueScore ? null : teamRedScore > teamBlueScore ? "red" : "blue";
+    let scoreDifference = winnerTeam ? Math.abs(teamRedScore - teamBlueScore) : 0;
+    let resultRedScore = teamRedScore;
+    let resultBlueScore = teamBlueScore;
+    const activeWinCondition = this.activeWinConditions.get(channelKey);
+
+    if (activeWinCondition && activeWinCondition.beatmapId === state.currentBeatmap?.id) {
+      const outcome = await evaluateWinCondition(activeWinCondition.source, {
+        redScore: teamRedScore,
+        blueScore: teamBlueScore,
+        redCombo: 0,
+        blueCombo: 0,
+        redAccuracy: 0,
+        blueAccuracy: 0,
+        redMisses: 0,
+        blueMisses: 0,
+        matchId: state.id ?? undefined,
+        players: state.players,
+      });
+      winnerTeam = outcome.winner === "tie" ? null : outcome.winner;
+      resultRedScore = outcome.result?.beatmapTeamRedScore ?? teamRedScore;
+      resultBlueScore = outcome.result?.beatmapTeamBlueScore ?? teamBlueScore;
+      scoreDifference = outcome.result?.scoreDifference ?? (winnerTeam ? Math.abs(resultRedScore - resultBlueScore) : 0);
+      this.broadcast({
+        type: "win_condition_result",
+        channel: channel.replace(/^:/, ""),
+        winner: outcome.winner,
+        result: outcome.result,
+        systemMessages: outcome.systemMessages,
+        error: outcome.error,
+      });
+      console.log(
+        `[${formatLogTime()}] win_condition ${channel} beatmap=${activeWinCondition.beatmapId} match=${state.id ?? "unknown"} winner=${outcome.winner}${outcome.error ? ` error=${outcome.error}` : ""}`,
+      );
+    } else if (activeWinCondition) {
+      console.warn(`[${formatLogTime()}] win_condition skipped for ${channel}: active beatmap=${activeWinCondition.beatmapId}, current beatmap=${state.currentBeatmap?.id ?? "unknown"}`);
+    }
     const nextPickTeam = getOppositePickTeam(state);
     const winningScore = getWinningScore(state.bestOf);
 
     this.updateLobbyState(channel, {
       lastPlay: {
-        teamRedScore,
-        teamBlueScore,
+        teamRedScore: resultRedScore,
+        teamBlueScore: resultBlueScore,
         scoreDifference,
         winnerTeam,
       },
@@ -413,6 +503,7 @@ class BanchoConnection {
       ...(winnerTeam === "blue" && (!winningScore || state.teamBlueScore < winningScore) ? { teamBlueScore: state.teamBlueScore + 1 } : {}),
     });
     scores.clear();
+    this.activeWinConditions.delete(channelKey);
   }
 
   handleLobbyMessage(channel: string, nick: string | null, text: string): void {
@@ -437,14 +528,27 @@ class BanchoConnection {
       });
     } else if (parsed.type === "settings" || parsed.type === "size") {
       this.updateLobbyState(channel, parsed.value);
+      if (parsed.type === "settings" && this.pendingAutoSettings.has(normalizeChannel(channel))) {
+        this.broadcast({
+          type: "lobby_settings_synced",
+          channel: channel.replace(/^:/, ""),
+        });
+      }
+    } else if (parsed.type === "slot_lock") {
+      const slotLocks = [...this.getLobbyState(channel).slotLocks];
+      slotLocks[parsed.value.slot - 1] = parsed.value.locked;
+      this.updateLobbyState(channel, { slotLocks });
     } else if (parsed.type === "mode") {
       this.updateLobbyState(channel, { mode: parsed.value });
     } else if (parsed.type === "beatmap" || parsed.type === "mods") {
       this.updateLobbyState(channel, parsed.value);
     } else if (parsed.type === "player") {
       this.upsertPlayer(channel, parsed.value);
+      if (parsed.value.isHost) this.setLobbyHost(channel, parsed.value.username);
+    } else if (parsed.type === "host") {
+      this.setLobbyHost(channel, parsed.value.host);
     } else if (parsed.type === "player_joined") {
-      this.upsertPlayer(channel, { ...parsed.value, ready: false });
+      this.upsertPlayer(channel, { ...parsed.value, ready: false, noMap: false, isHost: false });
     } else if (parsed.type === "player_team_changed") {
       this.updatePlayerTeam(channel, parsed.value.username, parsed.value.team);
     } else if (parsed.type === "player_moved") {
@@ -454,7 +558,7 @@ class BanchoConnection {
     } else if (parsed.type === "player_score") {
       this.recordPlayerScore(channel, parsed.value);
     } else if (parsed.type === "match_finished") {
-      this.finishMatch(channel);
+      void this.finishMatch(channel);
     } else if (parsed.type === "metadata") {
       this.updateLobbyState(channel, parsed.value);
     } else if (parsed.type === "timer") {
@@ -506,6 +610,7 @@ class BanchoConnection {
     this.credentials = { login: login.replaceAll(" ", "_"), password };
     this.lobbyStates.clear();
     this.matchScoreBuffers.clear();
+    this.activeWinConditions.clear();
     this.pendingAutoSettings.clear();
     this.setState("connecting");
 
@@ -697,6 +802,7 @@ class BanchoConnection {
 }
 
 const banchoConnection = new BanchoConnection();
+const updateManager = new UpdateManager();
 let shuttingDown = false;
 
 function isNonEmptyString(value: unknown): value is string {
@@ -714,6 +820,10 @@ function validateMessage(message: unknown): string | null {
 
   if (!isNonEmptyString(message.type)) {
     return "Message type must be a non-empty string.";
+  }
+
+  if (message.method === "POST" && message.body === undefined) {
+    return "body is required.";
   }
 
   const validators: Record<string, () => string | null> = {
@@ -790,6 +900,20 @@ function validateMessage(message: unknown): string | null {
       }
       return null;
     },
+    set_active_win_condition: () => {
+      if (!isNonEmptyString(message.channel)) return "channel must be a non-empty string.";
+      if (!Number.isInteger(message.beatmapId) || (message.beatmapId as number) <= 0) return "beatmapId must be a positive integer.";
+      if (message.source !== null && typeof message.source !== "string") return "source must be a string or null.";
+      return null;
+    },
+    check_update: () => null,
+    start_update: () => null,
+    cancel_update: () => null,
+    confirm_install: () => null,
+    test_win_condition: () => {
+      if (!isNonEmptyString(message.slotId) || typeof message.source !== "string" || !isRecord(message.sampleContext)) return "slotId, source and sampleContext are required.";
+      return null;
+    },
   };
 
   const validator = validators[message.type];
@@ -798,6 +922,68 @@ function validateMessage(message: unknown): string | null {
   }
 
   return validator();
+}
+
+function sendUpdateError(client: WebSocket, error: unknown): void {
+  const updateError = error instanceof UpdateError ? error : new UpdateError("UPDATE_FAILED", (error as Error).message);
+  sendJson(client, { type: "update_error", code: updateError.code, message: updateError.message });
+}
+
+async function handleCheckUpdate(client: WebSocket): Promise<void> {
+  try {
+    sendJson(client, await updateManager.check());
+  } catch (error) {
+    sendUpdateError(client, error);
+  }
+}
+
+async function handleStartUpdate(client: WebSocket): Promise<void> {
+  try {
+    await updateManager.download((payload) => sendJson(client, payload));
+  } catch (error) {
+    sendUpdateError(client, error);
+  }
+}
+
+async function handleCancelUpdate(client: WebSocket): Promise<void> {
+  try {
+    await updateManager.cancel();
+  } catch (error) {
+    sendUpdateError(client, error);
+  }
+}
+
+function handleConfirmInstall(client: WebSocket): void {
+  try {
+    updateManager.install((payload) => sendJson(client, payload));
+    setTimeout(() => shutdown("update"), 250);
+  } catch (error) {
+    sendUpdateError(client, error);
+  }
+}
+
+async function handleTestWinCondition(client: WebSocket, message: ClientMessage): Promise<void> {
+  const payload = message as Extract<ClientMessage, { type: "test_win_condition" }>;
+  const result = await evaluateWinCondition(payload.source, payload.sampleContext as unknown as WinConditionContext);
+  if (result.error) {
+    console.error(`[${formatLogTime()}] win_condition_test ${payload.slotId} failed: ${result.error}`);
+  } else {
+    console.log(`[${formatLogTime()}] win_condition_test ${payload.slotId} → winner=${result.winner}${result.systemMessages.length ? ` messages=${JSON.stringify(result.systemMessages)}` : ""}`);
+  }
+  sendJson(client, { type: "win_condition_test_result", slotId: payload.slotId, ...result });
+}
+
+function handleSetActiveWinCondition(client: WebSocket, message: ClientMessage): void {
+  const payload = message as Extract<ClientMessage, { type: "set_active_win_condition" }>;
+  const channelKey = normalizeChannel(payload.channel);
+  const source = payload.source?.trim() || "";
+  if (source) {
+    banchoConnection.activeWinConditions.set(channelKey, { beatmapId: payload.beatmapId, source });
+  } else {
+    banchoConnection.activeWinConditions.delete(channelKey);
+  }
+  console.log(`[${formatLogTime()}] active_win_condition ${channelKey}: ${source ? `beatmap=${payload.beatmapId}` : "cleared"}`);
+  sendJson(client, { type: "ack", received: message.type });
 }
 
 function handleLogin(client: WebSocket, message: ClientMessage): void {
@@ -838,15 +1024,25 @@ async function handleOsuLogout(client: WebSocket): Promise<void> {
 }
 
 async function handleApiRequest(client: WebSocket, message: ClientMessage): Promise<void> {
-  const { endpoint } = message as Extract<ClientMessage, { type: "api_request" }>;
+  const { endpoint, method, body } = message as Extract<ClientMessage, { type: "api_request" }>;
   if (!config.allowedApiEndpoints.some((pattern) => pattern.test(endpoint))) {
     sendJson(client, { type: "error", request: "api_request", message: "Endpoint not allowed" });
     return;
   }
 
+  if (body !== undefined && (!body || typeof body !== "object" || Array.isArray(body))) {
+    sendJson(client, { type: "error", request: "api_request", message: "Request body must be an object" });
+    return;
+  }
+
+  if (method !== undefined && method !== "GET" && method !== "POST") {
+    sendJson(client, { type: "error", request: "api_request", message: "Unsupported HTTP method" });
+    return;
+  }
+
   try {
     const accessToken = await getAccessToken();
-    const response = await fetchApi(accessToken, endpoint);
+    const response = await fetchApi(accessToken, endpoint, method, body as Record<string, unknown>);
     sendJson(client, { type: "api_response", endpoint, response });
   } catch (error) {
     console.error(`[${formatLogTime()}] osu! API request failed: ${(error as Error).message}`);
@@ -953,6 +1149,12 @@ function handleClientMessage(client: WebSocket, rawMessage: unknown): void {
     part_channel: handlePartChannel,
     set_lobby_score: handleSetLobbyScore,
     set_lobby_settings: handleSetLobbySettings,
+    set_active_win_condition: handleSetActiveWinCondition,
+    check_update: handleCheckUpdate,
+    start_update: handleStartUpdate,
+    cancel_update: handleCancelUpdate,
+    confirm_install: handleConfirmInstall,
+    test_win_condition: handleTestWinCondition,
   };
 
   handlers[message.type](client, message);
@@ -989,18 +1191,12 @@ httpServer.listen(config.httpPort, config.httpHost, () => {
   console.log(`[${formatLogTime()}] WhistleIRC server listening on http://${config.httpHost}:${config.httpPort}`);
   console.log(`[${formatLogTime()}] WebSocket endpoint: ws://${config.httpHost}:${config.httpPort}/ws`);
 
-  const browserUrl = `http://localhost:${config.httpPort}`;
+  const browserUrl = `http://localhost:${config.httpPort}${launchedAfterUpdate ? "?updated=1" : ""}`;
 
-  if (process.platform === "win32") {
-    execFile("cmd", ["/c", "start", "", browserUrl], {
-      windowsHide: true,
-    });
-  } else if (process.platform === "darwin") {
-    execFile("open", [browserUrl]);
-  } else {
-    execFile("xdg-open", [browserUrl]);
-  }
+  openInBrowser(browserUrl);
 });
+
+createTray({ port: config.httpPort, onQuit: () => shutdown("tray") });
 
 function shutdown(signal?: string): void {
   if (shuttingDown) {

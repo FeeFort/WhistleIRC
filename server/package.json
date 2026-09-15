@@ -2,7 +2,7 @@
   "name": "WhistleIRC",
   "type": "module",
   "private": true,
-  "version": "0.2.0-alpha",
+  "version": "0.3.0-alpha",
   "description": "WhistleIRC WebSocket and Bancho IRC bridge",
   "main": "src/index.js",
   "bin": "dist/bundle.js",
@@ -12,16 +12,22 @@
     "build": "node build.js",
     "lint": "eslint .",
     "format": "prettier --write . --ignore-path ../.prettierignore",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "postinstall": "patch-package"
   },
   "dependencies": {
+    "dbus-next": "^0.10.2",
     "express": "^5.1.0",
+    "patch-package": "^8.0.1",
+    "semver": "^7.8.5",
+    "systray2": "^2.1.4",
     "ws": "^8.18.0"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@types/express": "^5.0.6",
     "@types/node": "^26.4.0",
+    "@types/semver": "^7.8.0",
     "@types/ws": "^8.18.1",
     "@yao-pkg/pkg": "^6.22.0",
     "esbuild": "^0.28.2",
@@ -36,7 +42,12 @@
   },
   "pkg": {
     "assets": [
-      "static/**/*"
+      "static/**/*",
+      "node_modules/systray2/traybin/**/*",
+      "icon.png",
+      "icon.ico",
+      "icon.icns",
+      "icon.*"
     ],
     "targets": [
       "node22-win-x64",
@@ -50,6 +61,7 @@
   },
   "allowScripts": {
     "esbuild@0.28.2": true,
-    "esbuild@0.24.2": true
+    "esbuild@0.24.2": true,
+    "usocket@0.3.0": true
   }
 }

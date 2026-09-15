@@ -14,6 +14,7 @@ export const DEFAULT_CHAT_SETTINGS = {
   highlightStyles: ["bold"],
   highlightColorMode: "default",
   highlightColor: "#ffffff",
+  fullSlots: false,
 };
 
 const STORAGE_KEY = "feeirc-chat-settings";
@@ -49,6 +50,7 @@ const highlightWords = ref(storedSettings.highlightWords);
 const highlightStyles = ref(storedSettings.highlightStyles);
 const highlightColorMode = ref(storedSettings.highlightColorMode);
 const highlightColor = ref(storedSettings.highlightColor);
+const fullSlots = ref(storedSettings.fullSlots);
 
 const settings = {
   highlightReferee,
@@ -63,6 +65,7 @@ const settings = {
   highlightStyles,
   highlightColorMode,
   highlightColor,
+  fullSlots,
 };
 
 watch(

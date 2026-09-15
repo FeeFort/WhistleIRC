@@ -306,7 +306,7 @@ watch(
               :key="variable.key"
               type="button"
               class="lobby-messages-dialog__variable"
-              :title="variable.label"
+              v-tooltip.top="variable.label"
               @click="insertVariable(variable.key)"
             >
               {{ variableToken(variable.key) }}

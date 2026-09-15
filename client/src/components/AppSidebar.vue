@@ -116,7 +116,7 @@ const profileMenuItems = computed(() => [
                       <span class="app-sidebar__chat-label">{{ chat.label }}</span>
                       <span v-if="unreadChats[chat.id]" class="app-sidebar__chat-unread" role="status" aria-label="New messages" />
                     </SidebarMenuButton>
-                    <button type="button" class="app-sidebar__chat-close" :aria-label="`Close ${chat.label} chat`" title="Close chat" @click.stop="requestCloseChat(chat)">
+                    <button type="button" class="app-sidebar__chat-close" v-tooltip.top="'Close chat'" :aria-label="`Close ${chat.label} chat`" @click.stop="requestCloseChat(chat)">
                       <X :size="11" />
                     </button>
                   </SidebarMenuItem>
@@ -133,7 +133,13 @@ const profileMenuItems = computed(() => [
                       <span class="app-sidebar__chat-label">{{ channel.lobby?.name || channel.label }}</span>
                       <span v-if="unreadChats[channel.id]" class="app-sidebar__chat-unread" role="status" aria-label="New messages" />
                     </SidebarMenuButton>
-                    <button type="button" class="app-sidebar__chat-close" :aria-label="`Close ${channel.lobby?.name || channel.label} chat`" title="Close chat" @click.stop="requestCloseChat(channel)">
+                    <button
+                      type="button"
+                      class="app-sidebar__chat-close"
+                      v-tooltip.top="'Close chat'"
+                      :aria-label="`Close ${channel.lobby?.name || channel.label} chat`"
+                      @click.stop="requestCloseChat(channel)"
+                    >
                       <X :size="11" />
                     </button>
                   </SidebarMenuItem>

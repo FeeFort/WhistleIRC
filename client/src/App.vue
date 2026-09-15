@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import Button from "primevue/button";
 import ColorPicker from "primevue/colorpicker";
 import InputText from "primevue/inputtext";
@@ -8,7 +8,7 @@ import SelectButton from "primevue/selectbutton";
 import Toast from "primevue/toast";
 import ToggleSwitch from "primevue/toggleswitch";
 import { useToast } from "primevue/usetoast";
-import { ArrowLeft, Check, ChevronDown, CircleX, DoorOpen, Map, Play, RotateCcw, Settings2, Sparkles } from "@lucide/vue";
+import { ArrowLeft, Check, ChevronDown, CircleX, DoorOpen, Map as MapIcon, Play, RotateCcw, Settings2, Sparkles } from "@lucide/vue";
 import ChatWindow from "./components/ChatWindow.vue";
 import AddChannelDialog from "./components/AddChannelDialog.vue";
 import CreateLobbyDialog from "./components/CreateLobbyDialog.vue";
@@ -17,8 +17,13 @@ import LobbyScoreCard from "./components/LobbyScoreCard.vue";
 import LobbyMessagesSettings from "./components/LobbyMessagesSettings.vue";
 import MappoolCard from "./components/MappoolCard.vue";
 import PlayerListCard from "./components/PlayerListCard.vue";
+import PlayersDialog from "./components/PlayersDialog.vue";
+import LobbySetupDialog from "./components/LobbySetupDialog.vue";
 import AppSidebar from "./components/AppSidebar.vue";
 import SidebarSectionCard from "./components/SidebarSectionCard.vue";
+import SettingsModal from "./components/SettingsModal.vue";
+import ShortcutImportExportSettings from "./components/ShortcutImportExportSettings.vue";
+import UpdateDialog from "./components/UpdateDialog.vue";
 import { DEFAULT_PRIMARY_COLOR, useDarkMode } from "./composables/useDarkMode";
 import { DEFAULT_CHAT_SETTINGS, useChatSettings } from "./composables/useChatSettings";
 import { HIGHLIGHT_STYLE_OPTIONS, highlightTextStyle, messageHasHighlight, normalizeHighlightStyles, normalizeHighlightWords } from "./composables/useMessageHighlighting";
@@ -45,9 +50,22 @@ const osuClientSecret = ref("");
 const osuProfile = ref(null);
 const sidebarOpen = ref(true);
 const settingsOpen = ref(false);
+const updateDialogVisible = ref(false);
+const updateDialogMode = ref("available");
+const updateInfo = ref({ currentVersion: "", latestVersion: "", releaseNotesUrl: "" });
+const updateDownloadedBytes = ref(0);
+const updateTotalBytes = ref(0);
+const updateSpeedBytesPerSecond = ref(0);
+const UPDATE_SPEED_WINDOW_MS = 2000;
+let updateSpeedSamples = [];
 const lobbyMessagesSettingsOpen = ref(false);
 const createLobbyDialogOpen = ref(false);
 const addChannelDialogOpen = ref(false);
+const playersDialogOpen = ref(false);
+const lobbySetupDialogOpen = ref(false);
+const lobbySetupGameMode = computed(() => ({ HeadToHead: 0, "Tag co-op": 1, "Team VS": 2, "Tag-team VS": 3 })[activeLobbyState.value?.teamMode] ?? 2);
+const lobbySetupWinCondition = computed(() => ({ Score: 0, Accuracy: 1, Combo: 2, "Score V2": 3 })[activeLobbyState.value?.scoreMode] ?? 3);
+const lobbySetupOpenSlots = computed(() => Math.max(0, Math.min(16, Number(activeLobbyState.value?.size ?? 16))));
 const activeChat = ref("bancho");
 const unreadChats = reactive({ bancho: false });
 const directChats = ref([]);
@@ -73,6 +91,7 @@ const {
   highlightStyles,
   highlightColorMode,
   highlightColor,
+  fullSlots,
 } = useChatSettings();
 const { nickColor: baseNickColor } = useNickColor();
 const {
@@ -88,15 +107,21 @@ const {
   setLobbyScore,
   setLobbySettings,
   requestApi,
+  checkUpdate,
+  startUpdate,
+  cancelUpdate,
+  confirmInstall,
 } = useServerConnection();
 const connected = computed(() => serverState.value === "ready");
 const toast = useToast();
 const loginToastGroup = "irc-login";
+const launchedAfterUpdate = new URLSearchParams(window.location.search).has("updated");
 const { activePreset } = useLobbyMessages();
-const { pool, getMapState, qualificationMode } = useMappool();
+const { getActivePool, getMapState, getQualificationMode, hasQualificationMode, setQualificationMode, clearLobbyState } = useMappool();
 const { soundEnabled, toastEnabled, ignoreBanchoBot, sound, soundTrigger, toastTrigger } = useNotifications();
 const { showNowPlaying, showProgressBar, showProgressTimeLabel } = useNowPlayingSettings();
 const nowPlayingByLobby = reactive({});
+const PLAYER_PROFILE_CACHE_KEY = "whistleirc-lobby-player-profiles";
 const primaryColorDraft = ref(primaryColor.value);
 const banchoBotColorDraft = ref(banchoBotColor.value);
 const redTeamColorDraft = ref(redTeamColor.value);
@@ -106,6 +131,44 @@ const highlightColorDraft = ref(highlightColor.value);
 const highlightStylesPopover = ref(null);
 const highlightWordsInputRef = ref(null);
 const highlightWordsInputDraft = ref("");
+function readPlayerProfileCache() {
+  try {
+    const value = JSON.parse(localStorage.getItem(PLAYER_PROFILE_CACHE_KEY) || "{}");
+    return value && typeof value === "object" ? value : {};
+  } catch {
+    return {};
+  }
+}
+const playerProfilesByLobbyId = reactive(readPlayerProfileCache());
+
+function cacheLobbyPlayers(chatId, players) {
+  if (!chatId || !Array.isArray(players)) return;
+  const profiles = (playerProfilesByLobbyId[chatId] ||= {});
+  let changed = false;
+  for (const player of players) {
+    const username = String(player.username || "").trim();
+    if (!username || player.isSlot) continue;
+    const key = normalizeIrcNick(username);
+    const previous = profiles[key] || {};
+    const next = {
+      username,
+      userId: player.userId ?? previous.userId ?? null,
+      profileUrl: player.profileUrl || previous.profileUrl || "",
+      avatarUrl: player.avatarUrl || previous.avatarUrl || "",
+    };
+    if (JSON.stringify(previous) !== JSON.stringify(next)) {
+      profiles[key] = next;
+      changed = true;
+    }
+  }
+  if (changed) localStorage.setItem(PLAYER_PROFILE_CACHE_KEY, JSON.stringify(playerProfilesByLobbyId));
+}
+
+function clearCachedLobbyProfiles(chatId) {
+  if (!chatId || !playerProfilesByLobbyId[chatId]) return;
+  delete playerProfilesByLobbyId[chatId];
+  localStorage.setItem(PLAYER_PROFILE_CACHE_KEY, JSON.stringify(playerProfilesByLobbyId));
+}
 const highlightStyleLabelMap = Object.fromEntries(HIGHLIGHT_STYLE_OPTIONS.map((option) => [option.value, option.label]));
 
 const unassignedColorModes = [
@@ -253,6 +316,20 @@ watch(
       return;
     }
 
+    if (event?.type === "win_condition_result") {
+      const chatId = channelId(event.channel);
+      if (!chatId || !joinedChannels.value.some((channel) => channel.id === chatId)) return;
+      winConditionResultsByChat[chatId] = event.result || null;
+      for (const message of event.systemMessages || []) {
+        appendChatMessage(chatId, {
+          id: nextId++,
+          type: "system",
+          text: message,
+        });
+      }
+      return;
+    }
+
     if (event?.type === "channel_joined") {
       const channel = addJoinedChannel(event.channel);
       const joinedChannelId = channelId(event.channel);
@@ -262,20 +339,37 @@ watch(
         addChannelDialogOpen.value = false;
         showJoinToast("success", "Connected", "Successfully joined the lobby.");
       }
-      if (channel && pendingLobbySeed.value && normalizeIrcNick(event.nick) === normalizeIrcNick(currentUser.value)) {
-        channel.createdViaCreateLobby = pendingLobbyCreatedViaApp.value;
-        const seededLobby = {
-          ...channel.lobby,
-          ...pendingLobbySeed.value,
-        };
-        channel.lobby = seededLobby;
-        lobbyStates[channel.id] = seededLobby;
-        if (Number.isInteger(seededLobby.bestOf) && seededLobby.bestOf > 0) {
-          setLobbySettings(channel.label, seededLobby.bestOf, seededLobby.nextPickTeam);
+      const isCreatedLobbyJoin = pendingLobbyCreatedViaApp.value && normalizeIrcNick(event.nick) === normalizeIrcNick(currentUser.value);
+      if (channel && isCreatedLobbyJoin) {
+        channel.createdViaCreateLobby = true;
+        channel.initialLobbySetupPending = true;
+        if (pendingLobbySeed.value) {
+          const seededLobby = {
+            ...channel.lobby,
+            ...pendingLobbySeed.value,
+          };
+          channel.lobby = seededLobby;
+          lobbyStates[channel.id] = seededLobby;
+          setQualificationMode(channel.id, seededLobby.qualificationMode === true);
+          if (Number.isInteger(seededLobby.bestOf) && seededLobby.bestOf > 0) {
+            setLobbySettings(channel.label, seededLobby.bestOf, seededLobby.nextPickTeam);
+          }
         }
         pendingLobbySeed.value = null;
         pendingLobbyCreatedViaApp.value = false;
       }
+      return;
+    }
+
+    if (event?.type === "lobby_settings_synced") {
+      const syncedChannelId = channelId(event.channel);
+      const channel = joinedChannels.value.find((item) => item.id === syncedChannelId);
+      if (!channel?.initialLobbySetupPending) return;
+      channel.initialLobbySetupPending = false;
+      activeChat.value = syncedChannelId;
+      nextTick(() => {
+        lobbySetupDialogOpen.value = true;
+      });
       return;
     }
 
@@ -594,7 +688,31 @@ function handleLogout() {
   localStorage.removeItem("feeirc-remembered-login");
 }
 
-async function connectWithToast(username, password) {
+async function checkForUpdates() {
+  toast.removeGroup(loginToastGroup);
+  toast.add({ group: loginToastGroup, severity: "info", summary: "Checking for updates", detail: "Checking for updates...", sticky: true });
+  try {
+    const result = await checkUpdate();
+    if (result.available) {
+      updateInfo.value = {
+        currentVersion: result.currentVersion,
+        latestVersion: result.latestVersion,
+        releaseNotesUrl: result.releaseNotesUrl || "",
+      };
+      updateDialogMode.value = "available";
+      updateDialogVisible.value = true;
+      toast.removeGroup(loginToastGroup);
+    } else {
+      toast.removeGroup(loginToastGroup);
+      toast.add({ group: loginToastGroup, severity: "success", summary: "Up to date", detail: "You are using the latest version.", life: 3000 });
+    }
+  } catch (error) {
+    toast.removeGroup(loginToastGroup);
+    toast.add({ group: loginToastGroup, severity: "error", summary: "Update check failed", detail: error.message || "Unable to check for updates.", life: 5000 });
+  }
+}
+
+async function connectWithToast(username, password, { checkUpdates = false } = {}) {
   toast.removeGroup(loginToastGroup);
   toast.add({
     group: loginToastGroup,
@@ -606,14 +724,17 @@ async function connectWithToast(username, password) {
 
   try {
     await loginToServer(username, password);
-    toast.removeGroup(loginToastGroup);
-    toast.add({
-      group: loginToastGroup,
-      severity: "success",
-      summary: "Connected",
-      detail: "Bancho IRC connection is ready.",
-      life: 3000,
-    });
+    if (checkUpdates) await checkForUpdates();
+    else {
+      toast.removeGroup(loginToastGroup);
+      toast.add({
+        group: loginToastGroup,
+        severity: "success",
+        summary: "Connected",
+        detail: "Bancho IRC connection is ready.",
+        life: 3000,
+      });
+    }
     return true;
   } catch (error) {
     toast.removeGroup(loginToastGroup);
@@ -627,6 +748,52 @@ async function connectWithToast(username, password) {
     return false;
   }
 }
+
+function beginUpdateDownload() {
+  updateDownloadedBytes.value = 0;
+  updateTotalBytes.value = 0;
+  updateSpeedBytesPerSecond.value = 0;
+  updateSpeedSamples = [];
+  updateDialogMode.value = "downloading";
+  updateDialogVisible.value = true;
+  startUpdate();
+}
+
+function cancelUpdateDownload() {
+  cancelUpdate();
+}
+
+watch(lastEvent, (event) => {
+  if (!event) return;
+  if (event.type === "update_progress" && event.stage === "downloading") {
+    const now = Date.now();
+    updateDownloadedBytes.value = event.downloadedBytes;
+    updateTotalBytes.value = event.totalBytes;
+
+    updateSpeedSamples.push({ t: now, bytes: event.downloadedBytes });
+    while (updateSpeedSamples.length > 2 && now - updateSpeedSamples[0].t > UPDATE_SPEED_WINDOW_MS) {
+      updateSpeedSamples.shift();
+    }
+
+    const oldest = updateSpeedSamples[0];
+    const elapsedSeconds = (now - oldest.t) / 1000;
+    if (updateSpeedSamples.length > 1 && elapsedSeconds > 0) {
+      updateSpeedBytesPerSecond.value = (event.downloadedBytes - oldest.bytes) / elapsedSeconds;
+    }
+  }
+  if (event.type === "update_progress" && event.stage === "ready_to_install") {
+    updateDialogMode.value = "installing";
+    confirmInstall();
+    setTimeout(() => window.close(), 700);
+  }
+  if (event.type === "update_error") {
+    updateDialogVisible.value = false;
+    if (event.code !== "DOWNLOAD_CANCELLED") {
+      toast.removeGroup(loginToastGroup);
+      toast.add({ group: loginToastGroup, severity: "error", summary: "Update failed", detail: event.message || "Unable to download the update.", life: 5000 });
+    }
+  }
+});
 
 async function handleLogin({ username, password, rememberMe }) {
   if (loginLoading.value) return;
@@ -698,6 +865,15 @@ function handleCopyCallback() {
 }
 
 onMounted(async () => {
+  if (launchedAfterUpdate) {
+    const url = new URL(window.location.href);
+    url.searchParams.delete("updated");
+    window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
+    toast.removeGroup(loginToastGroup);
+    toast.add({ group: loginToastGroup, severity: "success", summary: "Update complete", detail: "The update was installed successfully!", life: 5000 });
+  } else {
+    await checkForUpdates();
+  }
   const [credentials, osuAuth] = await Promise.all([loadRememberedCredentials(), loadOsuAuthData()]);
   osuClientId.value = osuAuth?.clientId || "";
   osuClientSecret.value = osuAuth?.clientSecret || "";
@@ -774,6 +950,7 @@ const banchoMessages = ref([
   },
 ]);
 const roomClosedByChat = reactive({});
+const winConditionResultsByChat = reactive({});
 
 const activeMessages = computed(() => (activeChat.value === "bancho" ? banchoMessages.value : channelMessages[activeChat.value] || []));
 const activeDirectChat = computed(() => directChats.value.find((item) => item.id === activeChat.value) || null);
@@ -810,6 +987,10 @@ const activeLobbyState = computed(() => {
   if (activeChatKind.value !== "lobby") return null;
   return lobbyStates[activeChat.value];
 });
+const activeQualificationMode = computed({
+  get: () => getQualificationMode(activeChat.value),
+  set: (value) => setQualificationMode(activeChat.value, value),
+});
 const activeLobbySize = computed(() => activeLobbyState.value?.size ?? 16);
 const activeLobbyTeamMode = computed(() => activeLobbyState.value?.teamMode || "HeadToHead");
 const activeLobbyScoreMode = computed(() => activeLobbyState.value?.scoreMode || "Score");
@@ -818,7 +999,7 @@ const activeNowPlaying = computed(() => {
   if (!showNowPlaying.value || activeChatKind.value !== "lobby" || roomClosedByChat[activeChat.value]) return null;
   const map = nowPlayingByLobby[activeChat.value];
   if (!map) return null;
-  const totalSeconds = Number(map.totalSeconds ?? map.total_seconds);
+  const totalSeconds = Number(map.totalSeconds);
   return {
     ...map,
     totalSeconds: Number.isFinite(totalSeconds) && totalSeconds > 0 ? totalSeconds : null,
@@ -850,7 +1031,7 @@ const activeLobbyPlayers = computed(() => {
         .map((mod) => mod.trim())
         .filter((mod) => mod && !/^(?:enabled|disabled|freemod|fm)$/i.test(mod))
     : [];
-  return [...lobby.players]
+  const players = [...lobby.players]
     .sort((left, right) => {
       const leftSlot = Number.isFinite(left.slot) ? left.slot : Number.POSITIVE_INFINITY;
       const rightSlot = Number.isFinite(right.slot) ? right.slot : Number.POSITIVE_INFINITY;
@@ -859,17 +1040,37 @@ const activeLobbyPlayers = computed(() => {
     })
     .map((player) => ({
       name: player.username,
-      profileUrl: player.profileUrl || (player.userId ? `https://osu.ppy.sh/u/${player.userId}` : ""),
-      isHost: false,
+      profileUrl: player.profileUrl || playerProfilesByLobbyId[activeChat.value]?.[normalizeIrcNick(player.username)]?.profileUrl || (player.userId ? `https://osu.ppy.sh/u/${player.userId}` : ""),
+      isHost: Boolean(player.isHost) || normalizeIrcNick(player.username) === normalizeIrcNick(lobby.host),
       isReady: Boolean(player.ready),
-      avatarUrl: player.avatarUrl || (player.userId ? `https://a.ppy.sh/${player.userId}` : ""),
+      noMap: Boolean(player.noMap),
+      avatarUrl: player.avatarUrl || playerProfilesByLobbyId[activeChat.value]?.[normalizeIrcNick(player.username)]?.avatarUrl || (player.userId ? `https://a.ppy.sh/${player.userId}` : ""),
       team: player.team || null,
       slot: player.slot ?? null,
       mods: [...commonMods, ...(player.mods || [])]
         .filter((mod) => !/^(?:enabled|disabled|freemod|fm)$/i.test(String(mod).trim()))
         .filter((mod, index, mods) => mods.findIndex((candidate) => candidate.toLowerCase() === mod.toLowerCase()) === index),
     }));
+  const playersBySlot = new Map(players.filter((player) => Number.isInteger(player.slot)).map((player) => [player.slot, player]));
+  return Array.from({ length: 16 }, (_, index) => {
+    const slot = index + 1;
+    const player = playersBySlot.get(slot);
+    if (player) return player;
+    return {
+      name: `Slot ${slot}`,
+      slot,
+      isSlot: true,
+      isLocked: Boolean(lobby.slotLocks?.[index]),
+      profileUrl: "",
+      isHost: false,
+      isReady: false,
+      avatarUrl: "",
+      team: null,
+      mods: [],
+    };
+  });
 });
+const activeLobbyDisplayPlayers = computed(() => (fullSlots.value ? activeLobbyPlayers.value : activeLobbyPlayers.value.filter((player) => !player.isSlot)));
 const activeLobbyReferees = computed(() => {
   const channel = joinedChannels.value.find((item) => item.id === activeChat.value);
   if (Array.isArray(channel?.referees)) {
@@ -947,6 +1148,7 @@ function createDefaultLobbyState(channelName) {
     scoreMode: "Score",
     mode: "osu!",
     size: 16,
+    slotLocks: Array.from({ length: 16 }, () => false),
     timer: { active: false, endsAt: null },
     status: "active",
   };
@@ -966,6 +1168,7 @@ function addJoinedChannel(channelName) {
     createdViaCreateLobby: false,
     lobby: createDefaultLobbyState(channelName),
     referees: currentUser.value ? [currentUser.value] : [],
+    initialLobbySetupPending: false,
   };
   joinedChannels.value.push(channel);
   lobbyStates[channel.id] = channel.lobby;
@@ -1044,9 +1247,17 @@ function applyLobbyState(event) {
     teamRedPlayers: Array.isArray(incomingLobby.teamRedPlayers) ? [...incomingLobby.teamRedPlayers] : currentLobby.teamRedPlayers,
     teamBluePlayers: Array.isArray(incomingLobby.teamBluePlayers) ? [...incomingLobby.teamBluePlayers] : currentLobby.teamBluePlayers,
     players: Array.isArray(incomingLobby.players) ? incomingLobby.players.map((player) => ({ ...player })) : currentLobby.players,
+    slotLocks: Array.isArray(incomingLobby.slotLocks) ? [...incomingLobby.slotLocks] : currentLobby.slotLocks,
   };
+  if (!Array.isArray(incomingLobby.slotLocks) && Number.isInteger(nextLobby.size)) {
+    nextLobby.slotLocks = Array.from({ length: 16 }, (_, index) => index >= nextLobby.size);
+  }
   channel.lobby = nextLobby;
   lobbyStates[eventChannelId] = nextLobby;
+  cacheLobbyPlayers(eventChannelId, nextLobby.players);
+  if (!hasQualificationMode(eventChannelId)) {
+    setQualificationMode(eventChannelId, nextLobby.qualificationMode === true || nextLobby.qualifiers === true);
+  }
   channel.closed = channel.lobby.status === "closed";
 
   if (channel.closed) {
@@ -1199,8 +1410,12 @@ function notificationMatchesTrigger(trigger, message) {
   return trigger === "always" || messageHasHighlight(message.text, highlightWords.value);
 }
 
+function isAppFocused() {
+  return document.visibilityState === "visible" && document.hasFocus();
+}
+
 function notifyIncomingMessage(chatId, message) {
-  if (activeChat.value === chatId) return;
+  if (activeChat.value === chatId && isAppFocused()) return;
   if (ignoreBanchoBot.value && message.author?.toLowerCase() === "banchobot") return;
 
   if (soundEnabled.value && notificationMatchesTrigger(soundTrigger.value, message)) {
@@ -1219,18 +1434,40 @@ function notifyIncomingMessage(chatId, message) {
 
 function appendChatMessage(chatId, message, { notify = false } = {}) {
   const list = chatId === "bancho" ? banchoMessages.value : (channelMessages[chatId] ||= []);
-  list.push(message);
+  list.push({ ...message, time: message.time || new Date().toISOString() });
   if (activeChat.value !== chatId) {
     unreadChats[chatId] = true;
-    if (notify) notifyIncomingMessage(chatId, message);
   }
+  if (notify) notifyIncomingMessage(chatId, message);
+}
+
+function downloadChatHistory() {
+  const chatId = activeChat.value;
+  const messages = chatId === "bancho" ? banchoMessages.value : channelMessages[chatId] || [];
+  const formatTimestamp = (value) => {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return "00:00:00";
+    return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
+  };
+  const lines = messages.map((message) => `[${formatTimestamp(message.time)}] ${message.author || (message.type === "system" ? "System" : "Unknown")}: ${String(message.text || "")}`);
+  const blob = new Blob([`${lines.join("\n")}\n`], { type: "text/plain;charset=utf-8" });
+  const link = document.createElement("a");
+  const filename =
+    String(activeChatTitle.value || chatId || "chat-history")
+      .trim()
+      .replace(/[^a-z0-9._-]+/gi, "_")
+      .replace(/^_+|_+$/g, "") || "chat-history";
+  link.href = URL.createObjectURL(blob);
+  link.download = `${filename}-chat-history.txt`;
+  link.click();
+  URL.revokeObjectURL(link.href);
 }
 
 function localNowPlayingMap(map, pickedBy = null) {
   return {
     ...map,
-    title: map.name,
-    diff: map.diff,
+    title: map.title || map.name,
+    diff: map.diff || map.version,
     mapperName: map.mapperName || map.author || "",
     pickedBy,
     status: "waiting",
@@ -1243,14 +1480,97 @@ function setNowPlaying(chatId, map) {
   nowPlayingByLobby[chatId] = map;
 }
 
-function nextPickedMap(chatId, currentMap = null) {
-  if (!pool.value) return null;
-  return pool.value.maps.find((map) => {
-    const state = getMapState(chatId, map.slot);
-    const isCurrentMap = (currentMap?.slot && map.slot === currentMap.slot) || (currentMap?.id && map.id === currentMap.id);
-    return state.picked && !state.banned && !isCurrentMap;
-  });
+const MOD_ALIASES = Object.freeze({
+  easy: "EZ",
+  nofail: "NF",
+  halftime: "HT",
+  hardrock: "HR",
+  suddendeath: "SD",
+  perfect: "PF",
+  doubletime: "DT",
+  nightcore: "NC",
+  hidden: "HD",
+  flashlight: "FL",
+  relax: "RX",
+  autopilot: "AP",
+  spunout: "SO",
+  touchdevice: "TD",
+  freemod: "FM",
+  key1: "1K",
+  key2: "2K",
+  key3: "3K",
+  key4: "4K",
+  key5: "5K",
+  key6: "6K",
+  key7: "7K",
+  key8: "8K",
+  key9: "9K",
+  keycoop: "CO",
+  mirror: "MR",
+  fadein: "FI",
+});
+const MODS_WITHOUT_STAR_RATING_EFFECT = new Set(["FM", "NF", "RX", "SO", "AP", "SD"]);
+
+function normalizeMapMods(value) {
+  const values = Array.isArray(value) ? value : String(value || "").split(/\s*,\s*|\s+/);
+  return values
+    .map((mod) => String(mod).trim())
+    .filter(Boolean)
+    .filter((mod) => !/^(?:enabled|disabled|none)$/i.test(mod))
+    .map((mod) => MOD_ALIASES[mod.toLowerCase()] || mod.toUpperCase())
+    .filter((mod, index, mods) => mods.indexOf(mod) === index);
 }
+
+async function refreshNowPlayingMapAttributes(chatId, map) {
+  if (!map || !chatId || !map.baseBeatmapLoaded) return;
+  const lobby = lobbyStates[chatId];
+  const mods = normalizeMapMods(lobby?.activeMods || map.mods);
+  const baseDuration = Number(map.baseTotalSeconds ?? map.totalSeconds);
+  const baseStarRating = Number(map.baseStarRating ?? map.starRating);
+  const hasDoubleTime = mods.includes("DT");
+
+  if (Number.isFinite(baseStarRating)) {
+    map.starRating = baseStarRating;
+  }
+
+  if (Number.isFinite(baseDuration) && baseDuration > 0) {
+    const adjustedDuration = hasDoubleTime ? baseDuration * 0.67 : baseDuration;
+    map.totalSeconds = adjustedDuration;
+  }
+
+  const beatmapId = map.beatmapId || map.id;
+  if (!beatmapId) return;
+  const requestKey = `${chatId}:${beatmapId}:${mods.join(",")}`;
+  const sameModsAsLastRequest = map.attributesModsKey === requestKey;
+  if (!sameModsAsLastRequest) {
+    map.attributesRequestVersion = (map.attributesRequestVersion || 0) + 1;
+    map.attributesModsKey = requestKey;
+  }
+
+  const affectingMods = mods.filter((mod) => !MODS_WITHOUT_STAR_RATING_EFFECT.has(mod));
+  if (!affectingMods.length || sameModsAsLastRequest) return;
+
+  const requestVersion = map.attributesRequestVersion;
+
+  try {
+    const response = await requestApi(`/beatmaps/${beatmapId}/attributes`, "POST", { mods: affectingMods });
+    const starRating = Number(response?.attributes?.star_rating ?? response?.star_rating);
+    if (Number.isFinite(starRating) && nowPlayingByLobby[chatId] === map && map.attributesRequestVersion === requestVersion) {
+      map.starRating = starRating;
+    }
+  } catch {
+    // Keep the base map data when modded attributes are unavailable.
+  }
+}
+
+watch(
+  () => [activeChat.value, activeLobbyState.value?.activeMods, nowPlayingByLobby[activeChat.value]?.beatmapId],
+  () => {
+    const chatId = activeChat.value;
+    const map = nowPlayingByLobby[chatId];
+    if (map?.baseBeatmapLoaded) refreshNowPlayingMapAttributes(chatId, map);
+  },
+);
 
 async function loadManualNowPlayingMap(chatId, beatmap) {
   const beatmapId = beatmap?.beatmapId || beatmap?.id;
@@ -1270,7 +1590,7 @@ async function loadManualNowPlayingMap(chatId, beatmap) {
         // The map itself is still usable when the optional mapper lookup fails.
       }
     }
-    setNowPlaying(chatId, {
+    const nextMap = {
       ...beatmap,
       title: info.title || info.beatmapset?.title || "Unknown title",
       artist: info.artist || info.beatmapset?.artist || "Unknown artist",
@@ -1288,7 +1608,12 @@ async function loadManualNowPlayingMap(chatId, beatmap) {
             : null,
       status: "waiting",
       error: null,
-    });
+    };
+    nextMap.baseTotalSeconds = nextMap.totalSeconds;
+    nextMap.baseStarRating = nextMap.starRating;
+    nextMap.baseBeatmapLoaded = true;
+    setNowPlaying(chatId, nextMap);
+    refreshNowPlayingMapAttributes(chatId, nextMap);
   } catch (error) {
     if (!previousMap) {
       setNowPlaying(chatId, { ...beatmap, status: "waiting", error: error.message || "Unable to load map" });
@@ -1315,9 +1640,7 @@ function handleNowPlayingEvent(chatId, text) {
     nowPlayingByLobby[chatId].status = "finished";
     window.setTimeout(() => {
       if (nowPlayingByLobby[chatId]?.status === "finished") {
-        const finishedMap = nowPlayingByLobby[chatId];
-        const nextMap = nextPickedMap(chatId, finishedMap);
-        nowPlayingByLobby[chatId] = nextMap ? localNowPlayingMap(nextMap) : null;
+        nowPlayingByLobby[chatId] = null;
       }
     }, 3000);
   }
@@ -1327,6 +1650,8 @@ function markRoomClosed(chatId) {
   if (roomClosedByChat[chatId]) return;
   roomClosedByChat[chatId] = true;
   delete nowPlayingByLobby[chatId];
+  clearLobbyState(chatId);
+  clearCachedLobbyProfiles(chatId);
   const channel = joinedChannels.value.find((item) => item.id === chatId);
   if (channel) {
     channel.closed = true;
@@ -1431,6 +1756,72 @@ function handleSend(text) {
   });
 }
 
+function updateActiveLobbyPlayers(update) {
+  const channel = joinedChannels.value.find((item) => item.id === activeChat.value);
+  const lobby = channel?.lobby;
+  if (!channel || !lobby || !Array.isArray(lobby.players)) return;
+  const nextLobby = {
+    ...lobby,
+    players: lobby.players.map((player) => ({ ...player })),
+  };
+  update(nextLobby.players, nextLobby);
+  channel.lobby = nextLobby;
+  lobbyStates[activeChat.value] = nextLobby;
+}
+
+function moveLobbyPlayer({ username, slot }) {
+  if (!activeLobbyState.value || roomClosedByChat[activeChat.value]) return;
+  const targetSlot = Number(slot);
+  if (!Number.isInteger(targetSlot) || targetSlot < 1 || targetSlot > 16) return;
+  const player = activeLobbyState.value.players.find((item) => normalizeIrcNick(item.username) === normalizeIrcNick(username));
+  const target = activeLobbyState.value.players.find((item) => Number(item.slot) === targetSlot);
+  if (!player || target || activeLobbyState.value.slotLocks?.[targetSlot - 1]) return;
+  updateActiveLobbyPlayers((players) => {
+    const current = players.find((item) => normalizeIrcNick(item.username) === normalizeIrcNick(username));
+    if (current) current.slot = targetSlot;
+  });
+  handleCommand("!mp move " + username + " " + targetSlot);
+}
+
+function toggleLobbyPlayerTeam({ username, team }) {
+  if (activeLobbyState.value?.status === "closed" || !["red", "blue"].includes(team)) return;
+  const player = activeLobbyState.value?.players?.find((item) => normalizeIrcNick(item.username) === normalizeIrcNick(username));
+  if (!player || !player.team) return;
+  updateActiveLobbyPlayers((players) => {
+    const current = players.find((item) => normalizeIrcNick(item.username) === normalizeIrcNick(username));
+    if (current) current.team = team;
+  });
+  handleCommand("!mp team " + username + " " + team);
+}
+
+function kickLobbyPlayer({ username }) {
+  if (!activeLobbyState.value || roomClosedByChat[activeChat.value]) return;
+  handleCommand("!mp kick " + username);
+}
+
+function setLobbyHost({ username }) {
+  if (!activeLobbyState.value || roomClosedByChat[activeChat.value]) return;
+  const player = activeLobbyState.value.players.find((item) => normalizeIrcNick(item.username) === normalizeIrcNick(username));
+  if (!player) return;
+  updateActiveLobbyPlayers((players, lobby) => {
+    players.forEach((item) => {
+      item.isHost = normalizeIrcNick(item.username) === normalizeIrcNick(username);
+    });
+    lobby.host = username;
+  });
+  handleCommand("!mp host " + username);
+}
+
+function sendLobbySetup(command) {
+  if (!activeLobbyState.value || roomClosedByChat[activeChat.value]) return;
+  handleCommand(command);
+}
+
+function openLobbySetup() {
+  if (!activeLobbyState.value || roomClosedByChat[activeChat.value]) return;
+  lobbySetupDialogOpen.value = true;
+}
+
 function handleCommand(command) {
   handleSend(command);
   if (activeChat.value === "bancho") return;
@@ -1450,9 +1841,6 @@ function handleCommand(command) {
 function handleCreateLobby(payload) {
   pendingLobbySeed.value = payload.lobby || null;
   pendingLobbyCreatedViaApp.value = Boolean(payload.lobby);
-  if (typeof payload.lobby?.qualificationMode === "boolean") {
-    qualificationMode.value = payload.lobby.qualificationMode;
-  }
   handleCommand(payload.command);
 }
 
@@ -1494,19 +1882,21 @@ function getLobbyTemplateValues(lobby, result = {}) {
   const hasLastPlay = Number.isFinite(lastPlay.teamRedScore) && Number.isFinite(lastPlay.teamBlueScore);
   const rawBeatmapTeamRedScore = Number.isFinite(result.beatmapTeamRedScore) ? result.beatmapTeamRedScore : hasLastPlay ? lastPlay.teamRedScore : "—";
   const rawBeatmapTeamBlueScore = Number.isFinite(result.beatmapTeamBlueScore) ? result.beatmapTeamBlueScore : hasLastPlay ? lastPlay.teamBlueScore : "—";
-  const beatmapWinner = resolveBeatmapWinner(teamRedName, teamBlueName, rawBeatmapTeamRedScore, rawBeatmapTeamBlueScore, result.beatmapWinner);
+  const explicitWinner = result.beatmapWinner === "red" ? teamRedName : result.beatmapWinner === "blue" ? teamBlueName : result.beatmapWinner === "tie" ? "Draw" : result.beatmapWinner;
+  const beatmapWinner = resolveBeatmapWinner(teamRedName, teamBlueName, rawBeatmapTeamRedScore, rawBeatmapTeamBlueScore, explicitWinner);
   const accuracySuffix = result.accuracy ? "%" : "";
   const roundAccuracy = (score) => Math.round((score + Number.EPSILON) * 100) / 100;
   const formatBeatmapScore = (score) => (accuracySuffix && Number.isFinite(score) ? `${roundAccuracy(score)}%` : score);
   const beatmapTeamRedScore = formatBeatmapScore(rawBeatmapTeamRedScore);
   const beatmapTeamBlueScore = formatBeatmapScore(rawBeatmapTeamBlueScore);
+  const activeMappool = getActivePool(activeChat.value);
   const availableMaps =
-    pool.value?.maps
-      ?.filter((map) => {
-        const state = getMapState(activeChat.value, map.slot);
-        return !/^(?:TB|Tiebreaker)\d*$/i.test(String(map.slot).trim()) && !state.picked && !state.banned;
+    activeMappool?.slots
+      ?.filter((slot) => {
+        const state = getMapState(activeChat.value, slot.slotId);
+        return Number(slot.beatmapId) > 0 && !/^(?:TB|Tiebreaker)\d*$/i.test(String(slot.slotId).trim()) && !state.picked && !state.banned;
       })
-      .map((map) => map.slot)
+      .map((slot) => slot.slotId)
       .join(", ") || "—";
 
   return {
@@ -1533,13 +1923,20 @@ function getLobbyTemplateValues(lobby, result = {}) {
 function handleMappoolPick(map) {
   if (activeChatKind.value !== "lobby") return;
   const picker = activeLobbyState.value?.players?.find((player) => normalizeIrcNick(player.username) === normalizeIrcNick(currentUser.value));
-  const totalSeconds = map.totalSeconds ?? map.total_seconds ?? null;
-  setNowPlaying(activeChat.value, {
+  const preview = map.preview || {};
+  const totalSeconds = map.totalSeconds ?? preview.totalSeconds ?? null;
+  const nextMap = {
     ...map,
-    artist: map.artist || "",
-    title: map.name,
+    artist: preview.artist || "",
+    title: preview.title || "",
+    diff: preview.diff || "",
+    mapperName: preview.author || "",
+    beatmapsetId: preview.beatmapsetId ?? null,
     totalSeconds,
-    total_seconds: totalSeconds,
+    baseTotalSeconds: totalSeconds,
+    starRating: preview.starRating ?? null,
+    baseStarRating: preview.starRating ?? null,
+    baseBeatmapLoaded: true,
     pickedBy: activeLobbyState.value?.nextPickTeam || picker?.team || null,
     pickedByTeam:
       activeLobbyState.value?.nextPickTeam && normalizeIrcNick(activeLobbyState.value.nextPickTeam) === normalizeIrcNick(activeLobbyState.value.teamRed)
@@ -1549,14 +1946,19 @@ function handleMappoolPick(map) {
           : picker?.team || null,
     status: "waiting",
     error: null,
-  });
+  };
+  setNowPlaying(activeChat.value, nextMap);
+  refreshNowPlayingMapAttributes(activeChat.value, nextMap);
 }
 
 function handleSendResult(result) {
   if (activeChat.value === "bancho") return;
   const lobby = activeLobbyState.value;
   if (!lobby) return;
-  const values = getLobbyTemplateValues(lobby, result);
+  const values = getLobbyTemplateValues(lobby, {
+    ...(winConditionResultsByChat[activeChat.value] || {}),
+    ...result,
+  });
 
   const outgoingMessages = activePreset.value?.messages.filter((message) => message.enabled && message.content.trim()) || [
     {
@@ -1579,6 +1981,18 @@ function handleSendResult(result) {
       <CircleX v-else-if="message.severity === 'error'" :size="18" aria-label="Error" />
     </template>
   </Toast>
+  <UpdateDialog
+    v-model:visible="updateDialogVisible"
+    :mode="updateDialogMode"
+    :current-version="updateInfo.currentVersion"
+    :latest-version="updateInfo.latestVersion"
+    :release-notes-url="updateInfo.releaseNotesUrl"
+    :downloaded-bytes="updateDownloadedBytes"
+    :total-bytes="updateTotalBytes"
+    :speed-bytes-per-second="updateSpeedBytesPerSecond"
+    @update="beginUpdateDownload"
+    @cancel="cancelUpdateDownload"
+  />
   <LoginPage
     v-if="!isAuthenticated && !authLoading"
     :initial-login="savedLogin"
@@ -1609,287 +2023,108 @@ function handleSendResult(result) {
     @open-add-channel="addChannelDialogOpen = true"
     @close-chat="closeActiveChat"
   >
-    <div v-if="settingsOpen" class="settings-page">
-      <header class="settings-page__header">
-        <button type="button" class="settings-page__back" aria-label="Back to chat" @click="closeSettings">
-          <ArrowLeft :size="18" />
-        </button>
-        <div class="settings-page__title">
-          <Settings2 :size="20" />
-          <h1>Settings</h1>
-        </div>
-      </header>
-
-      <section class="settings-page__section">
-        <div class="settings-page__section-heading">
-          <h2>App settings</h2>
-        </div>
-
-        <div class="settings-page__setting">
-          <div class="settings-page__setting-info">
-            <h3>Primary color</h3>
-            <p>Controls the main accent color used for active states, buttons, highlights, and other interactive elements across the app.</p>
+    <SettingsModal v-model:visible="settingsOpen">
+      <template #app>
+        <section class="settings-page__section">
+          <div class="settings-page__section-heading">
+            <h2>App settings</h2>
           </div>
 
-          <div class="settings-page__color-control">
-            <ColorPicker v-model="primaryColorPicker" inputId="primary-color" />
-            <InputText v-model="primaryColorDraft" aria-label="Primary color hex value" spellcheck="false" @blur="commitPrimaryColor" @keydown.enter="commitPrimaryColor" />
-            <Button v-if="primaryColorChanged" text size="small" aria-label="Reset primary color" @click="resetPrimaryColor">
-              <RotateCcw :size="14" />
-              <span>Reset</span>
-            </Button>
-          </div>
-        </div>
-      </section>
+          <div class="settings-page__setting">
+            <div class="settings-page__setting-info">
+              <h3>Primary color</h3>
+              <p>Controls the main accent color used for active states, buttons, highlights, and other interactive elements across the app.</p>
+            </div>
 
-      <section class="settings-page__section settings-page__section--notifications">
-        <div class="settings-page__section-heading">
-          <h2>Notifications</h2>
-        </div>
+            <div class="settings-page__color-control">
+              <ColorPicker v-model="primaryColorPicker" inputId="primary-color" />
+              <InputText v-model="primaryColorDraft" aria-label="Primary color hex value" spellcheck="false" @blur="commitPrimaryColor" @keydown.enter="commitPrimaryColor" />
+              <Button v-if="primaryColorChanged" text size="small" aria-label="Reset primary color" @click="resetPrimaryColor">
+                <RotateCcw :size="14" />
+                <span>Reset</span>
+              </Button>
+            </div>
+          </div>
+        </section>
+      </template>
 
-        <div class="settings-page__setting">
-          <div class="settings-page__setting-info">
-            <h3>Sound notifications</h3>
-            <p>Play a sound when a message arrives in a chat that is not currently open.</p>
+      <template #notifications>
+        <section class="settings-page__section settings-page__section--notifications">
+          <div class="settings-page__section-heading">
+            <h2>Notifications</h2>
           </div>
-          <div class="settings-page__setting-control">
-            <ToggleSwitch v-model="soundEnabled" inputId="notification-sound-enabled" class="app-solid-switch" />
-          </div>
-        </div>
 
-        <div class="settings-page__setting">
-          <div class="settings-page__setting-info">
-            <h3>Toast notifications</h3>
-            <p>Show a toast when a message arrives in a chat that is not currently open.</p>
+          <div class="settings-page__setting">
+            <div class="settings-page__setting-info">
+              <h3>Sound notifications</h3>
+              <p>Play a sound when a message arrives in a chat that is not currently open or when the app is out of focus.</p>
+            </div>
+            <div class="settings-page__setting-control">
+              <ToggleSwitch v-model="soundEnabled" inputId="notification-sound-enabled" class="app-solid-switch" />
+            </div>
           </div>
-          <div class="settings-page__setting-control">
-            <ToggleSwitch v-model="toastEnabled" inputId="notification-toast-enabled" class="app-solid-switch" />
-          </div>
-        </div>
 
-        <div class="settings-page__setting">
-          <div class="settings-page__setting-info">
-            <h3>Ignore BanchoBot</h3>
-            <p>Do not play sounds or show toasts for messages from BanchoBot.</p>
+          <div class="settings-page__setting">
+            <div class="settings-page__setting-info">
+              <h3>Toast notifications</h3>
+              <p>Show a toast when a message arrives in a chat that is not currently open or when the app is out of focus.</p>
+            </div>
+            <div class="settings-page__setting-control">
+              <ToggleSwitch v-model="toastEnabled" inputId="notification-toast-enabled" class="app-solid-switch" />
+            </div>
           </div>
-          <div class="settings-page__setting-control">
-            <ToggleSwitch v-model="ignoreBanchoBot" :disabled="!soundEnabled && !toastEnabled" inputId="notification-ignore-bancho-bot" class="app-solid-switch" />
-          </div>
-        </div>
 
-        <div class="settings-page__setting">
-          <div class="settings-page__setting-info">
-            <h3>Notification sound</h3>
-            <p>Choose a sound and preview it before using it for notifications.</p>
+          <div class="settings-page__setting">
+            <div class="settings-page__setting-info">
+              <h3>Ignore BanchoBot</h3>
+              <p>Do not play sounds or show toasts for messages from BanchoBot.</p>
+            </div>
+            <div class="settings-page__setting-control">
+              <ToggleSwitch v-model="ignoreBanchoBot" :disabled="!soundEnabled && !toastEnabled" inputId="notification-ignore-bancho-bot" class="app-solid-switch" />
+            </div>
           </div>
-          <div class="settings-page__setting-control settings-page__setting-control--wrap">
-            <div ref="notificationSoundMenu" class="settings-page__sound-dropdown" :class="{ 'settings-page__sound-dropdown--disabled': !soundEnabled }">
-              <button
-                type="button"
-                class="settings-page__sound-dropdown-trigger"
-                :disabled="!soundEnabled"
-                :aria-expanded="notificationSoundMenuOpen"
-                aria-haspopup="listbox"
-                aria-label="Notification sound"
-                @click.stop="toggleNotificationSoundMenu"
-              >
-                <span>{{ selectedNotificationSound?.label }}</span>
-                <ChevronDown :size="14" />
-              </button>
-              <div v-if="notificationSoundMenuOpen && soundEnabled" class="settings-page__sound-dropdown-menu" role="listbox" aria-label="Notification sounds">
-                <div
-                  v-for="item in notificationSounds"
-                  :key="item.value"
+
+          <div class="settings-page__setting">
+            <div class="settings-page__setting-info">
+              <h3>Notification sound</h3>
+              <p>Choose a sound and preview it before using it for notifications.</p>
+            </div>
+            <div class="settings-page__setting-control settings-page__setting-control--wrap">
+              <div ref="notificationSoundMenu" class="settings-page__sound-dropdown" :class="{ 'settings-page__sound-dropdown--disabled': !soundEnabled }">
+                <button
                   type="button"
-                  class="settings-page__sound-dropdown-option"
-                  :class="{ 'settings-page__sound-dropdown-option--selected': item.value === sound }"
-                  role="option"
-                  :aria-selected="item.value === sound"
+                  class="settings-page__sound-dropdown-trigger"
+                  :disabled="!soundEnabled"
+                  :aria-expanded="notificationSoundMenuOpen"
+                  aria-haspopup="listbox"
+                  aria-label="Notification sound"
+                  @click.stop="toggleNotificationSoundMenu"
                 >
-                  <button type="button" class="settings-page__sound-dropdown-select" @click="selectNotificationSound(item.value)">{{ item.label }}</button>
-                  <button
+                  <span>{{ selectedNotificationSound?.label }}</span>
+                  <ChevronDown :size="14" />
+                </button>
+                <div v-if="notificationSoundMenuOpen && soundEnabled" class="settings-page__sound-dropdown-menu" role="listbox" aria-label="Notification sounds">
+                  <div
+                    v-for="item in notificationSounds"
+                    :key="item.value"
                     type="button"
-                    class="settings-page__sound-dropdown-preview"
-                    :disabled="!soundEnabled"
-                    :aria-label="`Preview ${item.label}`"
-                    :title="`Preview ${item.label}`"
-                    @click.stop="previewNotificationSound(item.value)"
+                    class="settings-page__sound-dropdown-option"
+                    :class="{ 'settings-page__sound-dropdown-option--selected': item.value === sound }"
+                    role="option"
+                    :aria-selected="item.value === sound"
                   >
-                    <Play :size="13" />
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div class="settings-page__setting">
-          <div class="settings-page__setting-info">
-            <h3>Sound notification scenario</h3>
-            <p>Choose whether sound plays for every message or only messages containing a highlight word.</p>
-          </div>
-          <div class="settings-page__setting-control">
-            <SelectButton
-              v-model="soundTrigger"
-              :options="notificationTriggers"
-              optionLabel="label"
-              optionValue="value"
-              :allowEmpty="false"
-              :disabled="!soundEnabled"
-              aria-label="Sound notification scenario"
-            />
-          </div>
-        </div>
-
-        <div class="settings-page__setting">
-          <div class="settings-page__setting-info">
-            <h3>Toast notification scenario</h3>
-            <p>Choose whether toast appears for every message or only messages containing a highlight word.</p>
-          </div>
-          <div class="settings-page__setting-control">
-            <SelectButton
-              v-model="toastTrigger"
-              :options="notificationTriggers"
-              optionLabel="label"
-              optionValue="value"
-              :allowEmpty="false"
-              :disabled="!toastEnabled"
-              aria-label="Toast notification scenario"
-            />
-          </div>
-        </div>
-      </section>
-
-      <section class="settings-page__section">
-        <div class="settings-page__section-heading">
-          <h2>Now Playing</h2>
-        </div>
-        <div class="settings-page__setting">
-          <div class="settings-page__setting-info">
-            <h3>Show now playing</h3>
-            <p>Show the currently selected beatmap above the chat log.</p>
-          </div>
-          <div class="settings-page__setting-control">
-            <ToggleSwitch v-model="showNowPlaying" inputId="show-now-playing" class="app-solid-switch" />
-          </div>
-        </div>
-        <div class="settings-page__setting">
-          <div class="settings-page__setting-info">
-            <h3>Show progress bar</h3>
-            <p>Show elapsed time and progress for the currently playing map.</p>
-          </div>
-          <div class="settings-page__setting-control">
-            <ToggleSwitch v-model="showProgressBar" inputId="show-progress-bar" class="app-solid-switch" />
-          </div>
-        </div>
-        <div class="settings-page__setting">
-          <div class="settings-page__setting-info">
-            <h3>Show progress time</h3>
-            <p>Show the elapsed time label above the progress bar.</p>
-          </div>
-          <div class="settings-page__setting-control">
-            <ToggleSwitch v-model="showProgressTimeLabel" inputId="show-progress-time-label" class="app-solid-switch" />
-          </div>
-        </div>
-      </section>
-
-      <section class="settings-page__section settings-page__section--lobby">
-        <div class="settings-page__section-heading">
-          <h2>Lobby settings</h2>
-        </div>
-
-        <div class="settings-page__setting">
-          <div class="settings-page__setting-info">
-            <h3>Result messages</h3>
-            <p>Choose and customize the messages sent by the Send Result button.</p>
-          </div>
-          <div class="settings-page__setting-control">
-            <Button text size="small" @click="lobbyMessagesSettingsOpen = true">
-              <Settings2 :size="14" />
-              <span>Set up messages</span>
-            </Button>
-          </div>
-        </div>
-      </section>
-
-      <LobbyMessagesSettings v-model:visible="lobbyMessagesSettingsOpen" />
-
-      <section class="settings-page__section settings-page__section--chat">
-        <div class="settings-page__section-heading">
-          <h2>Chat settings</h2>
-        </div>
-
-        <div class="settings-page__chat-preview" aria-label="Chat preview">
-          <div v-for="(message, index) in chatPreviewMessages" :key="message.id" class="settings-page__chat-line">
-            <span class="settings-page__chat-time">
-              {{ previewTime(message.time, index) }}
-            </span>
-            <span
-              class="settings-page__chat-nick"
-              :class="{
-                'settings-page__chat-nick--badge': (message.role === 'referee' && highlightReferee) || (message.author === 'BanchoBot' && highlightBanchoBot),
-              }"
-              :style="previewNickStyle(message)"
-              >{{ message.author }}</span
-            >
-            <span class="settings-page__chat-text" :class="{ 'settings-page__chat-text--highlighted': previewMessageHighlighted(message) }" :style="previewMessageStyle(message)">
-              {{ message.text }}
-            </span>
-          </div>
-        </div>
-
-        <div class="settings-page__settings-list">
-          <div class="settings-page__setting">
-            <div class="settings-page__setting-info">
-              <h3>Highlight referee</h3>
-              <p>Show the referee name as a filled accent badge in chat.</p>
-            </div>
-            <div class="settings-page__setting-control">
-              <ToggleSwitch v-model="highlightReferee" inputId="highlight-referee" class="app-solid-switch" />
-            </div>
-          </div>
-
-          <div class="settings-page__setting">
-            <div class="settings-page__setting-info">
-              <h3>Highlight BanchoBot</h3>
-              <p>Show BanchoBot as a filled color badge in chat.</p>
-            </div>
-            <div class="settings-page__setting-control">
-              <ToggleSwitch v-model="highlightBanchoBot" inputId="highlight-bancho-bot" class="app-solid-switch" />
-            </div>
-          </div>
-
-          <div class="settings-page__setting settings-page__setting--highlight">
-            <div class="settings-page__setting-info">
-              <h3>Highlight words</h3>
-              <p>Messages containing any of these words will use the selected text styles.</p>
-            </div>
-            <div class="settings-page__setting-control settings-page__setting-control--highlight">
-              <div class="settings-page__highlight-tags" @click="focusHighlightWordsInput" @wheel="handleHighlightWordsWheel">
-                <div class="settings-page__highlight-chiplist" aria-label="Highlight words">
-                  <button
-                    v-for="word in highlightWordsDraft"
-                    :key="word"
-                    type="button"
-                    class="settings-page__highlight-chip"
-                    :aria-label="`Remove highlight word ${word}`"
-                    @mousedown.prevent
-                    @click.stop="removeHighlightWord(word)"
-                  >
-                    <span class="settings-page__highlight-chip-label">{{ word }}</span>
-                    <CircleX :size="12" />
-                  </button>
-                  <input
-                    ref="highlightWordsInputRef"
-                    v-model="highlightWordsInputDraft"
-                    class="settings-page__highlight-input"
-                    aria-label="Highlight words"
-                    placeholder="Type a word"
-                    spellcheck="false"
-                    @blur="commitHighlightWordsInput"
-                    @keydown="handleHighlightWordsKeydown"
-                    @paste="handleHighlightWordsPaste"
-                  />
+                    <button type="button" class="settings-page__sound-dropdown-select" @click="selectNotificationSound(item.value)">{{ item.label }}</button>
+                    <button
+                      type="button"
+                      class="settings-page__sound-dropdown-preview"
+                      :disabled="!soundEnabled"
+                      :aria-label="`Preview ${item.label}`"
+                      v-tooltip.top="`Preview ${item.label}`"
+                      @click.stop="previewNotificationSound(item.value)"
+                    >
+                      <Play :size="13" />
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -1897,172 +2132,380 @@ function handleSendResult(result) {
 
           <div class="settings-page__setting">
             <div class="settings-page__setting-info">
-              <h3>Highlight styles</h3>
-              <p>Pick one or more text styles for highlighted messages.</p>
-            </div>
-            <div class="settings-page__setting-control settings-page__setting-control--styles">
-              <Button text size="small" class="settings-page__styles-button" aria-label="Choose highlight styles" @click="toggleHighlightStyles">
-                <Sparkles :size="14" />
-                <span>{{ highlightStylesSummary }}</span>
-                <ChevronDown :size="12" />
-              </Button>
-            </div>
-          </div>
-
-          <div class="settings-page__setting">
-            <div class="settings-page__setting-info">
-              <h3>Highlight message color</h3>
-              <p>Choose the text color used for messages containing a highlighted word.</p>
-            </div>
-            <div class="settings-page__setting-control settings-page__setting-control--wrap">
-              <SelectButton v-model="highlightColorMode" :options="highlightColorModes" optionLabel="label" optionValue="value" :allowEmpty="false" aria-label="Highlight message color mode" />
-              <template v-if="highlightColorMode === 'custom'">
-                <ColorPicker v-model="highlightColorPicker" />
-                <InputText
-                  v-model="highlightColorDraft"
-                  aria-label="Highlight message color hex value"
-                  spellcheck="false"
-                  @blur="commitChatColor(highlightColor, highlightColorDraft)"
-                  @keydown.enter="commitChatColor(highlightColor, highlightColorDraft)"
-                />
-              </template>
-              <Button v-if="chatSettingChanged.highlightColor" text size="small" aria-label="Reset highlight message color" @click="resetChatSetting('highlightColor')">
-                <RotateCcw :size="14" />
-                <span>Reset</span>
-              </Button>
-            </div>
-          </div>
-
-          <div class="settings-page__setting">
-            <div class="settings-page__setting-info">
-              <h3>BanchoBot color</h3>
-              <p>Color used for the BanchoBot name and highlight badge.</p>
+              <h3>Sound notification scenario</h3>
+              <p>Choose whether sound plays for every message or only messages containing a highlight word.</p>
             </div>
             <div class="settings-page__setting-control">
-              <ColorPicker v-model="banchoBotColorPicker" />
-              <InputText
-                v-model="banchoBotColorDraft"
-                aria-label="BanchoBot color hex value"
-                spellcheck="false"
-                @blur="commitChatColor(banchoBotColor, banchoBotColorDraft)"
-                @keydown.enter="commitChatColor(banchoBotColor, banchoBotColorDraft)"
+              <SelectButton
+                v-model="soundTrigger"
+                :options="notificationTriggers"
+                optionLabel="label"
+                optionValue="value"
+                :allowEmpty="false"
+                :disabled="!soundEnabled"
+                aria-label="Sound notification scenario"
               />
-              <Button v-if="chatSettingChanged.banchoBotColor" text size="small" aria-label="Reset BanchoBot color" @click="resetChatSetting('banchoBotColor')">
-                <RotateCcw :size="14" />
-                <span>Reset</span>
-              </Button>
             </div>
           </div>
 
           <div class="settings-page__setting">
             <div class="settings-page__setting-info">
-              <h3>Red team color</h3>
-              <p>Color used for player names assigned to the red team.</p>
+              <h3>Toast notification scenario</h3>
+              <p>Choose whether toast appears for every message or only messages containing a highlight word.</p>
             </div>
             <div class="settings-page__setting-control">
-              <ColorPicker v-model="redTeamColorPicker" />
-              <InputText
-                v-model="redTeamColorDraft"
-                aria-label="Red team color hex value"
-                spellcheck="false"
-                @blur="commitChatColor(redTeamColor, redTeamColorDraft)"
-                @keydown.enter="commitChatColor(redTeamColor, redTeamColorDraft)"
+              <SelectButton
+                v-model="toastTrigger"
+                :options="notificationTriggers"
+                optionLabel="label"
+                optionValue="value"
+                :allowEmpty="false"
+                :disabled="!toastEnabled"
+                aria-label="Toast notification scenario"
               />
-              <Button v-if="chatSettingChanged.redTeamColor" text size="small" aria-label="Reset red team color" @click="resetChatSetting('redTeamColor')">
-                <RotateCcw :size="14" />
-                <span>Reset</span>
-              </Button>
             </div>
           </div>
+        </section>
+      </template>
 
+      <template #now-playing>
+        <section class="settings-page__section">
+          <div class="settings-page__section-heading">
+            <h2>Now Playing</h2>
+          </div>
           <div class="settings-page__setting">
             <div class="settings-page__setting-info">
-              <h3>Blue team color</h3>
-              <p>Color used for player names assigned to the blue team.</p>
+              <h3>Show now playing</h3>
+              <p>Show the currently selected beatmap above the chat log.</p>
             </div>
             <div class="settings-page__setting-control">
-              <ColorPicker v-model="blueTeamColorPicker" />
-              <InputText
-                v-model="blueTeamColorDraft"
-                aria-label="Blue team color hex value"
-                spellcheck="false"
-                @blur="commitChatColor(blueTeamColor, blueTeamColorDraft)"
-                @keydown.enter="commitChatColor(blueTeamColor, blueTeamColorDraft)"
-              />
-              <Button v-if="chatSettingChanged.blueTeamColor" text size="small" aria-label="Reset blue team color" @click="resetChatSetting('blueTeamColor')">
-                <RotateCcw :size="14" />
-                <span>Reset</span>
-              </Button>
+              <ToggleSwitch v-model="showNowPlaying" inputId="show-now-playing" class="app-solid-switch" />
             </div>
+          </div>
+          <div class="settings-page__setting">
+            <div class="settings-page__setting-info">
+              <h3>Show progress bar</h3>
+              <p>Show elapsed time and progress for the currently playing map.</p>
+            </div>
+            <div class="settings-page__setting-control">
+              <ToggleSwitch v-model="showProgressBar" inputId="show-progress-bar" class="app-solid-switch" />
+            </div>
+          </div>
+          <div class="settings-page__setting">
+            <div class="settings-page__setting-info">
+              <h3>Show progress time</h3>
+              <p>Show the elapsed time label above the progress bar.</p>
+            </div>
+            <div class="settings-page__setting-control">
+              <ToggleSwitch v-model="showProgressTimeLabel" inputId="show-progress-time-label" class="app-solid-switch" />
+            </div>
+          </div>
+        </section>
+      </template>
+
+      <template #lobby>
+        <section class="settings-page__section settings-page__section--lobby">
+          <div class="settings-page__section-heading">
+            <h2>Lobby settings</h2>
           </div>
 
           <div class="settings-page__setting">
             <div class="settings-page__setting-info">
-              <h3>Unassigned player color</h3>
-              <p>Use a stable random palette color or choose a custom one.</p>
+              <h3>Result messages</h3>
+              <p>Choose and customize the messages sent by the Send Result button.</p>
             </div>
-            <div class="settings-page__setting-control settings-page__setting-control--wrap">
-              <SelectButton v-model="unassignedColorMode" :options="unassignedColorModes" optionLabel="label" optionValue="value" :allowEmpty="false" aria-label="Unassigned player color mode" />
-              <template v-if="unassignedColorMode === 'custom'">
-                <ColorPicker v-model="unassignedColorPicker" />
-                <InputText
-                  v-model="unassignedColorDraft"
-                  aria-label="Unassigned player color hex value"
-                  spellcheck="false"
-                  @blur="commitChatColor(unassignedColor, unassignedColorDraft)"
-                  @keydown.enter="commitChatColor(unassignedColor, unassignedColorDraft)"
-                />
-              </template>
-              <Button
-                v-if="unassignedColorMode === 'custom' && chatSettingChanged.unassignedColor"
-                text
-                size="small"
-                aria-label="Reset unassigned player color"
-                @click="resetChatSetting('unassignedColor')"
+            <div class="settings-page__setting-control">
+              <Button text size="small" @click="lobbyMessagesSettingsOpen = true">
+                <Settings2 :size="14" />
+                <span>Set up messages</span>
+              </Button>
+            </div>
+          </div>
+          <div class="settings-page__setting">
+            <div class="settings-page__setting-info">
+              <h3>Slot display</h3>
+              <p>Show only occupied players or display all 16 lobby slots with their open/locked state.</p>
+            </div>
+            <div class="settings-page__setting-control">
+              <SelectButton
+                v-model="fullSlots"
+                :options="[
+                  { label: 'Short slots', value: false },
+                  { label: 'Full slots', value: true },
+                ]"
+                optionLabel="label"
+                optionValue="value"
+                :allowEmpty="false"
+                aria-label="Slot display mode"
+              />
+            </div>
+          </div>
+        </section>
+
+        <LobbyMessagesSettings v-model:visible="lobbyMessagesSettingsOpen" />
+      </template>
+
+      <template #shortcuts>
+        <section class="settings-page__section">
+          <div class="settings-page__section-heading">
+            <h2>Shortcuts</h2>
+          </div>
+          <ShortcutImportExportSettings />
+        </section>
+      </template>
+
+      <template #chat>
+        <section class="settings-page__section settings-page__section--chat">
+          <div class="settings-page__section-heading">
+            <h2>Chat settings</h2>
+          </div>
+
+          <div class="settings-page__chat-preview" aria-label="Chat preview">
+            <div v-for="(message, index) in chatPreviewMessages" :key="message.id" class="settings-page__chat-line">
+              <span class="settings-page__chat-time">
+                {{ previewTime(message.time, index) }}
+              </span>
+              <span
+                class="settings-page__chat-nick"
+                :class="{
+                  'settings-page__chat-nick--badge': (message.role === 'referee' && highlightReferee) || (message.author === 'BanchoBot' && highlightBanchoBot),
+                }"
+                :style="previewNickStyle(message)"
+                >{{ message.author }}</span
               >
-                <RotateCcw :size="14" />
-                <span>Reset</span>
-              </Button>
+              <span class="settings-page__chat-text" :class="{ 'settings-page__chat-text--highlighted': previewMessageHighlighted(message) }" :style="previewMessageStyle(message)">
+                {{ message.text }}
+              </span>
             </div>
           </div>
 
-          <div class="settings-page__setting">
-            <div class="settings-page__setting-info">
-              <h3>Timestamp format</h3>
-              <p>Choose between minute-only and full timestamps in chat.</p>
+          <div class="settings-page__settings-list">
+            <div class="settings-page__setting">
+              <div class="settings-page__setting-info">
+                <h3>Highlight referee</h3>
+                <p>Show the referee name as a filled accent badge in chat.</p>
+              </div>
+              <div class="settings-page__setting-control">
+                <ToggleSwitch v-model="highlightReferee" inputId="highlight-referee" class="app-solid-switch" />
+              </div>
             </div>
-            <div class="settings-page__setting-control">
-              <SelectButton v-model="timestampMode" :options="timestampModes" optionLabel="label" optionValue="value" :allowEmpty="false" aria-label="Timestamp format" />
+
+            <div class="settings-page__setting">
+              <div class="settings-page__setting-info">
+                <h3>Highlight BanchoBot</h3>
+                <p>Show BanchoBot as a filled color badge in chat.</p>
+              </div>
+              <div class="settings-page__setting-control">
+                <ToggleSwitch v-model="highlightBanchoBot" inputId="highlight-bancho-bot" class="app-solid-switch" />
+              </div>
+            </div>
+
+            <div class="settings-page__setting settings-page__setting--highlight">
+              <div class="settings-page__setting-info">
+                <h3>Highlight words</h3>
+                <p>Messages containing any of these words will use the selected text styles.</p>
+              </div>
+              <div class="settings-page__setting-control settings-page__setting-control--highlight">
+                <div class="settings-page__highlight-tags" @click="focusHighlightWordsInput" @wheel="handleHighlightWordsWheel">
+                  <div class="settings-page__highlight-chiplist" aria-label="Highlight words">
+                    <button
+                      v-for="word in highlightWordsDraft"
+                      :key="word"
+                      type="button"
+                      class="settings-page__highlight-chip"
+                      :aria-label="`Remove highlight word ${word}`"
+                      @mousedown.prevent
+                      @click.stop="removeHighlightWord(word)"
+                    >
+                      <span class="settings-page__highlight-chip-label">{{ word }}</span>
+                      <CircleX :size="12" />
+                    </button>
+                    <input
+                      ref="highlightWordsInputRef"
+                      v-model="highlightWordsInputDraft"
+                      class="settings-page__highlight-input"
+                      aria-label="Highlight words"
+                      placeholder="Type a word"
+                      spellcheck="false"
+                      @blur="commitHighlightWordsInput"
+                      @keydown="handleHighlightWordsKeydown"
+                      @paste="handleHighlightWordsPaste"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="settings-page__setting">
+              <div class="settings-page__setting-info">
+                <h3>Highlight styles</h3>
+                <p>Pick one or more text styles for highlighted messages.</p>
+              </div>
+              <div class="settings-page__setting-control settings-page__setting-control--styles">
+                <Button text size="small" class="settings-page__styles-button" aria-label="Choose highlight styles" @click="toggleHighlightStyles">
+                  <Sparkles :size="14" />
+                  <span>{{ highlightStylesSummary }}</span>
+                  <ChevronDown :size="12" />
+                </Button>
+              </div>
+            </div>
+
+            <div class="settings-page__setting">
+              <div class="settings-page__setting-info">
+                <h3>Highlight message color</h3>
+                <p>Choose the text color used for messages containing a highlighted word.</p>
+              </div>
+              <div class="settings-page__setting-control settings-page__setting-control--wrap">
+                <SelectButton v-model="highlightColorMode" :options="highlightColorModes" optionLabel="label" optionValue="value" :allowEmpty="false" aria-label="Highlight message color mode" />
+                <template v-if="highlightColorMode === 'custom'">
+                  <ColorPicker v-model="highlightColorPicker" />
+                  <InputText
+                    v-model="highlightColorDraft"
+                    aria-label="Highlight message color hex value"
+                    spellcheck="false"
+                    @blur="commitChatColor(highlightColor, highlightColorDraft)"
+                    @keydown.enter="commitChatColor(highlightColor, highlightColorDraft)"
+                  />
+                </template>
+                <Button v-if="chatSettingChanged.highlightColor" text size="small" aria-label="Reset highlight message color" @click="resetChatSetting('highlightColor')">
+                  <RotateCcw :size="14" />
+                  <span>Reset</span>
+                </Button>
+              </div>
+            </div>
+
+            <div class="settings-page__setting">
+              <div class="settings-page__setting-info">
+                <h3>BanchoBot color</h3>
+                <p>Color used for the BanchoBot name and highlight badge.</p>
+              </div>
+              <div class="settings-page__setting-control">
+                <ColorPicker v-model="banchoBotColorPicker" />
+                <InputText
+                  v-model="banchoBotColorDraft"
+                  aria-label="BanchoBot color hex value"
+                  spellcheck="false"
+                  @blur="commitChatColor(banchoBotColor, banchoBotColorDraft)"
+                  @keydown.enter="commitChatColor(banchoBotColor, banchoBotColorDraft)"
+                />
+                <Button v-if="chatSettingChanged.banchoBotColor" text size="small" aria-label="Reset BanchoBot color" @click="resetChatSetting('banchoBotColor')">
+                  <RotateCcw :size="14" />
+                  <span>Reset</span>
+                </Button>
+              </div>
+            </div>
+
+            <div class="settings-page__setting">
+              <div class="settings-page__setting-info">
+                <h3>Red team color</h3>
+                <p>Color used for player names assigned to the red team.</p>
+              </div>
+              <div class="settings-page__setting-control">
+                <ColorPicker v-model="redTeamColorPicker" />
+                <InputText
+                  v-model="redTeamColorDraft"
+                  aria-label="Red team color hex value"
+                  spellcheck="false"
+                  @blur="commitChatColor(redTeamColor, redTeamColorDraft)"
+                  @keydown.enter="commitChatColor(redTeamColor, redTeamColorDraft)"
+                />
+                <Button v-if="chatSettingChanged.redTeamColor" text size="small" aria-label="Reset red team color" @click="resetChatSetting('redTeamColor')">
+                  <RotateCcw :size="14" />
+                  <span>Reset</span>
+                </Button>
+              </div>
+            </div>
+
+            <div class="settings-page__setting">
+              <div class="settings-page__setting-info">
+                <h3>Blue team color</h3>
+                <p>Color used for player names assigned to the blue team.</p>
+              </div>
+              <div class="settings-page__setting-control">
+                <ColorPicker v-model="blueTeamColorPicker" />
+                <InputText
+                  v-model="blueTeamColorDraft"
+                  aria-label="Blue team color hex value"
+                  spellcheck="false"
+                  @blur="commitChatColor(blueTeamColor, blueTeamColorDraft)"
+                  @keydown.enter="commitChatColor(blueTeamColor, blueTeamColorDraft)"
+                />
+                <Button v-if="chatSettingChanged.blueTeamColor" text size="small" aria-label="Reset blue team color" @click="resetChatSetting('blueTeamColor')">
+                  <RotateCcw :size="14" />
+                  <span>Reset</span>
+                </Button>
+              </div>
+            </div>
+
+            <div class="settings-page__setting">
+              <div class="settings-page__setting-info">
+                <h3>Unassigned player color</h3>
+                <p>Use a stable random palette color or choose a custom one.</p>
+              </div>
+              <div class="settings-page__setting-control settings-page__setting-control--wrap">
+                <SelectButton v-model="unassignedColorMode" :options="unassignedColorModes" optionLabel="label" optionValue="value" :allowEmpty="false" aria-label="Unassigned player color mode" />
+                <template v-if="unassignedColorMode === 'custom'">
+                  <ColorPicker v-model="unassignedColorPicker" />
+                  <InputText
+                    v-model="unassignedColorDraft"
+                    aria-label="Unassigned player color hex value"
+                    spellcheck="false"
+                    @blur="commitChatColor(unassignedColor, unassignedColorDraft)"
+                    @keydown.enter="commitChatColor(unassignedColor, unassignedColorDraft)"
+                  />
+                </template>
+                <Button
+                  v-if="unassignedColorMode === 'custom' && chatSettingChanged.unassignedColor"
+                  text
+                  size="small"
+                  aria-label="Reset unassigned player color"
+                  @click="resetChatSetting('unassignedColor')"
+                >
+                  <RotateCcw :size="14" />
+                  <span>Reset</span>
+                </Button>
+              </div>
+            </div>
+
+            <div class="settings-page__setting">
+              <div class="settings-page__setting-info">
+                <h3>Timestamp format</h3>
+                <p>Choose between minute-only and full timestamps in chat.</p>
+              </div>
+              <div class="settings-page__setting-control">
+                <SelectButton v-model="timestampMode" :options="timestampModes" optionLabel="label" optionValue="value" :allowEmpty="false" aria-label="Timestamp format" />
+              </div>
             </div>
           </div>
-        </div>
-      </section>
+        </section>
 
-      <Popover ref="highlightStylesPopover" class="settings-page__styles-popover">
-        <div class="settings-page__styles-popover-body">
-          <button
-            v-for="option in HIGHLIGHT_STYLE_OPTIONS"
-            :key="option.value"
-            type="button"
-            class="settings-page__styles-option"
-            :class="{ 'settings-page__styles-option--selected': highlightStyleSelected(option.value) }"
-            :aria-pressed="highlightStyleSelected(option.value)"
-            @click="toggleHighlightStyle(option.value)"
-          >
-            <span class="settings-page__styles-option-left">
-              <Check v-if="highlightStyleSelected(option.value)" :size="14" class="settings-page__styles-option-check" />
-              <span v-else class="settings-page__styles-option-check settings-page__styles-option-check--spacer" aria-hidden="true"></span>
-              <component :is="option.icon" :size="14" />
-              <span class="settings-page__styles-option-label">{{ option.label }}</span>
-            </span>
-          </button>
-        </div>
-      </Popover>
-    </div>
+        <Popover ref="highlightStylesPopover" class="settings-page__styles-popover">
+          <div class="settings-page__styles-popover-body">
+            <button
+              v-for="option in HIGHLIGHT_STYLE_OPTIONS"
+              :key="option.value"
+              type="button"
+              class="settings-page__styles-option"
+              :class="{ 'settings-page__styles-option--selected': highlightStyleSelected(option.value) }"
+              :aria-pressed="highlightStyleSelected(option.value)"
+              @click="toggleHighlightStyle(option.value)"
+            >
+              <span class="settings-page__styles-option-left">
+                <Check v-if="highlightStyleSelected(option.value)" :size="14" class="settings-page__styles-option-check" />
+                <span v-else class="settings-page__styles-option-check settings-page__styles-option-check--spacer" aria-hidden="true"></span>
+                <component :is="option.icon" :size="14" />
+                <span class="settings-page__styles-option-label">{{ option.label }}</span>
+              </span>
+            </button>
+          </div>
+        </Popover>
+      </template>
+    </SettingsModal>
 
-    <div v-else class="app-layout">
+    <div class="app-layout">
       <ChatWindow
         :title="activeChatTitle"
+        :chat-id="activeChat"
         :connected="connected"
         :messages="activeMessages"
         :current-user="currentUser"
@@ -2084,13 +2527,14 @@ function handleSendResult(result) {
         @send="handleSend"
         @send-command="handleCommand"
         @create-lobby="createLobbyDialogOpen = true"
+        @download-chat-history="downloadChatHistory"
         @toggle-sidebar="sidebarOpen = !sidebarOpen"
       />
 
       <div v-if="activeChatKind === 'lobby'" class="app-layout__side">
         <SidebarSectionCard title="Lobby" :icon="DoorOpen">
           <LobbyScoreCard
-            v-model:qualification-mode="qualificationMode"
+            v-model:qualification-mode="activeQualificationMode"
             v-model:team-a-score="activeLobbyTeamAScore"
             v-model:team-b-score="activeLobbyTeamBScore"
             :lobby-id="activeLobbyState?.id ? String(activeLobbyState.id) : ''"
@@ -2099,23 +2543,48 @@ function handleSendResult(result) {
             :best-of="activeLobbyState?.bestOf"
             :next-pick-team="activeLobbyState?.nextPickTeam"
             :can-edit="currentUser === refereeUser"
-            :show-match-controls="!qualificationMode"
+            :show-match-controls="!activeQualificationMode"
             :show-qualification-toggle="!activeChannel?.createdViaCreateLobby"
             :disabled="Boolean(roomClosedByChat[activeChat])"
             :mp-link="activeLobbyState?.id ? `https://osu.ppy.sh/mp/${activeLobbyState.id}` : ''"
             @send-result="handleSendResult"
             @update-settings="updateActiveLobbySettings"
+            @configure-lobby="openLobbySetup"
           />
         </SidebarSectionCard>
-        <PlayerListCard :players="activeLobbyPlayers" :current-user="currentUser" />
-        <SidebarSectionCard title="Mappool" :icon="Map" scrollable>
-          <MappoolCard :disabled="Boolean(roomClosedByChat[activeChat])" :lobby-id="activeChat" @send-command="handleCommand" @pick-map="handleMappoolPick" />
+        <PlayerListCard :players="activeLobbyDisplayPlayers" :current-user="currentUser" :disabled="Boolean(roomClosedByChat[activeChat])" @open-players="playersDialogOpen = true" />
+        <SidebarSectionCard title="Mappool" :icon="MapIcon" scrollable>
+          <MappoolCard
+            :disabled="Boolean(roomClosedByChat[activeChat])"
+            :lobby-id="activeChat"
+            :qualification-mode="activeQualificationMode"
+            @send-command="handleCommand"
+            @pick-map="handleMappoolPick"
+          />
         </SidebarSectionCard>
       </div>
 
       <CreateLobbyDialog v-model:visible="createLobbyDialogOpen" @create="handleCreateLobby" />
 
       <AddChannelDialog v-model:visible="addChannelDialogOpen" :loading="Boolean(pendingJoinChannel)" @join="joinChannel" />
+      <PlayersDialog
+        v-if="activeChatKind === 'lobby'"
+        v-model:visible="playersDialogOpen"
+        :players="activeLobbyPlayers"
+        :disabled="Boolean(roomClosedByChat[activeChat])"
+        @move-player="moveLobbyPlayer"
+        @toggle-team="toggleLobbyPlayerTeam"
+        @kick-player="kickLobbyPlayer"
+        @set-host="setLobbyHost"
+      />
+      <LobbySetupDialog
+        v-model:visible="lobbySetupDialogOpen"
+        :disabled="Boolean(roomClosedByChat[activeChat])"
+        :initial-game-mode="lobbySetupGameMode"
+        :initial-win-condition="lobbySetupWinCondition"
+        :initial-open-slots="lobbySetupOpenSlots"
+        @send="sendLobbySetup"
+      />
     </div>
   </AppSidebar>
 </template>

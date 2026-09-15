@@ -19,6 +19,7 @@ const rows = [
   { id: BUILTIN_IDS.SETTINGS, label: "Settings" },
   { id: BUILTIN_IDS.TIMER, label: "Set timer" },
   { id: BUILTIN_IDS.ABORT_TIMER, label: "Abort timer" },
+  { id: BUILTIN_IDS.CLEAR_HOST, label: "Clear host" },
   { id: BUILTIN_IDS.LOCK, label: "Lock" },
   { id: BUILTIN_IDS.UNLOCK, label: "Unlock" },
   { id: BUILTIN_IDS.CLOSE, label: "Close" },

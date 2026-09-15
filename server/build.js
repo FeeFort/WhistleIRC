@@ -142,7 +142,7 @@ async function main() {
   const clientDir = path.join(__dirname, "..", "client");
   run(`npm run build --prefix "${clientDir}"`);
 
-  run(`npx esbuild src/index.ts --bundle --platform=node --format=esm ` + `--define:__APP_VERSION__='"${appVersion}"' --outfile=dist/bundle.js`);
+  run(`npx esbuild src/index.ts --bundle --platform=node --format=esm --external:x11 ` + `--define:__APP_VERSION__='"${appVersion}"' --outfile=dist/bundle.js`);
 
   run("npx pkg . --targets node22-win-x64,node22-win-arm64,node22-macos-x64,node22-macos-arm64,node22-linux-x64,node22-linux-arm64 " + '--no-bytecode --public-packages "*" --public --compress GZip');
 
@@ -157,13 +157,6 @@ async function main() {
     const rawBinary = path.join(buildDir, `${baseName}-macos-${arch}`);
     if (fs.existsSync(rawBinary)) {
       buildMacZip(buildDir, rawBinary, arch);
-    }
-  }
-
-  for (const file of fs.readdirSync(buildDir)) {
-    if (file.startsWith(`${baseName}-`)) {
-      const renamed = file.replace(`${baseName}-`, `${baseName}-${appVersion}-`);
-      fs.renameSync(path.join(buildDir, file), path.join(buildDir, renamed));
     }
   }
 

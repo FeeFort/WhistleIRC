@@ -1,0 +1,13 @@
+diff --git a/node_modules/systray2/index.js b/node_modules/systray2/index.js
+index ae18c02..6665ecd 100644
+--- a/node_modules/systray2/index.js
++++ b/node_modules/systray2/index.js
+@@ -275,7 +275,7 @@ var SysTray = /** @class */ (function () {
+                         _b.label = 2;
+                     case 2:
+                         _b.trys.push([2, 4, , 5]);
+-                        return [4 /*yield*/, fs.chmod(this._binPath, '+x')];
++                        return [4 /*yield*/, fs.chmod(this._binPath, 0o755)];
+                     case 3:
+                         _b.sent();
+                         return [3 /*break*/, 5];

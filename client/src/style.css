@@ -1,4 +1,4 @@
-@import url("https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&family=Nunito:wght@700;800&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&family=Nunito:wght@700;800&display=swap");
 
 :root {
   color-scheme: dark;
@@ -313,13 +313,64 @@ html.app-light .app-dialog-mask {
 .create-lobby-dialog,
 .add-channel-dialog,
 .lobby-settings-dialog,
-.command-confirm-dialog {
+.lobby-setup-dialog,
+.command-confirm-dialog,
+.update-dialog {
   overflow: hidden;
   border: 1px solid var(--app-border) !important;
   border-radius: 0.85rem !important;
   background: var(--app-panel-gradient) !important;
   box-shadow: 0 1.25rem 3rem rgba(0, 0, 0, 0.35) !important;
   color: var(--app-text) !important;
+}
+
+.mappools-dialog {
+  overflow: hidden;
+  border: 1px solid var(--app-border) !important;
+  border-radius: 0.85rem !important;
+  background: var(--app-panel-gradient) !important;
+  box-shadow: 0 1.25rem 3rem rgba(0, 0, 0, 0.35) !important;
+  color: var(--app-text) !important;
+}
+
+.players-dialog {
+  overflow: hidden;
+  border: 1px solid var(--app-border) !important;
+  border-radius: 0.85rem !important;
+  background: var(--app-panel-gradient) !important;
+  box-shadow: 0 1.25rem 3rem rgba(0, 0, 0, 0.35) !important;
+  color: var(--app-text) !important;
+}
+
+.players-dialog .p-dialog-header,
+.players-dialog .p-dialog-content {
+  background: transparent !important;
+  color: var(--app-text) !important;
+}
+
+.players-dialog .p-dialog-header {
+  padding: 1.1rem 1.25rem 0.9rem !important;
+  border-bottom: 1px solid var(--app-border) !important;
+}
+
+.players-dialog .p-dialog-title {
+  color: var(--app-text) !important;
+  font-size: 1rem;
+  font-weight: 800;
+}
+
+.players-dialog .p-dialog-content {
+  padding: 1.15rem 1.25rem !important;
+}
+
+.players-dialog .p-dialog-close-button {
+  color: var(--app-muted) !important;
+  border-radius: 0.5rem !important;
+}
+
+.players-dialog .p-dialog-close-button:hover {
+  color: var(--app-primary-bright) !important;
+  background: rgba(var(--app-primary-rgb), 0.12) !important;
 }
 
 .command-confirm-dialog {
@@ -347,7 +398,13 @@ html.app-light .app-dialog-mask {
 .add-channel-dialog .p-dialog-footer,
 .lobby-settings-dialog .p-dialog-header,
 .lobby-settings-dialog .p-dialog-content,
-.lobby-settings-dialog .p-dialog-footer {
+.lobby-settings-dialog .p-dialog-footer,
+.lobby-setup-dialog .p-dialog-header,
+.lobby-setup-dialog .p-dialog-content,
+.lobby-setup-dialog .p-dialog-footer,
+.update-dialog .p-dialog-header,
+.update-dialog .p-dialog-content,
+.update-dialog .p-dialog-footer {
   background: transparent !important;
   color: var(--app-text) !important;
 }
@@ -357,7 +414,9 @@ html.app-light .app-dialog-mask {
 .lobby-messages-dialog .p-dialog-header,
 .create-lobby-dialog .p-dialog-header,
 .add-channel-dialog .p-dialog-header,
-.lobby-settings-dialog .p-dialog-header {
+.lobby-settings-dialog .p-dialog-header,
+.lobby-setup-dialog .p-dialog-header,
+.update-dialog .p-dialog-header {
   padding: 1.1rem 1.25rem 0.9rem !important;
   border-bottom: 1px solid var(--app-border) !important;
 }
@@ -367,7 +426,9 @@ html.app-light .app-dialog-mask {
 .lobby-messages-dialog .p-dialog-title,
 .create-lobby-dialog .p-dialog-title,
 .add-channel-dialog .p-dialog-title,
-.lobby-settings-dialog .p-dialog-title {
+.lobby-settings-dialog .p-dialog-title,
+.lobby-setup-dialog .p-dialog-title,
+.update-dialog .p-dialog-title {
   color: var(--app-text) !important;
   font-size: 1rem;
   font-weight: 800;
@@ -378,7 +439,9 @@ html.app-light .app-dialog-mask {
 .lobby-messages-dialog .p-dialog-content,
 .create-lobby-dialog .p-dialog-content,
 .add-channel-dialog .p-dialog-content,
-.lobby-settings-dialog .p-dialog-content {
+.lobby-settings-dialog .p-dialog-content,
+.lobby-setup-dialog .p-dialog-content,
+.update-dialog .p-dialog-content {
   padding: 1.15rem 1.25rem !important;
 }
 
@@ -387,7 +450,9 @@ html.app-light .app-dialog-mask {
 .lobby-messages-dialog .p-dialog-footer,
 .create-lobby-dialog .p-dialog-footer,
 .add-channel-dialog .p-dialog-footer,
-.lobby-settings-dialog .p-dialog-footer {
+.lobby-settings-dialog .p-dialog-footer,
+.lobby-setup-dialog .p-dialog-footer,
+.update-dialog .p-dialog-footer {
   display: flex;
   gap: 0.55rem;
   padding: 0.9rem 1.25rem 1.1rem !important;
@@ -488,21 +553,27 @@ html.app-light .app-dialog-mask {
 }
 
 .shortcut-dialog-modal .p-dialog-close-button,
+.mappools-dialog .p-dialog-close-button,
 .builtin-dialog-modal .p-dialog-close-button,
 .lobby-messages-dialog .p-dialog-close-button,
 .create-lobby-dialog .p-dialog-close-button,
 .add-channel-dialog .p-dialog-close-button,
-.lobby-settings-dialog .p-dialog-close-button {
+.lobby-settings-dialog .p-dialog-close-button,
+.lobby-setup-dialog .p-dialog-close-button,
+.update-dialog .p-dialog-close-button {
   color: var(--app-muted) !important;
   border-radius: 0.5rem !important;
 }
 
 .shortcut-dialog-modal .p-dialog-close-button:hover,
+.mappools-dialog .p-dialog-close-button:hover,
 .builtin-dialog-modal .p-dialog-close-button:hover,
 .lobby-messages-dialog .p-dialog-close-button:hover,
 .create-lobby-dialog .p-dialog-close-button:hover,
 .add-channel-dialog .p-dialog-close-button:hover,
-.lobby-settings-dialog .p-dialog-close-button:hover {
+.lobby-settings-dialog .p-dialog-close-button:hover,
+.lobby-setup-dialog .p-dialog-close-button:hover,
+.update-dialog .p-dialog-close-button:hover {
   color: var(--app-primary-bright) !important;
   background: rgba(var(--app-primary-rgb), 0.12) !important;
 }
@@ -573,11 +644,13 @@ html.app-light .app-dialog-mask {
 }
 
 .shortcut-dialog-modal .p-button:not(.p-button-text),
+.mappools-dialog .p-button:not(.p-button-text),
 .builtin-dialog-modal .p-button:not(.p-button-text),
 .lobby-messages-dialog .p-button:not(.p-button-text),
 .create-lobby-dialog .p-button:not(.p-button-text),
 .add-channel-dialog .p-button:not(.p-button-text),
-.lobby-settings-dialog .p-button:not(.p-button-text) {
+.lobby-settings-dialog .p-button:not(.p-button-text),
+.update-dialog .p-button:not(.p-button-text) {
   border-color: var(--app-primary) !important;
   border-radius: 0.6rem !important;
   background: var(--app-primary) !important;
@@ -585,35 +658,167 @@ html.app-light .app-dialog-mask {
 }
 
 .shortcut-dialog-modal .p-button:not(.p-button-text):hover:not(:disabled),
+.mappools-dialog .p-button:not(.p-button-text):hover:not(:disabled),
 .builtin-dialog-modal .p-button:not(.p-button-text):hover:not(:disabled),
 .lobby-messages-dialog .p-button:not(.p-button-text):hover:not(:disabled),
 .create-lobby-dialog .p-button:not(.p-button-text):hover:not(:disabled),
 .add-channel-dialog .p-button:not(.p-button-text):hover:not(:disabled),
-.lobby-settings-dialog .p-button:not(.p-button-text):hover:not(:disabled) {
+.lobby-settings-dialog .p-button:not(.p-button-text):hover:not(:disabled),
+.update-dialog .p-button:not(.p-button-text):hover:not(:disabled) {
   border-color: var(--app-primary-bright) !important;
   background: var(--app-primary-bright) !important;
 }
 
 .shortcut-dialog-modal .p-button.p-button-text,
+.mappools-dialog .p-button.p-button-text,
 .builtin-dialog-modal .p-button.p-button-text,
 .lobby-messages-dialog .p-button.p-button-text,
 .create-lobby-dialog .p-button.p-button-text,
 .add-channel-dialog .p-button.p-button-text,
-.lobby-settings-dialog .p-button.p-button-text {
+.lobby-settings-dialog .p-button.p-button-text,
+.update-dialog .p-button.p-button-text {
   border-color: transparent !important;
   background: transparent !important;
   color: var(--app-muted) !important;
 }
 
 .shortcut-dialog-modal .p-button.p-button-text:hover:not(:disabled),
+.mappools-dialog .p-button.p-button-text:hover:not(:disabled),
 .builtin-dialog-modal .p-button.p-button-text:hover:not(:disabled),
 .lobby-messages-dialog .p-button.p-button-text:hover:not(:disabled),
 .create-lobby-dialog .p-button.p-button-text:hover:not(:disabled),
 .add-channel-dialog .p-button.p-button-text:hover:not(:disabled),
-.lobby-settings-dialog .p-button.p-button-text:hover:not(:disabled) {
+.lobby-settings-dialog .p-button.p-button-text:hover:not(:disabled),
+.update-dialog .p-button.p-button-text:hover:not(:disabled) {
   border-color: transparent !important;
   background: rgba(var(--app-primary-rgb), 0.12) !important;
   color: var(--app-primary-bright) !important;
+}
+
+.mappools-dialog .mappools-dialog__save {
+  border-color: var(--app-primary) !important;
+  border-radius: 0.6rem !important;
+  background: var(--app-primary) !important;
+  color: #ffffff !important;
+}
+
+.mappools-dialog .mappools-dialog__save:hover:not(:disabled) {
+  border-color: var(--app-primary-bright) !important;
+  background: var(--app-primary-bright) !important;
+  color: #ffffff !important;
+}
+
+/* Mappool ruleset picker: shared app dropdown treatment, never native/PrimeVue. */
+.mappools-ruleset-dropdown {
+  position: relative;
+  width: 100%;
+}
+
+.mappools-ruleset-dropdown__trigger {
+  display: flex !important;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  min-height: 2.2rem;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--app-border) !important;
+  border-radius: 0.55rem !important;
+  background: var(--app-control) !important;
+  color: var(--app-text) !important;
+  font: inherit;
+  font-size: 0.76rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.mappools-ruleset-dropdown__trigger:hover,
+.mappools-ruleset-dropdown__trigger[aria-expanded="true"] {
+  border-color: var(--app-primary-bright) !important;
+}
+
+.mappools-ruleset-dropdown__trigger[aria-expanded="true"] {
+  box-shadow: 0 0 0 0.15rem rgba(var(--app-primary-rgb), 0.16);
+}
+
+.mappools-ruleset-dropdown__trigger svg {
+  color: var(--app-muted);
+}
+
+.mappools-ruleset-dropdown__menu {
+  position: fixed;
+  /* Teleported to body: keep it above the dialog content, footer and mask. */
+  z-index: 2000;
+  top: calc(100% + 0.35rem);
+  right: 0;
+  left: 0;
+  padding: 0.3rem;
+  border: 1px solid var(--app-border);
+  border-radius: 0.55rem;
+  background: var(--app-surface-raised);
+  box-shadow: 0 1rem 2.5rem rgba(0, 0, 0, 0.35);
+}
+
+.mappools-ruleset-dropdown__option {
+  display: block !important;
+  width: 100%;
+  margin: 0;
+  padding: 0.45rem 0.7rem;
+  border: 0 !important;
+  border-radius: 0.4rem;
+  background: transparent !important;
+  color: var(--app-text) !important;
+  font: inherit;
+  font-size: 0.76rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.mappools-ruleset-dropdown__option:hover,
+.mappools-ruleset-dropdown__option:focus-visible,
+.mappools-ruleset-dropdown__option--selected {
+  background: rgba(var(--app-primary-rgb), 0.15) !important;
+  color: var(--app-primary-bright) !important;
+  outline: none;
+}
+
+/* Keep every Edit Mappool control on the same visible border treatment. */
+.mappools-dialog--form .p-inputtext,
+.mappools-dialog--form .tag-input,
+.mappools-dialog--form .mappools-ruleset-dropdown__trigger {
+  border: 1px solid var(--app-border) !important;
+  border-radius: 0.6rem !important;
+  background: var(--app-control) !important;
+  color: var(--app-text) !important;
+  box-shadow: none !important;
+}
+
+.mappools-dialog--form .p-inputtext:hover,
+.mappools-dialog--form .tag-input:hover,
+.mappools-dialog--form .mappools-ruleset-dropdown__trigger:hover {
+  border-color: var(--app-border-strong) !important;
+}
+
+.mappools-dialog--form .p-inputtext:focus,
+.mappools-dialog--form .tag-input:focus-within,
+.mappools-dialog--form .mappools-ruleset-dropdown__trigger[aria-expanded="true"] {
+  border-color: var(--app-primary-bright) !important;
+  box-shadow: 0 0 0 0.15rem rgba(var(--app-primary-rgb), 0.16) !important;
+}
+
+.update-dialog .p-progressbar {
+  height: 0.5rem !important;
+  overflow: hidden;
+  border: 1px solid var(--app-border) !important;
+  border-radius: 999px !important;
+  background: var(--app-control) !important;
+}
+
+.update-dialog .p-progressbar-value {
+  border-radius: 999px !important;
+  background: var(--app-primary) !important;
+  /* Download events may arrive several times per frame. A width transition
+     restarts for every event and leaves the bar far behind the real value. */
+  transition: none !important;
 }
 
 .lobby-settings-dialog .p-selectbutton {
@@ -638,6 +843,98 @@ html.app-light .app-dialog-mask {
   border-color: rgba(var(--app-primary-rgb), 0.5) !important;
   background: rgba(var(--app-primary-rgb), 0.16) !important;
   color: var(--app-primary-bright) !important;
+}
+
+.lobby-setup-dialog .p-selectbutton {
+  display: flex;
+  width: 100%;
+}
+
+.lobby-setup-dialog .p-selectbutton .p-togglebutton {
+  flex: 1 1 0;
+  border-color: var(--app-border) !important;
+  background: var(--app-control) !important;
+  color: var(--app-muted) !important;
+  font-size: 0.74rem;
+}
+
+.lobby-setup-dialog .p-selectbutton .p-togglebutton .p-togglebutton-content {
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.lobby-setup-dialog .p-selectbutton .p-togglebutton.p-togglebutton-checked {
+  border-color: rgba(var(--app-primary-rgb), 0.5) !important;
+  background: rgba(var(--app-primary-rgb), 0.16) !important;
+  color: var(--app-primary-bright) !important;
+}
+
+.lobby-setup-dialog .p-slider {
+  height: 0.3rem !important;
+  border-radius: 999px !important;
+  background: var(--app-surface-hover) !important;
+}
+
+.lobby-setup-dialog .p-slider-track {
+  border-radius: 999px !important;
+  background: var(--app-control) !important;
+}
+
+.lobby-setup-dialog .p-slider-range {
+  border-radius: 999px !important;
+  background: var(--app-primary) !important;
+}
+
+.lobby-setup-dialog .p-slider-handle {
+  width: 1rem !important;
+  height: 1rem !important;
+  border: 2px solid var(--app-primary-bright) !important;
+  background: var(--app-primary) !important;
+  box-shadow: none !important;
+}
+
+.lobby-setup-dialog .p-slider-handle:focus-visible {
+  outline: 2px solid rgba(var(--app-primary-rgb), 0.35);
+  outline-offset: 2px;
+}
+
+.lobby-setup-dialog .p-slider-handle::before {
+  width: 0 !important;
+  height: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.lobby-setup-dialog .lobby-setup-dialog__field > span,
+.lobby-setup-dialog .lobby-setup-dialog__slider-label span {
+  font-size: 0.74rem !important;
+  font-weight: 700 !important;
+  letter-spacing: 0 !important;
+  text-transform: none !important;
+}
+
+.lobby-setup-dialog .lobby-setup-dialog__cancel {
+  border: 0 !important;
+  background: transparent !important;
+  color: var(--app-muted) !important;
+}
+
+.lobby-setup-dialog .lobby-setup-dialog__cancel:hover:not(:disabled) {
+  border: 0 !important;
+  background: rgba(var(--app-primary-rgb), 0.1) !important;
+  color: var(--app-primary-bright) !important;
+}
+
+.lobby-setup-dialog .lobby-setup-dialog__send {
+  border: 1px solid var(--app-primary) !important;
+  background: var(--app-primary) !important;
+  color: #fff !important;
+}
+
+.lobby-setup-dialog .lobby-setup-dialog__send:hover:not(:disabled) {
+  border-color: var(--app-primary-bright) !important;
+  background: var(--app-primary-bright) !important;
+  color: #fff !important;
 }
 
 .shortcut-dialog-modal .p-button.p-button-danger,
@@ -727,4 +1024,63 @@ html.app-light .app-dialog-mask {
 .app-solid-switch:not(.p-disabled):has(.p-toggleswitch-input:focus-visible) .p-toggleswitch-slider {
   outline: 2px solid rgba(var(--app-primary-rgb), 0.45);
   outline-offset: 2px;
+}
+
+/* PrimeVue removes the leading border from adjacent SelectButton segments.
+   Keep every segment self-contained so each option has a visible left edge. */
+.p-selectbutton.p-selectbutton .p-togglebutton {
+  border-left: 1px solid var(--app-border) !important;
+}
+
+.app-tooltip {
+  position: fixed;
+  z-index: 10000;
+  max-width: min(18rem, calc(100vw - 1rem));
+  padding: 0.42rem 0.68rem;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 0.4rem;
+  background: #11141d;
+  box-shadow: 0 0.45rem 1.1rem rgba(0, 0, 0, 0.34);
+  color: #fff;
+  font-size: 0.72rem;
+  line-height: 1.25;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 130ms ease;
+}
+
+.app-tooltip--visible {
+  opacity: 1;
+}
+
+.app-tooltip::after {
+  position: absolute;
+  width: 0;
+  height: 0;
+  border: 0.32rem solid transparent;
+  content: "";
+}
+
+.app-tooltip[data-position="top"]::after {
+  bottom: -0.63rem;
+  left: calc(50% - 0.32rem);
+  border-top-color: #11141d;
+}
+
+.app-tooltip[data-position="bottom"]::after {
+  top: -0.63rem;
+  left: calc(50% - 0.32rem);
+  border-bottom-color: #11141d;
+}
+
+.app-tooltip[data-position="left"]::after {
+  top: calc(50% - 0.32rem);
+  right: -0.63rem;
+  border-left-color: #11141d;
+}
+
+.app-tooltip[data-position="right"]::after {
+  top: calc(50% - 0.32rem);
+  left: -0.63rem;
+  border-right-color: #11141d;
 }

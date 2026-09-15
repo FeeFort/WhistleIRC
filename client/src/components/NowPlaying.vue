@@ -28,13 +28,13 @@ function formatElapsed(seconds) {
 }
 
 const mapDuration = computed(() => {
-  const total = Number(props.map?.totalSeconds ?? props.map?.total_seconds);
+  const total = Number(props.map?.totalSeconds);
   return Number.isFinite(total) && total > 0 ? formatElapsed(total) : "";
 });
 
 function updateProgress() {
   const map = props.map;
-  const total = Number(map?.totalSeconds ?? map?.total_seconds);
+  const total = Number(map?.totalSeconds);
   if (!map || !props.showProgressBar || map.status !== "playing" || map.progressAborted || !map.startTimestamp || !Number.isFinite(total) || total <= 0) {
     progressDelayElapsed.value = false;
     progressPercent.value = 0;
@@ -82,6 +82,10 @@ onBeforeUnmount(() => {
 
 const statusIcon = computed(() => (props.map?.status === "playing" ? Play : props.map?.status === "finished" ? Check : Clock3));
 const statusLabel = computed(() => (props.map?.status === "playing" ? "Playing" : props.map?.status === "finished" ? "Finished" : props.map?.error ? "Unable to load map" : "Waiting for start"));
+const beatmapUrl = computed(() => {
+  const beatmapId = props.map?.beatmapId ?? props.map?.id;
+  return beatmapId ? `https://osu.ppy.sh/b/${beatmapId}` : "";
+});
 const backgroundImage = computed(() => (props.map?.beatmapsetId ? `url(https://assets.ppy.sh/beatmaps/${props.map.beatmapsetId}/covers/card@2x.jpg)` : ""));
 const modLabels = Object.freeze({
   easy: "EZ",
@@ -99,6 +103,18 @@ const modLabels = Object.freeze({
   spunout: "SO",
   touchdevice: "TD",
   freemod: "FM",
+  key1: "1K",
+  key2: "2K",
+  key3: "3K",
+  key4: "4K",
+  key5: "5K",
+  key6: "6K",
+  key7: "7K",
+  key8: "8K",
+  key9: "9K",
+  keycoop: "CO",
+  mirror: "MR",
+  fadein: "FI",
 });
 const mods = computed(() =>
   String(props.map?.mods || "")
@@ -142,8 +158,13 @@ const pickedByStyle = computed(() => {
         <div class="now-playing__details">
           <div v-if="map.error" class="now-playing__title">{{ map.error }}</div>
           <div v-else class="now-playing__title">
-            {{ map.artist || "Unknown artist" }} - {{ map.title || "Unknown title" }} <span v-if="map.diff">[{{ map.diff }}]</span
-            ><span v-if="map.mapperName" class="now-playing__mapper">mapped by {{ map.mapperName }}</span>
+            <a v-if="beatmapUrl" class="now-playing__beatmap-link" :href="beatmapUrl" target="_blank" rel="noopener noreferrer">
+              {{ map.artist || "Unknown artist" }} - {{ map.title || "Unknown title" }} <span v-if="map.diff">[{{ map.diff }}]</span>
+            </a>
+            <template v-else>
+              {{ map.artist || "Unknown artist" }} - {{ map.title || "Unknown title" }} <span v-if="map.diff">[{{ map.diff }}]</span>
+            </template>
+            <span v-if="map.mapperName" class="now-playing__mapper">mapped by {{ map.mapperName }}</span>
           </div>
           <div class="now-playing__meta">
             <span v-if="map.starRating != null">★ {{ Number(map.starRating).toFixed(2) }}</span>
@@ -161,7 +182,7 @@ const pickedByStyle = computed(() => {
       </div>
       <Transition name="now-playing-progress">
         <div
-          v-if="showProgressBar && map.status === 'playing' && !map.progressAborted && progressDelayElapsed && mapDuration && Number(map.totalSeconds ?? map.total_seconds) > 0"
+          v-if="showProgressBar && map.status === 'playing' && !map.progressAborted && progressDelayElapsed && mapDuration && Number(map.totalSeconds) > 0"
           class="now-playing__progress"
           aria-label="Map progress"
         >
@@ -227,6 +248,13 @@ const pickedByStyle = computed(() => {
   white-space: nowrap;
   font-size: 0.8rem;
   font-weight: 800;
+}
+.now-playing__beatmap-link {
+  color: inherit;
+  text-decoration: none;
+}
+.now-playing__beatmap-link:hover {
+  text-decoration: underline;
 }
 .now-playing__mapper {
   margin-left: 0.375rem;

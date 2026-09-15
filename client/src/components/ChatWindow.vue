@@ -2,7 +2,7 @@
 import { ref, computed, nextTick, watch, onMounted, onBeforeUnmount } from "vue";
 import Button from "primevue/button";
 import Textarea from "primevue/textarea";
-import { Menu, Send, Hash, Timer, ClipboardCheck, Flag, Gamepad2 } from "@lucide/vue";
+import { Menu, Send, Hash, Timer, ClipboardCheck, Flag, Gamepad2, Link, ArrowDown, ArrowDownToLine } from "@lucide/vue";
 import { useNickColor } from "../composables/useNickColor";
 import { useChatSettings } from "../composables/useChatSettings";
 import { highlightTextStyle, messageHasHighlight } from "../composables/useMessageHighlighting";
@@ -30,6 +30,7 @@ const {
 
 const props = defineProps({
   title: { type: String, default: "Referee chat" },
+  chatId: { type: String, default: "" },
   connected: { type: Boolean, default: false },
   currentUser: { type: String, default: "you" },
   refereeUsers: { type: Array, default: () => [] },
@@ -66,18 +67,69 @@ const timerLabel = computed(() => (props.timerActive ? formatTimer(props.timerSe
 
 const statusLabel = computed(() => (props.connected ? "Connected" : "Disconnected"));
 
-const emit = defineEmits(["send", "toggle-sidebar", "send-command", "create-lobby"]);
+const emit = defineEmits(["send", "toggle-sidebar", "send-command", "create-lobby", "download-chat-history"]);
 
 const draft = ref("");
+const sentMessageHistory = new Map();
 const chatInput = ref(null);
 const listEl = ref(null);
 const shouldAutoScroll = ref(true);
+const newMessageCount = ref(0);
 const AUTO_SCROLL_THRESHOLD = 24;
 const AUTO_SCROLL_DURATION = 650;
 let isAutoScrolling = false;
 let animationFrameId;
 let autoScrollTimer;
 let forceAutoScroll = false;
+let applyingHistoryDraft = false;
+
+function currentHistory() {
+  const key = props.chatId || props.title;
+  if (!sentMessageHistory.has(key)) {
+    sentMessageHistory.set(key, { messages: [], index: -1, draftBeforeNavigation: "" });
+  }
+  return sentMessageHistory.get(key);
+}
+
+function setHistoryDraft(value) {
+  applyingHistoryDraft = true;
+  draft.value = value;
+  nextTick(() => {
+    applyingHistoryDraft = false;
+  });
+}
+
+function handleDraftInput() {
+  if (applyingHistoryDraft) return;
+  const history = currentHistory();
+  history.index = -1;
+  history.draftBeforeNavigation = "";
+}
+
+function navigateMessageHistory(direction) {
+  const history = currentHistory();
+  if (!history.messages.length) return;
+
+  if (direction < 0) {
+    if (history.index === -1) {
+      history.draftBeforeNavigation = draft.value;
+      history.index = history.messages.length;
+    }
+    history.index = Math.max(0, history.index - 1);
+    setHistoryDraft(history.messages[history.index]);
+    return;
+  }
+
+  if (history.index === -1) return;
+  if (history.index < history.messages.length - 1) {
+    history.index += 1;
+    setHistoryDraft(history.messages[history.index]);
+  } else {
+    history.index = -1;
+    setHistoryDraft(history.draftBeforeNavigation);
+    history.draftBeforeNavigation = "";
+  }
+}
 
 function getChatInputEl() {
   const el = chatInput.value?.$el || chatInput.value;
@@ -186,6 +238,46 @@ function messageTextStyle(text) {
   return messageHasHighlight(text, highlightWords.value) ? highlightTextStyle(highlightStyles.value, highlightMessageColor.value) : {};
 }
 
+const URL_PATTERN = /https?:\/\/[^\s<]+/gi;
+const TRAILING_URL_PUNCTUATION = /[.,!?;:]+$/;
+
+function isValidUrl(value) {
+  try {
+    const url = new URL(value);
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+function messageSegments(text) {
+  const value = String(text || "");
+  const segments = [];
+  let lastIndex = 0;
+
+  for (const match of value.matchAll(URL_PATTERN)) {
+    const rawUrl = match[0];
+    const start = match.index ?? 0;
+    const url = rawUrl.replace(TRAILING_URL_PUNCTUATION, "");
+    if (!url || !isValidUrl(url)) continue;
+
+    if (start > lastIndex) {
+      segments.push({ type: "text", value: value.slice(lastIndex, start) });
+    }
+    segments.push({ type: "link", value: url });
+    if (url.length < rawUrl.length) {
+      segments.push({ type: "text", value: rawUrl.slice(url.length) });
+    }
+    lastIndex = start + rawUrl.length;
+  }
+
+  if (lastIndex < value.length) {
+    segments.push({ type: "text", value: value.slice(lastIndex) });
+  }
+
+  return segments.length ? segments : [{ type: "text", value }];
+}
+
 const highlightMessageColor = computed(() => {
   if (highlightColorMode.value === "accent") return primaryColor.value;
   if (highlightColorMode.value === "custom") return highlightColor.value;
@@ -268,7 +360,9 @@ function scrollToBottom() {
 
 function onScroll() {
   if (!isAutoScrolling && listEl.value) {
-    shouldAutoScroll.value = isNearBottom(listEl.value);
+    const nearBottom = isNearBottom(listEl.value);
+    shouldAutoScroll.value = nearBottom;
+    if (nearBottom) newMessageCount.value = 0;
   }
 }
 
@@ -283,14 +377,29 @@ function onWheel(event) {
 
 watch(
   () => props.messages.length,
-  () => {
-    const stickToBottom = forceAutoScroll || !listEl.value || isAutoScrolling || isNearBottom(listEl.value);
+  (messageLength, previousMessageLength) => {
+    const nearBottom = !listEl.value || isNearBottom(listEl.value);
+    const addedMessages = Math.max(0, messageLength - (previousMessageLength ?? messageLength));
+    if (addedMessages > 0 && !nearBottom && !forceAutoScroll) {
+      newMessageCount.value += addedMessages;
+    } else if (nearBottom || forceAutoScroll) {
+      newMessageCount.value = 0;
+    }
+
+    const stickToBottom = forceAutoScroll || !listEl.value || isAutoScrolling || nearBottom;
     forceAutoScroll = false;
     if (!stickToBottom) return;
     shouldAutoScroll.value = true;
     scrollToBottom();
   },
 );
+
+function scrollToLatestMessages() {
+  newMessageCount.value = 0;
+  forceAutoScroll = true;
+  shouldAutoScroll.value = true;
+  scrollToBottom();
+}
 
 watch(
   () => props.autoScrollToken,
@@ -342,6 +451,11 @@ function send() {
   if (props.roomClosed) return;
   const text = draft.value.trim();
   if (!text) return;
+  const history = currentHistory();
+  history.messages.push(text);
+  if (history.messages.length > 100) history.messages.shift();
+  history.index = -1;
+  history.draftBeforeNavigation = "";
   forceAutoScroll = true;
   shouldAutoScroll.value = true;
   emit("send", text);
@@ -350,6 +464,16 @@ function send() {
 }
 
 function onKeydown(e) {
+  if (e.key === "ArrowUp" && !e.shiftKey) {
+    e.preventDefault();
+    navigateMessageHistory(-1);
+    return;
+  }
+  if (e.key === "ArrowDown" && !e.shiftKey) {
+    e.preventDefault();
+    navigateMessageHistory(1);
+    return;
+  }
   if (e.key === "Enter" && !e.shiftKey) {
     e.preventDefault();
     send();
@@ -419,17 +543,35 @@ function forwardCommand(command) {
               :style="nickStyle(msg.author, msg.team)"
               >{{ msg.author }}</span
             >
-            <span class="chat-line__text" :style="messageTextStyle(msg.text)">{{ msg.text }}</span>
+            <span class="chat-line__text" :style="messageTextStyle(msg.text)">
+              <template v-for="(segment, segmentIndex) in messageSegments(msg.text)" :key="`${msg.id}-${segmentIndex}`">
+                <a v-if="segment.type === 'link'" class="chat-line__link" :href="segment.value" target="_blank" rel="noopener noreferrer">
+                  <Link :size="12" aria-hidden="true" />
+                  <span>{{ segment.value }}</span>
+                </a>
+                <template v-else>{{ segment.value }}</template>
+              </template>
+            </span>
           </template>
         </div>
+        <button v-if="roomClosed" type="button" class="chat-history-download" @click="emit('download-chat-history')">
+          <ArrowDownToLine :size="14" aria-hidden="true" />
+          <span>Download chat history</span>
+        </button>
       </div>
+      <Transition name="chat-new-messages">
+        <button v-if="newMessageCount > 0" type="button" class="chat-new-messages" @click="scrollToLatestMessages">
+          <ArrowDown :size="14" aria-hidden="true" />
+          <span>{{ newMessageCount }} new message{{ newMessageCount === 1 ? "" : "s" }}</span>
+        </button>
+      </Transition>
     </div>
 
     <BanchoBotCommandBar v-if="shortcutMode === 'bancho'" :disabled="roomClosed" @send-command="forwardCommand" @create="emit('create-lobby')" />
     <CommandBar v-else-if="shortcutMode === 'referee'" docked :disabled="roomClosed" @send-command="forwardCommand" />
 
     <div class="chat-input">
-      <Textarea ref="chatInput" v-model="draft" placeholder="Write a message" rows="1" autoResize class="chat-input__field" :disabled="roomClosed" @keydown="onKeydown" />
+      <Textarea ref="chatInput" v-model="draft" placeholder="Write a message" rows="1" autoResize class="chat-input__field" :disabled="roomClosed" @input="handleDraftInput" @keydown="onKeydown" />
       <Button rounded aria-label="Send message" class="chat-input__send" :disabled="roomClosed || !draft.trim()" @click="send">
         <Send :size="17" />
       </Button>
@@ -575,7 +717,7 @@ function forwardCommand(command) {
   position: relative;
   z-index: 0;
   padding: 1rem 1.25rem;
-  font-family: "DM Sans", sans-serif;
+  font-family: "Onest", sans-serif;
   background: var(--app-log-background);
 }
 
@@ -583,6 +725,87 @@ function forwardCommand(command) {
   display: flex;
   flex-direction: column;
   gap: 0.15rem;
+}
+
+.chat-history-download {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  align-self: center;
+  gap: 0.35rem;
+  margin: 0.85rem auto 0.45rem;
+  padding: 0.2rem 0.35rem;
+  border: 0;
+  background: transparent;
+  color: var(--app-primary-bright);
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition:
+    color 160ms ease,
+    opacity 160ms ease;
+}
+
+.chat-history-download:hover {
+  color: var(--app-primary);
+  opacity: 0.86;
+  text-decoration: underline;
+  text-underline-offset: 0.15rem;
+}
+
+.chat-new-messages {
+  position: sticky;
+  bottom: 0.85rem;
+  display: flex;
+  width: fit-content;
+  align-items: center;
+  gap: 0.35rem;
+  margin: 0.7rem auto 0;
+  padding: 0.42rem 0.75rem;
+  border: 1px solid rgba(var(--app-primary-rgb), 0.45);
+  border-radius: 999px;
+  background: var(--app-panel);
+  color: var(--app-primary);
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 800;
+  line-height: 1;
+  box-shadow: 0 0.35rem 1rem rgba(0, 0, 0, 0.24);
+  cursor: pointer;
+  z-index: 2;
+  transition:
+    background-color 180ms ease,
+    color 180ms ease,
+    border-color 180ms ease,
+    box-shadow 180ms ease,
+    transform 180ms ease;
+}
+
+.chat-new-messages:hover {
+  background: var(--app-primary-dark);
+  color: var(--app-primary-bright);
+  border-color: var(--app-primary);
+  box-shadow: 0 0.45rem 1.2rem rgba(var(--app-primary-rgb), 0.24);
+  transform: translateY(-1px);
+}
+
+.chat-new-messages:focus-visible {
+  outline: 2px solid var(--app-primary-bright);
+  outline-offset: 2px;
+}
+
+.chat-new-messages-enter-active,
+.chat-new-messages-leave-active {
+  transition:
+    opacity 260ms ease-out,
+    transform 260ms ease-out;
+}
+
+.chat-new-messages-enter-from,
+.chat-new-messages-leave-to {
+  opacity: 0;
+  transform: translateY(1rem);
 }
 
 .chat-line {
@@ -631,11 +854,29 @@ function forwardCommand(command) {
   white-space: pre-wrap;
 }
 
+.chat-line__link {
+  display: inline;
+  color: var(--app-primary);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.chat-line__link:hover {
+  color: var(--app-primary-bright);
+  text-decoration: underline;
+}
+
+.chat-line__link svg {
+  display: inline-block;
+  margin-right: 0.22rem;
+  vertical-align: -0.15em;
+}
+
 .chat-line--system {
   display: flex;
   align-items: center;
   gap: 0.8rem;
-  padding: 0.7rem 0;
+  padding: 0.35rem 0;
 }
 
 @media (max-width: 640px) {

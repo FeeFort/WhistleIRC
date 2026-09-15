@@ -79,18 +79,22 @@ export type PlayerSnapshot = {
   avatarUrl: string | null;
   slot: number;
   ready: boolean;
+  noMap: boolean;
+  isHost?: true;
   team: "red" | "blue" | null;
   mods: string[];
 };
 
-export type PlayerJoined = { username: string; slot: number; team: Team; mods: string[] };
+export type PlayerJoined = { username: string; slot: number; team: Team | null; mods: string[] };
 export type PlayerLeft = { username: string };
 export type PlayerTeamChange = { username: string; team: Team };
 export type PlayerSlotChange = { username: string; slot: number };
 export type PlayerScore = { username: string; score: number; result: string };
+export type HostChange = { host: string | null };
 export type MatchFinished = { finished: true };
 export type MatchMetadata = { bestOf: number } | { nextPickTeam: string };
 export type SizeConfirmation = { size: number };
+export type SlotLockState = { slot: number; locked: boolean };
 export type TimerMessage = { type: "aborted" } | { type: "finished" } | { type: "started"; seconds: number };
 export type MpSetCommand = { teamMode: TeamMode; scoreMode: ScoreMode; size: number };
 export type MpSizeCommand = { size: number };
@@ -106,9 +110,11 @@ export type ParsedBanchoBotMessage =
   | { type: "player_moved"; value: PlayerSlotChange }
   | { type: "player_team_changed"; value: PlayerTeamChange }
   | { type: "player_score"; value: PlayerScore }
+  | { type: "host"; value: HostChange }
   | { type: "match_finished"; value: MatchFinished }
   | { type: "metadata"; value: MatchMetadata }
   | { type: "size"; value: SizeConfirmation }
+  | { type: "slot_lock"; value: SlotLockState }
   | { type: "timer"; value: TimerMessage }
   | { type: "mode"; value: GameMode }
   | null;
@@ -125,6 +131,8 @@ export type Player = {
   avatarUrl: string | null;
   slot: number;
   ready: boolean;
+  noMap: boolean;
+  isHost: boolean;
   team: Team | null;
   mods: string[];
 };
@@ -163,6 +171,7 @@ export type LobbyState = {
   scoreMode: ScoreMode;
   mode: GameMode;
   slots: (string | null)[];
+  slotLocks: boolean[];
   size: number;
   timer: Timer;
   status: "active" | "closed";
@@ -184,17 +193,102 @@ export type ClientMessage =
   | { type: "logout" }
   | { type: "osu_login"; clientId: string; clientSecret: string; code: string; redirectUri: string }
   | { type: "osu_logout" }
-  | { type: "api_request"; endpoint: string }
+  | { type: "api_request"; endpoint: string; method?: AllowedMethods; body?: unknown }
   | { type: "send_message"; channel: string; message: string }
   | { type: "join_channel"; channel: string }
   | { type: "leave_channel"; channel: string }
   | { type: "part_channel"; channel: string }
   | { type: "set_lobby_score"; channel: string; teamRedScore: number; teamBlueScore: number }
-  | { type: "set_lobby_settings"; channel: string; bestOf: number | null; nextPickTeam: string | null };
+  | { type: "set_lobby_settings"; channel: string; bestOf: number | null; nextPickTeam: string | null }
+  | { type: "set_active_win_condition"; channel: string; beatmapId: number; source: string | null }
+  | { type: "check_update" }
+  | { type: "start_update" }
+  | { type: "cancel_update" }
+  | { type: "confirm_install" }
+  | { type: "test_win_condition"; slotId: string; source: string; sampleContext: Record<string, unknown> };
 
 export interface PersistedSession {
   clientId: string;
   clientSecret: string;
   refreshToken: string;
   user: OsuUser;
+}
+
+export type AllowedMethods = "GET" | "POST";
+
+//Updater
+
+export interface GithubAsset {
+  name: string;
+  browser_download_url: string;
+  size: number;
+  digest?: string;
+}
+
+export interface GithubRelease {
+  tag_name: string;
+  html_url?: string;
+  published_at?: string;
+  assets: GithubAsset[];
+}
+
+export interface UpdateInfo {
+  version: string;
+  asset: GithubAsset;
+  releaseNotesUrl?: string;
+  publishedAt?: string;
+}
+
+export type UpdateProgress =
+  { type: "update_progress"; stage: "downloading"; totalBytes: number; downloadedBytes: number } | { type: "update_progress"; stage: "verifying" | "ready_to_install" | "installing" };
+
+export type UpdateCheckResult = {
+  type: "update_check_result";
+  available: boolean;
+  currentVersion: string;
+  latestVersion?: string;
+  releaseNotesUrl?: string;
+  publishedAt?: string;
+};
+
+export type UpdaterState = "idle" | "checking" | "available" | "downloading" | "ready_to_install" | "installing";
+export type UpdateProgressSender = (payload: UpdateProgress) => void;
+export type ApplyUpdate = (parentPid: number, assetPath: string) => Promise<void>;
+
+export interface MenuItem {
+  title: string;
+  tooltip: string;
+  checked: boolean;
+  enabled: boolean;
+  click?: () => void;
+}
+
+export interface SysTrayOptions {
+  menu: { icon: string; title: string; tooltip: string; items: MenuItem[] };
+  debug?: boolean;
+  copyDir?: boolean;
+}
+
+export interface ClickAction {
+  item: MenuItem;
+}
+
+export interface SysTrayInstance {
+  onClick(callback: (action: ClickAction) => void): void;
+  ready(): Promise<void>;
+  kill(exitNode?: boolean): void;
+}
+
+export type DbusModule = typeof import("dbus-next");
+export interface TrayOptions {
+  port: number;
+  onQuit: () => void;
+}
+export interface KdeTrayOptions {
+  port: number;
+  onQuit: () => void;
+}
+export interface KdeTrayInstance {
+  ready(): Promise<void>;
+  kill(): void;
 }

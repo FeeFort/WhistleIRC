@@ -24,7 +24,7 @@ const props = defineProps({
   disabled: { type: Boolean, default: false },
 });
 
-const emit = defineEmits(["update:teamAScore", "update:teamBScore", "update:qualificationMode", "send-result", "update-settings"]);
+const emit = defineEmits(["update:teamAScore", "update:teamBScore", "update:qualificationMode", "send-result", "update-settings", "configure-lobby"]);
 
 const { redTeamColor, blueTeamColor } = useChatSettings();
 const copied = ref(false);
@@ -181,6 +181,11 @@ function openSettings() {
   settingsVisible.value = true;
 }
 
+function configureLobby() {
+  settingsVisible.value = false;
+  emit("configure-lobby");
+}
+
 function saveSettings() {
   if (!settingsValid.value) return;
   emit("update-settings", {
@@ -266,7 +271,7 @@ async function copyMpLink() {
       <span>Lobby Settings</span>
     </Button>
 
-    <Button :label="copied ? 'Copied' : 'Copy MP Link'" text class="lobby-score-card__copy" :disabled="disabled" @click="copyMpLink">
+    <Button :label="copied ? 'Copied' : 'Copy MP Link'" text class="lobby-score-card__copy" @click="copyMpLink">
       <Check v-if="copied" :size="14" />
       <Copy v-else :size="14" />
       <span>{{ copied ? "Copied" : "Copy MP Link" }}</span>
@@ -275,6 +280,17 @@ async function copyMpLink() {
 
   <Dialog v-model:visible="settingsVisible" modal dismissableMask class="lobby-settings-dialog" header="Lobby settings" :style="{ width: '26rem' }" :pt="{ mask: { class: 'app-dialog-mask' } }">
     <div class="lobby-settings__body">
+      <div class="lobby-settings__configure-row">
+        <div>
+          <strong>Lobby configuration</strong>
+          <span>Change the game mode, win condition, or open slots.</span>
+        </div>
+        <Button text severity="secondary" v-tooltip.top="'Configure lobby'" aria-label="Configure lobby" @click="configureLobby">
+          <SlidersHorizontal :size="15" />
+          <span>Configure</span>
+        </Button>
+      </div>
+
       <div v-if="showQualificationToggle" class="lobby-settings__toggle-row">
         <div>
           <strong>Qualifications</strong>
@@ -590,6 +606,45 @@ async function copyMpLink() {
   color: var(--app-muted);
   font-size: 0.7rem;
   line-height: 1.4;
+}
+
+.lobby-settings__configure-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding-top: 0.15rem;
+}
+
+.lobby-settings__configure-row > div {
+  display: flex;
+  flex-direction: column;
+  gap: 0.18rem;
+}
+
+.lobby-settings__configure-row strong {
+  color: var(--app-text);
+  font-size: 0.78rem;
+}
+
+.lobby-settings__configure-row span {
+  color: var(--app-muted);
+  font-size: 0.7rem;
+  line-height: 1.4;
+}
+
+.lobby-settings__configure-row :deep(.p-button) {
+  width: auto;
+  height: 2rem;
+  flex: 0 0 auto;
+  gap: 0.35rem;
+  padding: 0.35rem 0.55rem;
+  color: var(--app-muted);
+}
+
+.lobby-settings__configure-row :deep(.p-button:hover) {
+  color: var(--app-primary-bright);
+  background: rgba(var(--app-primary-rgb), 0.12);
 }
 
 .lobby-settings__field {
