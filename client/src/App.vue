@@ -789,7 +789,8 @@ watch(lastEvent, (event) => {
   if (event.type === "update_error") {
     updateDialogVisible.value = false;
     if (event.code !== "DOWNLOAD_CANCELLED") {
-      toast.add({ severity: "error", summary: "Update failed", detail: event.message || "Unable to download the update.", life: 5000 });
+      toast.removeGroup(loginToastGroup);
+      toast.add({ group: loginToastGroup, severity: "error", summary: "Update failed", detail: event.message || "Unable to download the update.", life: 5000 });
     }
   }
 });
@@ -868,7 +869,8 @@ onMounted(async () => {
     const url = new URL(window.location.href);
     url.searchParams.delete("updated");
     window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
-    toast.add({ severity: "success", summary: "Update complete", detail: "The update was installed successfully!", life: 5000 });
+    toast.removeGroup(loginToastGroup);
+    toast.add({ group: loginToastGroup, severity: "success", summary: "Update complete", detail: "The update was installed successfully!", life: 5000 });
   } else {
     await checkForUpdates();
   }

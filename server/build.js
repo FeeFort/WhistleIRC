@@ -160,13 +160,6 @@ async function main() {
     }
   }
 
-  for (const file of fs.readdirSync(buildDir)) {
-    if (file.startsWith(`${baseName}-`)) {
-      const renamed = file.replace(`${baseName}-`, `${baseName}-${appVersion}-`);
-      fs.renameSync(path.join(buildDir, file), path.join(buildDir, renamed));
-    }
-  }
-
   const fourPartVersion = toFourPartVersion(appVersion);
   for (const file of fs.readdirSync(buildDir)) {
     if (file.endsWith(".exe")) {
