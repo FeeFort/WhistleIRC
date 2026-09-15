@@ -42,7 +42,11 @@ function fallback(context: { redScore: number; blueScore: number }): WinConditio
 // it protects against accidentally handing the script a live object with real methods on it
 // (a DB row, a socket, anything richer than data) just because it happened to be nearby in context.
 function toPlainData<T>(value: T): T {
-  try { return JSON.parse(JSON.stringify(value)); } catch { return value; }
+  try {
+    return JSON.parse(JSON.stringify(value));
+  } catch {
+    return value;
+  }
 }
 
 // sum/average/min/max — the reduction helpers the script needs for accuracy/combo, which
@@ -93,22 +97,26 @@ export async function evaluateWinCondition(source: string | undefined, context: 
     return toPlainData({ teamRed, teamBlue });
   }
 
-  const sandbox = vm.createContext(Object.freeze({
-    system: Object.freeze({ sendMessage: (text: unknown) => { systemMessages.push(String(text)); } }),
-    parseRoom,
-    calculateWinner,
-    math: scriptMath,
-    Math,
-  }), { codeGeneration: { strings: false, wasm: false } });
+  const sandbox = vm.createContext(
+    Object.freeze({
+      system: Object.freeze({
+        sendMessage: (text: unknown) => {
+          systemMessages.push(String(text));
+        },
+      }),
+      parseRoom,
+      calculateWinner,
+      math: scriptMath,
+      Math,
+    }),
+    { codeGeneration: { strings: false, wasm: false } },
+  );
 
   try {
     const executableSource = source.replace(/(\d),(\d)/g, "$1.$2");
     const script = new vm.Script(`(async function() {\n${executableSource}\n})()`);
     const scriptPromise = script.runInContext(sandbox, { timeout: SYNC_TIMEOUT_MS }) as Promise<unknown>;
-    await Promise.race([
-      scriptPromise,
-      new Promise((_resolve, reject) => setTimeout(() => reject(new Error("Win condition timed out")), ASYNC_TIMEOUT_MS)),
-    ]);
+    await Promise.race([scriptPromise, new Promise((_resolve, reject) => setTimeout(() => reject(new Error("Win condition timed out")), ASYNC_TIMEOUT_MS))]);
     if (!winner) return { winner: defaultWinner, error: "Script finished without calling calculateWinner()", systemMessages, result: null };
     return { winner, error: null, systemMessages, result: calculated };
   } catch (error) {

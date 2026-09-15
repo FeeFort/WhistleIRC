@@ -214,11 +214,7 @@ function multiplierRows(value) {
   return Object.entries(value || {}).map(([mods, multiplier]) => ({ mods, multiplier }));
 }
 function multipliersFromRows(rows) {
-  return Object.fromEntries(
-    (rows || [])
-      .map((row) => [String(row.mods || "").trim(), Number(row.multiplier)])
-      .filter(([mods, multiplier]) => mods && Number.isFinite(multiplier) && multiplier > 0),
-  );
+  return Object.fromEntries((rows || []).map((row) => [String(row.mods || "").trim(), Number(row.multiplier)]).filter(([mods, multiplier]) => mods && Number.isFinite(multiplier) && multiplier > 0));
 }
 function newPool() {
   const category = "Untitled category";
@@ -272,7 +268,15 @@ function savePool() {
     freeModMultipliers,
     slots: editing.value.slots.map((slot) =>
       slot.freeMod
-        ? { ...slot, winCondition: { type: "script", template: "freemod", reverse: slot.winCondition?.reverse === true, source: winConditionSource("freemod", slot.winCondition?.reverse === true, freeModMultipliers) } }
+        ? {
+            ...slot,
+            winCondition: {
+              type: "script",
+              template: "freemod",
+              reverse: slot.winCondition?.reverse === true,
+              source: winConditionSource("freemod", slot.winCondition?.reverse === true, freeModMultipliers),
+            },
+          }
         : slot,
     ),
   };
@@ -280,7 +284,9 @@ function savePool() {
   closePoolEditor();
 }
 function isFreemodSlot(slot) {
-  const category = String(slot.category || "").trim().toLowerCase();
+  const category = String(slot.category || "")
+    .trim()
+    .toLowerCase();
   const hasFreemodMod = (slot.mods || []).some((mod) => String(mod).trim().toLowerCase() === "freemod");
   return category === "fm" || category === "freemod" || hasFreemodMod;
 }
@@ -304,14 +310,20 @@ function selectWinTemplate(template) {
   draft.slot.freeMod = draft.freeMod;
   winTemplateMenuOpen.value = false;
   if (template === "score") draft.slot.winCondition = undefined;
-  else if (template === "freemod") draft.slot.winCondition = { type: "script", template, reverse: draft.winReverse, source: winConditionSource(template, draft.winReverse, draft.pool.freeModMultipliers) };
+  else if (template === "freemod")
+    draft.slot.winCondition = { type: "script", template, reverse: draft.winReverse, source: winConditionSource(template, draft.winReverse, draft.pool.freeModMultipliers) };
   else if (template !== "custom") draft.slot.winCondition = { type: "script", template, reverse: draft.winReverse, source: winConditionSource(template, draft.winReverse) };
 }
 function setWinReverse(reverse) {
   const draft = editingSlot.value;
   draft.winReverse = reverse;
   if (draft.winTemplate !== "custom" && draft.winTemplate !== "score")
-    draft.slot.winCondition = { type: "script", template: draft.winTemplate, reverse, source: winConditionSource(draft.winTemplate, reverse, draft.winTemplate === "freemod" ? draft.pool.freeModMultipliers : {}) };
+    draft.slot.winCondition = {
+      type: "script",
+      template: draft.winTemplate,
+      reverse,
+      source: winConditionSource(draft.winTemplate, reverse, draft.winTemplate === "freemod" ? draft.pool.freeModMultipliers : {}),
+    };
 }
 function configureWinCondition() {
   winVisible.value = true;
@@ -566,7 +578,16 @@ watch(editing, (value) => {
 });
 </script>
 <template>
-  <Dialog :visible="visible" modal :dismissable-mask="true" header="Mappools" class="mappools-dialog" :style="{ width: '46rem' }" :pt="{ mask: { class: 'app-dialog-mask' } }" @update:visible="handleMainDialogVisibility">
+  <Dialog
+    :visible="visible"
+    modal
+    :dismissable-mask="true"
+    header="Mappools"
+    class="mappools-dialog"
+    :style="{ width: '46rem' }"
+    :pt="{ mask: { class: 'app-dialog-mask' } }"
+    @update:visible="handleMainDialogVisibility"
+  >
     <div class="mappools__toolbar">
       <Button text rounded v-tooltip.top="'Add mappool'" aria-label="Add mappool" @click="newPool"><Plus :size="17" /></Button
       ><input ref="importInput" hidden type="file" accept=".json,application/json" @change="importPool" /><Button
@@ -589,7 +610,13 @@ watch(editing, (value) => {
         </div>
         <span class="mappool__actions" @click.stop
           ><Button text rounded v-tooltip.top="'Add category'" aria-label="Add category" @click="addCategory(pool)"><Plus :size="16" /></Button
-          ><Button text rounded v-tooltip.top="'Edit mappool'" aria-label="Edit mappool" @click="editing = { ...pool, globalCommands: [...pool.globalCommands], freeModMultipliers: multiplierRows(pool.freeModMultipliers) }"><Pencil :size="15" /></Button
+          ><Button
+            text
+            rounded
+            v-tooltip.top="'Edit mappool'"
+            aria-label="Edit mappool"
+            @click="editing = { ...pool, globalCommands: [...pool.globalCommands], freeModMultipliers: multiplierRows(pool.freeModMultipliers) }"
+            ><Pencil :size="15" /></Button
           ><Button text rounded v-tooltip.top="'Export mappool'" aria-label="Export mappool" @click="exportPool(pool)"><Download :size="15" /></Button
           ><Button text rounded severity="danger" v-tooltip.top="'Delete mappool'" aria-label="Delete mappool" @click="requestDelete(pool, { type: 'pool' })"><Trash2 :size="15" /></Button
         ></span>
@@ -668,13 +695,7 @@ watch(editing, (value) => {
                     <span class="slot__actions" @click.stop
                       ><Button text rounded v-tooltip.top="'Edit beatmap commands and win condition'" aria-label="Edit beatmap commands and win condition" @click="editSlot(pool, slot)"
                         ><Pencil :size="15" /></Button
-                      ><Button
-                        text
-                        rounded
-                        severity="danger"
-                        v-tooltip.top="'Delete beatmap'"
-                        aria-label="Delete beatmap"
-                        @click="requestDelete(pool, { type: 'slot', slotId: slot.slotId })"
+                      ><Button text rounded severity="danger" v-tooltip.top="'Delete beatmap'" aria-label="Delete beatmap" @click="requestDelete(pool, { type: 'slot', slotId: slot.slotId })"
                         ><Trash2 :size="15" /></Button
                     ></span>
                   </div></div
@@ -792,7 +813,15 @@ watch(editing, (value) => {
       </div>
       <div class="mappools-dialog__reverse">
         <span>Winner rule</span>
-        <SelectButton :model-value="editingSlot.winReverse" :options="winnerRuleOptions" option-label="label" option-value="value" :allow-empty="false" aria-label="Winner rule" @update:model-value="setWinReverse" />
+        <SelectButton
+          :model-value="editingSlot.winReverse"
+          :options="winnerRuleOptions"
+          option-label="label"
+          option-value="value"
+          :allow-empty="false"
+          aria-label="Winner rule"
+          @update:model-value="setWinReverse"
+        />
       </div>
     </div>
     <template #footer
@@ -818,7 +847,17 @@ watch(editing, (value) => {
       @update:model-value="(source) => (editingSlot.slot.winCondition = { ...(editingSlot.slot.winCondition || {}), type: 'script', template: 'custom', reverse: editingSlot.winReverse, source })"
       @test="testScript"
   /></Dialog>
-  <Dialog v-if="deleteConfirmation" :visible="Boolean(deleteConfirmation)" modal :dismissable-mask="true" :show-header="false" class="mappools-dialog mappools-delete-confirm-dialog" :class="{ 'mappools-delete-confirm-dialog--pool': deleteConfirmation.type === 'pool' }" :pt="{ mask: { class: 'app-dialog-mask' } }" @update:visible="(value) => !value && cancelDelete()">
+  <Dialog
+    v-if="deleteConfirmation"
+    :visible="Boolean(deleteConfirmation)"
+    modal
+    :dismissable-mask="true"
+    :show-header="false"
+    class="mappools-dialog mappools-delete-confirm-dialog"
+    :class="{ 'mappools-delete-confirm-dialog--pool': deleteConfirmation.type === 'pool' }"
+    :pt="{ mask: { class: 'app-dialog-mask' } }"
+    @update:visible="(value) => !value && cancelDelete()"
+  >
     <div class="mappools-delete-confirm-dialog__body">
       <div class="mappools-delete-confirm-dialog__heading">
         <AlertTriangle :size="21" class="mappools-delete-confirm-dialog__icon" />
@@ -835,7 +874,16 @@ watch(editing, (value) => {
       <Button label="Delete" severity="danger" v-tooltip.top="'Confirm deletion'" @click="confirmDelete" />
     </template>
   </Dialog>
-  <Dialog v-if="invalidMappoolsConfirmation" :visible="Boolean(invalidMappoolsConfirmation)" modal :dismissable-mask="false" :close-on-escape="false" :show-header="false" class="mappools-dialog mappools-delete-confirm-dialog mappools-invalid-confirm-dialog" :pt="{ mask: { class: 'app-dialog-mask' } }">
+  <Dialog
+    v-if="invalidMappoolsConfirmation"
+    :visible="Boolean(invalidMappoolsConfirmation)"
+    modal
+    :dismissable-mask="false"
+    :close-on-escape="false"
+    :show-header="false"
+    class="mappools-dialog mappools-delete-confirm-dialog mappools-invalid-confirm-dialog"
+    :pt="{ mask: { class: 'app-dialog-mask' } }"
+  >
     <div class="mappools-delete-confirm-dialog__body">
       <div class="mappools-delete-confirm-dialog__heading">
         <AlertTriangle :size="21" class="mappools-delete-confirm-dialog__icon" />

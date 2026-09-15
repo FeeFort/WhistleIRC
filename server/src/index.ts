@@ -482,7 +482,9 @@ class BanchoConnection {
         systemMessages: outcome.systemMessages,
         error: outcome.error,
       });
-      console.log(`[${formatLogTime()}] win_condition ${channel} beatmap=${activeWinCondition.beatmapId} match=${state.id ?? "unknown"} winner=${outcome.winner}${outcome.error ? ` error=${outcome.error}` : ""}`);
+      console.log(
+        `[${formatLogTime()}] win_condition ${channel} beatmap=${activeWinCondition.beatmapId} match=${state.id ?? "unknown"} winner=${outcome.winner}${outcome.error ? ` error=${outcome.error}` : ""}`,
+      );
     } else if (activeWinCondition) {
       console.warn(`[${formatLogTime()}] win_condition skipped for ${channel}: active beatmap=${activeWinCondition.beatmapId}, current beatmap=${state.currentBeatmap?.id ?? "unknown"}`);
     }

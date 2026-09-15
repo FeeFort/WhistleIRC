@@ -82,13 +82,20 @@ function playerMods(player) {
       <span class="player-list__heading"><Users :size="18" /> Players</span>
       <span class="player-list__header-actions">
         <span class="player-list__count">{{ realPlayerCount }}</span>
-        <button type="button" class="player-list__settings" v-tooltip.top="'Manage players'" :disabled="disabled" aria-label="Manage players" @click="emit('open-players')"><Settings :size="14" /></button>
+        <button type="button" class="player-list__settings" v-tooltip.top="'Manage players'" :disabled="disabled" aria-label="Manage players" @click="emit('open-players')">
+          <Settings :size="14" />
+        </button>
       </span>
     </div>
 
     <ul class="player-list__items" :class="{ 'player-list__items--scrollable': visiblePlayers.length > 5 }">
       <li v-for="player in visiblePlayers" :key="player.name" class="player-row">
-        <span v-if="player.isSlot" v-tooltip.top="player.isLocked ? 'Locked slot' : 'Open slot'" class="player-row__avatar player-row__avatar--slot" :class="{ 'player-row__avatar--locked': player.isLocked }">
+        <span
+          v-if="player.isSlot"
+          v-tooltip.top="player.isLocked ? 'Locked slot' : 'Open slot'"
+          class="player-row__avatar player-row__avatar--slot"
+          :class="{ 'player-row__avatar--locked': player.isLocked }"
+        >
           <Lock v-if="player.isLocked" :size="13" />
           <LockOpen v-else :size="13" />
         </span>
@@ -104,11 +111,13 @@ function playerMods(player) {
           </span>
           <svg v-if="player.isHost" class="player-row__host" width="13" height="13" viewBox="0 0 24 24" fill="currentColor" role="img" aria-label="Host">
             <path stroke="none" d="M0 0h24v24H0z" fill="none" />
-            <path d="M19 19h-14c-.5 0 -.9 -.3 -1 -.8l-2 -10c0 -.4 .1 -.8 .5 -1.1c.4 -.2 .8 -.2 1.1 0l4.1 3.3l3.4 -5.1c.4 -.6 1.3 -.6 1.7 0l3.4 5.1l4.1 -3.3c.3 -.3 .8 -.3 1.1 0c.4 .2 .5 .6 .5 1.1l-2 10c0 .5 -.5 .8 -1 .8z" />
+            <path
+              d="M19 19h-14c-.5 0 -.9 -.3 -1 -.8l-2 -10c0 -.4 .1 -.8 .5 -1.1c.4 -.2 .8 -.2 1.1 0l4.1 3.3l3.4 -5.1c.4 -.6 1.3 -.6 1.7 0l3.4 5.1l4.1 -3.3c.3 -.3 .8 -.3 1.1 0c.4 .2 .5 .6 .5 1.1l-2 10c0 .5 -.5 .8 -1 .8z"
+            />
           </svg>
         </span>
         <span v-if="player.isSlot" class="player-row__slot-state" :class="{ 'player-row__slot-state--locked': player.isLocked }">
-          {{ player.isLocked ? 'Locked' : 'Open' }}
+          {{ player.isLocked ? "Locked" : "Open" }}
         </span>
 
         <span v-if="playerMods(player).length" class="player-row__mods">
@@ -185,7 +194,9 @@ function playerMods(player) {
   background: transparent;
   color: var(--app-muted);
   cursor: pointer;
-  transition: color 140ms ease, background 140ms ease;
+  transition:
+    color 140ms ease,
+    background 140ms ease;
 }
 
 .player-list__settings:hover {

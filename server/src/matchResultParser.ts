@@ -46,7 +46,10 @@ export interface MapResult {
   teamBlue: TeamMapResult;
 }
 
-interface RawMatchUser { id: number; username: string }
+interface RawMatchUser {
+  id: number;
+  username: string;
+}
 interface RawMatchScore {
   user_id: number;
   score: number;
@@ -67,8 +70,14 @@ interface RawMatchGame {
   end_time: string | null;
   scores: RawMatchScore[];
 }
-interface RawMatchEvent { game?: RawMatchGame }
-export interface RawMatchResponse { match: { id: number }; events: RawMatchEvent[]; users: RawMatchUser[] }
+interface RawMatchEvent {
+  game?: RawMatchGame;
+}
+export interface RawMatchResponse {
+  match: { id: number };
+  events: RawMatchEvent[];
+  users: RawMatchUser[];
+}
 
 function buildTeam(scores: RawMatchScore[], team: Team, usernameById: Map<number, string>): TeamMapResult {
   const players: PlayerMapResult[] = scores
@@ -99,7 +108,9 @@ function buildTeam(scores: RawMatchScore[], team: Team, usernameById: Map<number
     combo: players.map((player) => player.combo),
     players,
   } as TeamMapResult;
-  players.forEach((player, index) => { (result as Record<string, PlayerMapResult>)[`player${index + 1}`] = player; });
+  players.forEach((player, index) => {
+    (result as Record<string, PlayerMapResult>)[`player${index + 1}`] = player;
+  });
   return result;
 }
 
@@ -107,9 +118,7 @@ function buildTeam(scores: RawMatchScore[], team: Team, usernameById: Map<number
 // event with an empty scores array (see: end_time null, scores: []) and is skipped here —
 // only events that actually produced scores count as "the last map".
 export function parseLastMapResult(response: RawMatchResponse): MapResult | null {
-  const games = (response.events ?? [])
-    .map((event) => event.game)
-    .filter((game): game is RawMatchGame => Boolean(game) && Array.isArray(game!.scores) && game!.scores.length > 0);
+  const games = (response.events ?? []).map((event) => event.game).filter((game): game is RawMatchGame => Boolean(game) && Array.isArray(game!.scores) && game!.scores.length > 0);
   const game = games[games.length - 1];
   if (!game) return null;
 

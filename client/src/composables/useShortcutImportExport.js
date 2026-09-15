@@ -3,7 +3,9 @@ import serverPackage from "../../../server/package.json";
 const SCHEMA_VERSION = 1;
 
 export function normalizeShortcutName(name) {
-  return String(name ?? "").trim().toLowerCase();
+  return String(name ?? "")
+    .trim()
+    .toLowerCase();
 }
 
 function normalizeShortcut(shortcut) {
@@ -53,12 +55,14 @@ export async function parseShortcutsFile(file) {
     });
     if (errors.length) return { valid: false, errors };
     const names = new Set();
-    if (shortcuts.some((shortcut) => {
-      const normalizedName = normalizeShortcutName(shortcut.label);
-      if (names.has(normalizedName)) return true;
-      names.add(normalizedName);
-      return false;
-    })) {
+    if (
+      shortcuts.some((shortcut) => {
+        const normalizedName = normalizeShortcutName(shortcut.label);
+        if (names.has(normalizedName)) return true;
+        names.add(normalizedName);
+        return false;
+      })
+    ) {
       return { valid: false, errors: ["Duplicate names found in import file"] };
     }
     return { valid: true, shortcuts };
@@ -70,8 +74,6 @@ export async function parseShortcutsFile(file) {
 export function detectConflicts(importedShortcuts, existingShortcuts) {
   return importedShortcuts.map((imported) => ({
     imported,
-    conflictsWith: existingShortcuts.find(
-      (existing) => normalizeShortcutName(existing.label ?? existing.name) === normalizeShortcutName(imported.label),
-    ) || null,
+    conflictsWith: existingShortcuts.find((existing) => normalizeShortcutName(existing.label ?? existing.name) === normalizeShortcutName(imported.label)) || null,
   }));
 }

@@ -187,7 +187,9 @@ onBeforeUnmount(() => {
         </Teleport>
       </div>
       <div class="mappool-card__toolbar-actions">
-        <Button text rounded class="mappool-card__settings" v-tooltip.top="'Open mappools'" aria-label="Open mappools" :disabled="disabled" @click="mappoolsVisible = true"><Settings :size="16" /></Button>
+        <Button text rounded class="mappool-card__settings" v-tooltip.top="'Open mappools'" aria-label="Open mappools" :disabled="disabled" @click="mappoolsVisible = true"
+          ><Settings :size="16"
+        /></Button>
       </div>
     </div>
     <MappoolsModal v-model:visible="mappoolsVisible" />

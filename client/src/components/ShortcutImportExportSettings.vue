@@ -99,7 +99,12 @@ function handleImport({ items, skipped }) {
 </template>
 
 <style scoped>
-.shortcut-import-export-settings { display: flex; flex-direction: column; gap: 0; width: 100%; }
+.shortcut-import-export-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  width: 100%;
+}
 .shortcut-import-export-settings .settings-page__setting {
   display: flex;
   align-items: center;
@@ -110,11 +115,31 @@ function handleImport({ items, skipped }) {
   padding: 0.9rem 0;
   border-bottom: 1px solid var(--app-border);
 }
-.shortcut-import-export-settings .settings-page__setting-info { min-width: 0; }
-.shortcut-import-export-settings .settings-page__setting-info h3 { margin: 0; color: var(--app-text); font-size: 0.85rem !important; font-weight: 800; }
-.shortcut-import-export-settings .settings-page__setting-info p { max-width: 34rem; margin: 0.35rem 0 0; color: var(--app-muted) !important; font-size: 0.76rem !important; line-height: 1.5; }
-.shortcut-import-export-settings .settings-page__setting-control { display: flex; align-items: center; justify-content: flex-end; flex-shrink: 0; }
-.shortcut-import-export-settings .settings-page__setting:last-child { border-bottom: 0; }
+.shortcut-import-export-settings .settings-page__setting-info {
+  min-width: 0;
+}
+.shortcut-import-export-settings .settings-page__setting-info h3 {
+  margin: 0;
+  color: var(--app-text);
+  font-size: 0.85rem !important;
+  font-weight: 800;
+}
+.shortcut-import-export-settings .settings-page__setting-info p {
+  max-width: 34rem;
+  margin: 0.35rem 0 0;
+  color: var(--app-muted) !important;
+  font-size: 0.76rem !important;
+  line-height: 1.5;
+}
+.shortcut-import-export-settings .settings-page__setting-control {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-shrink: 0;
+}
+.shortcut-import-export-settings .settings-page__setting:last-child {
+  border-bottom: 0;
+}
 .shortcut-import-export-settings :deep(.p-button) {
   gap: 0.35rem;
   padding: 0.45rem 0.55rem;
@@ -127,7 +152,13 @@ function handleImport({ items, skipped }) {
   background: rgba(var(--app-primary-rgb), 0.12) !important;
 }
 @media (max-width: 700px) {
-  .shortcut-import-export-settings .settings-page__setting { align-items: flex-start; flex-direction: column; gap: 0.75rem; }
-  .shortcut-import-export-settings .settings-page__setting-control { justify-content: flex-start; }
+  .shortcut-import-export-settings .settings-page__setting {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+  .shortcut-import-export-settings .settings-page__setting-control {
+    justify-content: flex-start;
+  }
 }
 </style>

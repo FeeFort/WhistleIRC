@@ -63,8 +63,8 @@ const createLobbyDialogOpen = ref(false);
 const addChannelDialogOpen = ref(false);
 const playersDialogOpen = ref(false);
 const lobbySetupDialogOpen = ref(false);
-const lobbySetupGameMode = computed(() => ({ HeadToHead: 0, "Tag co-op": 1, "Team VS": 2, "Tag-team VS": 3 }[activeLobbyState.value?.teamMode] ?? 2));
-const lobbySetupWinCondition = computed(() => ({ Score: 0, Accuracy: 1, Combo: 2, "Score V2": 3 }[activeLobbyState.value?.scoreMode] ?? 3));
+const lobbySetupGameMode = computed(() => ({ HeadToHead: 0, "Tag co-op": 1, "Team VS": 2, "Tag-team VS": 3 })[activeLobbyState.value?.teamMode] ?? 2);
+const lobbySetupWinCondition = computed(() => ({ Score: 0, Accuracy: 1, Combo: 2, "Score V2": 3 })[activeLobbyState.value?.scoreMode] ?? 3);
 const lobbySetupOpenSlots = computed(() => Math.max(0, Math.min(16, Number(activeLobbyState.value?.size ?? 16))));
 const activeChat = ref("bancho");
 const unreadChats = reactive({ bancho: false });
@@ -1452,10 +1452,11 @@ function downloadChatHistory() {
   const lines = messages.map((message) => `[${formatTimestamp(message.time)}] ${message.author || (message.type === "system" ? "System" : "Unknown")}: ${String(message.text || "")}`);
   const blob = new Blob([`${lines.join("\n")}\n`], { type: "text/plain;charset=utf-8" });
   const link = document.createElement("a");
-  const filename = String(activeChatTitle.value || chatId || "chat-history")
-    .trim()
-    .replace(/[^a-z0-9._-]+/gi, "_")
-    .replace(/^_+|_+$/g, "") || "chat-history";
+  const filename =
+    String(activeChatTitle.value || chatId || "chat-history")
+      .trim()
+      .replace(/[^a-z0-9._-]+/gi, "_")
+      .replace(/^_+|_+$/g, "") || "chat-history";
   link.href = URL.createObjectURL(blob);
   link.download = `${filename}-chat-history.txt`;
   link.click();
@@ -1779,7 +1780,7 @@ function moveLobbyPlayer({ username, slot }) {
     const current = players.find((item) => normalizeIrcNick(item.username) === normalizeIrcNick(username));
     if (current) current.slot = targetSlot;
   });
-  handleCommand('!mp move ' + username + ' ' + targetSlot);
+  handleCommand("!mp move " + username + " " + targetSlot);
 }
 
 function toggleLobbyPlayerTeam({ username, team }) {
@@ -1790,12 +1791,12 @@ function toggleLobbyPlayerTeam({ username, team }) {
     const current = players.find((item) => normalizeIrcNick(item.username) === normalizeIrcNick(username));
     if (current) current.team = team;
   });
-  handleCommand('!mp team ' + username + ' ' + team);
+  handleCommand("!mp team " + username + " " + team);
 }
 
 function kickLobbyPlayer({ username }) {
   if (!activeLobbyState.value || roomClosedByChat[activeChat.value]) return;
-  handleCommand('!mp kick ' + username);
+  handleCommand("!mp kick " + username);
 }
 
 function setLobbyHost({ username }) {
@@ -1803,10 +1804,12 @@ function setLobbyHost({ username }) {
   const player = activeLobbyState.value.players.find((item) => normalizeIrcNick(item.username) === normalizeIrcNick(username));
   if (!player) return;
   updateActiveLobbyPlayers((players, lobby) => {
-    players.forEach((item) => { item.isHost = normalizeIrcNick(item.username) === normalizeIrcNick(username); });
+    players.forEach((item) => {
+      item.isHost = normalizeIrcNick(item.username) === normalizeIrcNick(username);
+    });
     lobby.host = username;
   });
-  handleCommand('!mp host ' + username);
+  handleCommand("!mp host " + username);
 }
 
 function sendLobbySetup(command) {
@@ -2022,478 +2025,480 @@ function handleSendResult(result) {
   >
     <SettingsModal v-model:visible="settingsOpen">
       <template #app>
-      <section class="settings-page__section">
-        <div class="settings-page__section-heading">
-          <h2>App settings</h2>
-        </div>
-
-        <div class="settings-page__setting">
-          <div class="settings-page__setting-info">
-            <h3>Primary color</h3>
-            <p>Controls the main accent color used for active states, buttons, highlights, and other interactive elements across the app.</p>
+        <section class="settings-page__section">
+          <div class="settings-page__section-heading">
+            <h2>App settings</h2>
           </div>
 
-          <div class="settings-page__color-control">
-            <ColorPicker v-model="primaryColorPicker" inputId="primary-color" />
-            <InputText v-model="primaryColorDraft" aria-label="Primary color hex value" spellcheck="false" @blur="commitPrimaryColor" @keydown.enter="commitPrimaryColor" />
-            <Button v-if="primaryColorChanged" text size="small" aria-label="Reset primary color" @click="resetPrimaryColor">
-              <RotateCcw :size="14" />
-              <span>Reset</span>
-            </Button>
-          </div>
-        </div>
-      </section>
+          <div class="settings-page__setting">
+            <div class="settings-page__setting-info">
+              <h3>Primary color</h3>
+              <p>Controls the main accent color used for active states, buttons, highlights, and other interactive elements across the app.</p>
+            </div>
 
+            <div class="settings-page__color-control">
+              <ColorPicker v-model="primaryColorPicker" inputId="primary-color" />
+              <InputText v-model="primaryColorDraft" aria-label="Primary color hex value" spellcheck="false" @blur="commitPrimaryColor" @keydown.enter="commitPrimaryColor" />
+              <Button v-if="primaryColorChanged" text size="small" aria-label="Reset primary color" @click="resetPrimaryColor">
+                <RotateCcw :size="14" />
+                <span>Reset</span>
+              </Button>
+            </div>
+          </div>
+        </section>
       </template>
 
       <template #notifications>
+        <section class="settings-page__section settings-page__section--notifications">
+          <div class="settings-page__section-heading">
+            <h2>Notifications</h2>
+          </div>
 
-      <section class="settings-page__section settings-page__section--notifications">
-        <div class="settings-page__section-heading">
-          <h2>Notifications</h2>
-        </div>
+          <div class="settings-page__setting">
+            <div class="settings-page__setting-info">
+              <h3>Sound notifications</h3>
+              <p>Play a sound when a message arrives in a chat that is not currently open or when the app is out of focus.</p>
+            </div>
+            <div class="settings-page__setting-control">
+              <ToggleSwitch v-model="soundEnabled" inputId="notification-sound-enabled" class="app-solid-switch" />
+            </div>
+          </div>
 
-        <div class="settings-page__setting">
-          <div class="settings-page__setting-info">
-            <h3>Sound notifications</h3>
-            <p>Play a sound when a message arrives in a chat that is not currently open or when the app is out of focus.</p>
+          <div class="settings-page__setting">
+            <div class="settings-page__setting-info">
+              <h3>Toast notifications</h3>
+              <p>Show a toast when a message arrives in a chat that is not currently open or when the app is out of focus.</p>
+            </div>
+            <div class="settings-page__setting-control">
+              <ToggleSwitch v-model="toastEnabled" inputId="notification-toast-enabled" class="app-solid-switch" />
+            </div>
           </div>
-          <div class="settings-page__setting-control">
-            <ToggleSwitch v-model="soundEnabled" inputId="notification-sound-enabled" class="app-solid-switch" />
-          </div>
-        </div>
 
-        <div class="settings-page__setting">
-          <div class="settings-page__setting-info">
-            <h3>Toast notifications</h3>
-            <p>Show a toast when a message arrives in a chat that is not currently open or when the app is out of focus.</p>
+          <div class="settings-page__setting">
+            <div class="settings-page__setting-info">
+              <h3>Ignore BanchoBot</h3>
+              <p>Do not play sounds or show toasts for messages from BanchoBot.</p>
+            </div>
+            <div class="settings-page__setting-control">
+              <ToggleSwitch v-model="ignoreBanchoBot" :disabled="!soundEnabled && !toastEnabled" inputId="notification-ignore-bancho-bot" class="app-solid-switch" />
+            </div>
           </div>
-          <div class="settings-page__setting-control">
-            <ToggleSwitch v-model="toastEnabled" inputId="notification-toast-enabled" class="app-solid-switch" />
-          </div>
-        </div>
 
-        <div class="settings-page__setting">
-          <div class="settings-page__setting-info">
-            <h3>Ignore BanchoBot</h3>
-            <p>Do not play sounds or show toasts for messages from BanchoBot.</p>
-          </div>
-          <div class="settings-page__setting-control">
-            <ToggleSwitch v-model="ignoreBanchoBot" :disabled="!soundEnabled && !toastEnabled" inputId="notification-ignore-bancho-bot" class="app-solid-switch" />
-          </div>
-        </div>
-
-        <div class="settings-page__setting">
-          <div class="settings-page__setting-info">
-            <h3>Notification sound</h3>
-            <p>Choose a sound and preview it before using it for notifications.</p>
-          </div>
-          <div class="settings-page__setting-control settings-page__setting-control--wrap">
-            <div ref="notificationSoundMenu" class="settings-page__sound-dropdown" :class="{ 'settings-page__sound-dropdown--disabled': !soundEnabled }">
-              <button
-                type="button"
-                class="settings-page__sound-dropdown-trigger"
-                :disabled="!soundEnabled"
-                :aria-expanded="notificationSoundMenuOpen"
-                aria-haspopup="listbox"
-                aria-label="Notification sound"
-                @click.stop="toggleNotificationSoundMenu"
-              >
-                <span>{{ selectedNotificationSound?.label }}</span>
-                <ChevronDown :size="14" />
-              </button>
-              <div v-if="notificationSoundMenuOpen && soundEnabled" class="settings-page__sound-dropdown-menu" role="listbox" aria-label="Notification sounds">
-                <div
-                  v-for="item in notificationSounds"
-                  :key="item.value"
+          <div class="settings-page__setting">
+            <div class="settings-page__setting-info">
+              <h3>Notification sound</h3>
+              <p>Choose a sound and preview it before using it for notifications.</p>
+            </div>
+            <div class="settings-page__setting-control settings-page__setting-control--wrap">
+              <div ref="notificationSoundMenu" class="settings-page__sound-dropdown" :class="{ 'settings-page__sound-dropdown--disabled': !soundEnabled }">
+                <button
                   type="button"
-                  class="settings-page__sound-dropdown-option"
-                  :class="{ 'settings-page__sound-dropdown-option--selected': item.value === sound }"
-                  role="option"
-                  :aria-selected="item.value === sound"
+                  class="settings-page__sound-dropdown-trigger"
+                  :disabled="!soundEnabled"
+                  :aria-expanded="notificationSoundMenuOpen"
+                  aria-haspopup="listbox"
+                  aria-label="Notification sound"
+                  @click.stop="toggleNotificationSoundMenu"
                 >
-                  <button type="button" class="settings-page__sound-dropdown-select" @click="selectNotificationSound(item.value)">{{ item.label }}</button>
-                  <button
+                  <span>{{ selectedNotificationSound?.label }}</span>
+                  <ChevronDown :size="14" />
+                </button>
+                <div v-if="notificationSoundMenuOpen && soundEnabled" class="settings-page__sound-dropdown-menu" role="listbox" aria-label="Notification sounds">
+                  <div
+                    v-for="item in notificationSounds"
+                    :key="item.value"
                     type="button"
-                    class="settings-page__sound-dropdown-preview"
-                    :disabled="!soundEnabled"
-                    :aria-label="`Preview ${item.label}`"
-                    v-tooltip.top="`Preview ${item.label}`"
-                    @click.stop="previewNotificationSound(item.value)"
+                    class="settings-page__sound-dropdown-option"
+                    :class="{ 'settings-page__sound-dropdown-option--selected': item.value === sound }"
+                    role="option"
+                    :aria-selected="item.value === sound"
                   >
-                    <Play :size="13" />
-                  </button>
+                    <button type="button" class="settings-page__sound-dropdown-select" @click="selectNotificationSound(item.value)">{{ item.label }}</button>
+                    <button
+                      type="button"
+                      class="settings-page__sound-dropdown-preview"
+                      :disabled="!soundEnabled"
+                      :aria-label="`Preview ${item.label}`"
+                      v-tooltip.top="`Preview ${item.label}`"
+                      @click.stop="previewNotificationSound(item.value)"
+                    >
+                      <Play :size="13" />
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
           </div>
-        </div>
 
-        <div class="settings-page__setting">
-          <div class="settings-page__setting-info">
-            <h3>Sound notification scenario</h3>
-            <p>Choose whether sound plays for every message or only messages containing a highlight word.</p>
+          <div class="settings-page__setting">
+            <div class="settings-page__setting-info">
+              <h3>Sound notification scenario</h3>
+              <p>Choose whether sound plays for every message or only messages containing a highlight word.</p>
+            </div>
+            <div class="settings-page__setting-control">
+              <SelectButton
+                v-model="soundTrigger"
+                :options="notificationTriggers"
+                optionLabel="label"
+                optionValue="value"
+                :allowEmpty="false"
+                :disabled="!soundEnabled"
+                aria-label="Sound notification scenario"
+              />
+            </div>
           </div>
-          <div class="settings-page__setting-control">
-            <SelectButton
-              v-model="soundTrigger"
-              :options="notificationTriggers"
-              optionLabel="label"
-              optionValue="value"
-              :allowEmpty="false"
-              :disabled="!soundEnabled"
-              aria-label="Sound notification scenario"
-            />
-          </div>
-        </div>
 
-        <div class="settings-page__setting">
-          <div class="settings-page__setting-info">
-            <h3>Toast notification scenario</h3>
-            <p>Choose whether toast appears for every message or only messages containing a highlight word.</p>
+          <div class="settings-page__setting">
+            <div class="settings-page__setting-info">
+              <h3>Toast notification scenario</h3>
+              <p>Choose whether toast appears for every message or only messages containing a highlight word.</p>
+            </div>
+            <div class="settings-page__setting-control">
+              <SelectButton
+                v-model="toastTrigger"
+                :options="notificationTriggers"
+                optionLabel="label"
+                optionValue="value"
+                :allowEmpty="false"
+                :disabled="!toastEnabled"
+                aria-label="Toast notification scenario"
+              />
+            </div>
           </div>
-          <div class="settings-page__setting-control">
-            <SelectButton
-              v-model="toastTrigger"
-              :options="notificationTriggers"
-              optionLabel="label"
-              optionValue="value"
-              :allowEmpty="false"
-              :disabled="!toastEnabled"
-              aria-label="Toast notification scenario"
-            />
-          </div>
-        </div>
-      </section>
-
+        </section>
       </template>
 
       <template #now-playing>
-
-      <section class="settings-page__section">
-        <div class="settings-page__section-heading">
-          <h2>Now Playing</h2>
-        </div>
-        <div class="settings-page__setting">
-          <div class="settings-page__setting-info">
-            <h3>Show now playing</h3>
-            <p>Show the currently selected beatmap above the chat log.</p>
+        <section class="settings-page__section">
+          <div class="settings-page__section-heading">
+            <h2>Now Playing</h2>
           </div>
-          <div class="settings-page__setting-control">
-            <ToggleSwitch v-model="showNowPlaying" inputId="show-now-playing" class="app-solid-switch" />
+          <div class="settings-page__setting">
+            <div class="settings-page__setting-info">
+              <h3>Show now playing</h3>
+              <p>Show the currently selected beatmap above the chat log.</p>
+            </div>
+            <div class="settings-page__setting-control">
+              <ToggleSwitch v-model="showNowPlaying" inputId="show-now-playing" class="app-solid-switch" />
+            </div>
           </div>
-        </div>
-        <div class="settings-page__setting">
-          <div class="settings-page__setting-info">
-            <h3>Show progress bar</h3>
-            <p>Show elapsed time and progress for the currently playing map.</p>
+          <div class="settings-page__setting">
+            <div class="settings-page__setting-info">
+              <h3>Show progress bar</h3>
+              <p>Show elapsed time and progress for the currently playing map.</p>
+            </div>
+            <div class="settings-page__setting-control">
+              <ToggleSwitch v-model="showProgressBar" inputId="show-progress-bar" class="app-solid-switch" />
+            </div>
           </div>
-          <div class="settings-page__setting-control">
-            <ToggleSwitch v-model="showProgressBar" inputId="show-progress-bar" class="app-solid-switch" />
+          <div class="settings-page__setting">
+            <div class="settings-page__setting-info">
+              <h3>Show progress time</h3>
+              <p>Show the elapsed time label above the progress bar.</p>
+            </div>
+            <div class="settings-page__setting-control">
+              <ToggleSwitch v-model="showProgressTimeLabel" inputId="show-progress-time-label" class="app-solid-switch" />
+            </div>
           </div>
-        </div>
-        <div class="settings-page__setting">
-          <div class="settings-page__setting-info">
-            <h3>Show progress time</h3>
-            <p>Show the elapsed time label above the progress bar.</p>
-          </div>
-          <div class="settings-page__setting-control">
-            <ToggleSwitch v-model="showProgressTimeLabel" inputId="show-progress-time-label" class="app-solid-switch" />
-          </div>
-        </div>
-      </section>
-
+        </section>
       </template>
 
       <template #lobby>
-
-      <section class="settings-page__section settings-page__section--lobby">
-        <div class="settings-page__section-heading">
-          <h2>Lobby settings</h2>
-        </div>
-
-        <div class="settings-page__setting">
-          <div class="settings-page__setting-info">
-            <h3>Result messages</h3>
-            <p>Choose and customize the messages sent by the Send Result button.</p>
+        <section class="settings-page__section settings-page__section--lobby">
+          <div class="settings-page__section-heading">
+            <h2>Lobby settings</h2>
           </div>
-          <div class="settings-page__setting-control">
-            <Button text size="small" @click="lobbyMessagesSettingsOpen = true">
-              <Settings2 :size="14" />
-              <span>Set up messages</span>
-            </Button>
-          </div>
-        </div>
-        <div class="settings-page__setting">
-          <div class="settings-page__setting-info">
-            <h3>Slot display</h3>
-            <p>Show only occupied players or display all 16 lobby slots with their open/locked state.</p>
-          </div>
-          <div class="settings-page__setting-control">
-            <SelectButton v-model="fullSlots" :options="[{ label: 'Short slots', value: false }, { label: 'Full slots', value: true }]" optionLabel="label" optionValue="value" :allowEmpty="false" aria-label="Slot display mode" />
-          </div>
-        </div>
-      </section>
 
-      <LobbyMessagesSettings v-model:visible="lobbyMessagesSettingsOpen" />
+          <div class="settings-page__setting">
+            <div class="settings-page__setting-info">
+              <h3>Result messages</h3>
+              <p>Choose and customize the messages sent by the Send Result button.</p>
+            </div>
+            <div class="settings-page__setting-control">
+              <Button text size="small" @click="lobbyMessagesSettingsOpen = true">
+                <Settings2 :size="14" />
+                <span>Set up messages</span>
+              </Button>
+            </div>
+          </div>
+          <div class="settings-page__setting">
+            <div class="settings-page__setting-info">
+              <h3>Slot display</h3>
+              <p>Show only occupied players or display all 16 lobby slots with their open/locked state.</p>
+            </div>
+            <div class="settings-page__setting-control">
+              <SelectButton
+                v-model="fullSlots"
+                :options="[
+                  { label: 'Short slots', value: false },
+                  { label: 'Full slots', value: true },
+                ]"
+                optionLabel="label"
+                optionValue="value"
+                :allowEmpty="false"
+                aria-label="Slot display mode"
+              />
+            </div>
+          </div>
+        </section>
 
+        <LobbyMessagesSettings v-model:visible="lobbyMessagesSettingsOpen" />
       </template>
 
       <template #shortcuts>
-      <section class="settings-page__section">
-        <div class="settings-page__section-heading">
-          <h2>Shortcuts</h2>
-        </div>
-        <ShortcutImportExportSettings />
-      </section>
+        <section class="settings-page__section">
+          <div class="settings-page__section-heading">
+            <h2>Shortcuts</h2>
+          </div>
+          <ShortcutImportExportSettings />
+        </section>
       </template>
 
       <template #chat>
-
-      <section class="settings-page__section settings-page__section--chat">
-        <div class="settings-page__section-heading">
-          <h2>Chat settings</h2>
-        </div>
-
-        <div class="settings-page__chat-preview" aria-label="Chat preview">
-          <div v-for="(message, index) in chatPreviewMessages" :key="message.id" class="settings-page__chat-line">
-            <span class="settings-page__chat-time">
-              {{ previewTime(message.time, index) }}
-            </span>
-            <span
-              class="settings-page__chat-nick"
-              :class="{
-                'settings-page__chat-nick--badge': (message.role === 'referee' && highlightReferee) || (message.author === 'BanchoBot' && highlightBanchoBot),
-              }"
-              :style="previewNickStyle(message)"
-              >{{ message.author }}</span
-            >
-            <span class="settings-page__chat-text" :class="{ 'settings-page__chat-text--highlighted': previewMessageHighlighted(message) }" :style="previewMessageStyle(message)">
-              {{ message.text }}
-            </span>
+        <section class="settings-page__section settings-page__section--chat">
+          <div class="settings-page__section-heading">
+            <h2>Chat settings</h2>
           </div>
-        </div>
 
-        <div class="settings-page__settings-list">
-          <div class="settings-page__setting">
-            <div class="settings-page__setting-info">
-              <h3>Highlight referee</h3>
-              <p>Show the referee name as a filled accent badge in chat.</p>
-            </div>
-            <div class="settings-page__setting-control">
-              <ToggleSwitch v-model="highlightReferee" inputId="highlight-referee" class="app-solid-switch" />
+          <div class="settings-page__chat-preview" aria-label="Chat preview">
+            <div v-for="(message, index) in chatPreviewMessages" :key="message.id" class="settings-page__chat-line">
+              <span class="settings-page__chat-time">
+                {{ previewTime(message.time, index) }}
+              </span>
+              <span
+                class="settings-page__chat-nick"
+                :class="{
+                  'settings-page__chat-nick--badge': (message.role === 'referee' && highlightReferee) || (message.author === 'BanchoBot' && highlightBanchoBot),
+                }"
+                :style="previewNickStyle(message)"
+                >{{ message.author }}</span
+              >
+              <span class="settings-page__chat-text" :class="{ 'settings-page__chat-text--highlighted': previewMessageHighlighted(message) }" :style="previewMessageStyle(message)">
+                {{ message.text }}
+              </span>
             </div>
           </div>
 
-          <div class="settings-page__setting">
-            <div class="settings-page__setting-info">
-              <h3>Highlight BanchoBot</h3>
-              <p>Show BanchoBot as a filled color badge in chat.</p>
+          <div class="settings-page__settings-list">
+            <div class="settings-page__setting">
+              <div class="settings-page__setting-info">
+                <h3>Highlight referee</h3>
+                <p>Show the referee name as a filled accent badge in chat.</p>
+              </div>
+              <div class="settings-page__setting-control">
+                <ToggleSwitch v-model="highlightReferee" inputId="highlight-referee" class="app-solid-switch" />
+              </div>
             </div>
-            <div class="settings-page__setting-control">
-              <ToggleSwitch v-model="highlightBanchoBot" inputId="highlight-bancho-bot" class="app-solid-switch" />
-            </div>
-          </div>
 
-          <div class="settings-page__setting settings-page__setting--highlight">
-            <div class="settings-page__setting-info">
-              <h3>Highlight words</h3>
-              <p>Messages containing any of these words will use the selected text styles.</p>
+            <div class="settings-page__setting">
+              <div class="settings-page__setting-info">
+                <h3>Highlight BanchoBot</h3>
+                <p>Show BanchoBot as a filled color badge in chat.</p>
+              </div>
+              <div class="settings-page__setting-control">
+                <ToggleSwitch v-model="highlightBanchoBot" inputId="highlight-bancho-bot" class="app-solid-switch" />
+              </div>
             </div>
-            <div class="settings-page__setting-control settings-page__setting-control--highlight">
-              <div class="settings-page__highlight-tags" @click="focusHighlightWordsInput" @wheel="handleHighlightWordsWheel">
-                <div class="settings-page__highlight-chiplist" aria-label="Highlight words">
-                  <button
-                    v-for="word in highlightWordsDraft"
-                    :key="word"
-                    type="button"
-                    class="settings-page__highlight-chip"
-                    :aria-label="`Remove highlight word ${word}`"
-                    @mousedown.prevent
-                    @click.stop="removeHighlightWord(word)"
-                  >
-                    <span class="settings-page__highlight-chip-label">{{ word }}</span>
-                    <CircleX :size="12" />
-                  </button>
-                  <input
-                    ref="highlightWordsInputRef"
-                    v-model="highlightWordsInputDraft"
-                    class="settings-page__highlight-input"
-                    aria-label="Highlight words"
-                    placeholder="Type a word"
-                    spellcheck="false"
-                    @blur="commitHighlightWordsInput"
-                    @keydown="handleHighlightWordsKeydown"
-                    @paste="handleHighlightWordsPaste"
-                  />
+
+            <div class="settings-page__setting settings-page__setting--highlight">
+              <div class="settings-page__setting-info">
+                <h3>Highlight words</h3>
+                <p>Messages containing any of these words will use the selected text styles.</p>
+              </div>
+              <div class="settings-page__setting-control settings-page__setting-control--highlight">
+                <div class="settings-page__highlight-tags" @click="focusHighlightWordsInput" @wheel="handleHighlightWordsWheel">
+                  <div class="settings-page__highlight-chiplist" aria-label="Highlight words">
+                    <button
+                      v-for="word in highlightWordsDraft"
+                      :key="word"
+                      type="button"
+                      class="settings-page__highlight-chip"
+                      :aria-label="`Remove highlight word ${word}`"
+                      @mousedown.prevent
+                      @click.stop="removeHighlightWord(word)"
+                    >
+                      <span class="settings-page__highlight-chip-label">{{ word }}</span>
+                      <CircleX :size="12" />
+                    </button>
+                    <input
+                      ref="highlightWordsInputRef"
+                      v-model="highlightWordsInputDraft"
+                      class="settings-page__highlight-input"
+                      aria-label="Highlight words"
+                      placeholder="Type a word"
+                      spellcheck="false"
+                      @blur="commitHighlightWordsInput"
+                      @keydown="handleHighlightWordsKeydown"
+                      @paste="handleHighlightWordsPaste"
+                    />
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
 
-          <div class="settings-page__setting">
-            <div class="settings-page__setting-info">
-              <h3>Highlight styles</h3>
-              <p>Pick one or more text styles for highlighted messages.</p>
+            <div class="settings-page__setting">
+              <div class="settings-page__setting-info">
+                <h3>Highlight styles</h3>
+                <p>Pick one or more text styles for highlighted messages.</p>
+              </div>
+              <div class="settings-page__setting-control settings-page__setting-control--styles">
+                <Button text size="small" class="settings-page__styles-button" aria-label="Choose highlight styles" @click="toggleHighlightStyles">
+                  <Sparkles :size="14" />
+                  <span>{{ highlightStylesSummary }}</span>
+                  <ChevronDown :size="12" />
+                </Button>
+              </div>
             </div>
-            <div class="settings-page__setting-control settings-page__setting-control--styles">
-              <Button text size="small" class="settings-page__styles-button" aria-label="Choose highlight styles" @click="toggleHighlightStyles">
-                <Sparkles :size="14" />
-                <span>{{ highlightStylesSummary }}</span>
-                <ChevronDown :size="12" />
-              </Button>
-            </div>
-          </div>
 
-          <div class="settings-page__setting">
-            <div class="settings-page__setting-info">
-              <h3>Highlight message color</h3>
-              <p>Choose the text color used for messages containing a highlighted word.</p>
+            <div class="settings-page__setting">
+              <div class="settings-page__setting-info">
+                <h3>Highlight message color</h3>
+                <p>Choose the text color used for messages containing a highlighted word.</p>
+              </div>
+              <div class="settings-page__setting-control settings-page__setting-control--wrap">
+                <SelectButton v-model="highlightColorMode" :options="highlightColorModes" optionLabel="label" optionValue="value" :allowEmpty="false" aria-label="Highlight message color mode" />
+                <template v-if="highlightColorMode === 'custom'">
+                  <ColorPicker v-model="highlightColorPicker" />
+                  <InputText
+                    v-model="highlightColorDraft"
+                    aria-label="Highlight message color hex value"
+                    spellcheck="false"
+                    @blur="commitChatColor(highlightColor, highlightColorDraft)"
+                    @keydown.enter="commitChatColor(highlightColor, highlightColorDraft)"
+                  />
+                </template>
+                <Button v-if="chatSettingChanged.highlightColor" text size="small" aria-label="Reset highlight message color" @click="resetChatSetting('highlightColor')">
+                  <RotateCcw :size="14" />
+                  <span>Reset</span>
+                </Button>
+              </div>
             </div>
-            <div class="settings-page__setting-control settings-page__setting-control--wrap">
-              <SelectButton v-model="highlightColorMode" :options="highlightColorModes" optionLabel="label" optionValue="value" :allowEmpty="false" aria-label="Highlight message color mode" />
-              <template v-if="highlightColorMode === 'custom'">
-                <ColorPicker v-model="highlightColorPicker" />
+
+            <div class="settings-page__setting">
+              <div class="settings-page__setting-info">
+                <h3>BanchoBot color</h3>
+                <p>Color used for the BanchoBot name and highlight badge.</p>
+              </div>
+              <div class="settings-page__setting-control">
+                <ColorPicker v-model="banchoBotColorPicker" />
                 <InputText
-                  v-model="highlightColorDraft"
-                  aria-label="Highlight message color hex value"
+                  v-model="banchoBotColorDraft"
+                  aria-label="BanchoBot color hex value"
                   spellcheck="false"
-                  @blur="commitChatColor(highlightColor, highlightColorDraft)"
-                  @keydown.enter="commitChatColor(highlightColor, highlightColorDraft)"
+                  @blur="commitChatColor(banchoBotColor, banchoBotColorDraft)"
+                  @keydown.enter="commitChatColor(banchoBotColor, banchoBotColorDraft)"
                 />
-              </template>
-              <Button v-if="chatSettingChanged.highlightColor" text size="small" aria-label="Reset highlight message color" @click="resetChatSetting('highlightColor')">
-                <RotateCcw :size="14" />
-                <span>Reset</span>
-              </Button>
+                <Button v-if="chatSettingChanged.banchoBotColor" text size="small" aria-label="Reset BanchoBot color" @click="resetChatSetting('banchoBotColor')">
+                  <RotateCcw :size="14" />
+                  <span>Reset</span>
+                </Button>
+              </div>
             </div>
-          </div>
 
-          <div class="settings-page__setting">
-            <div class="settings-page__setting-info">
-              <h3>BanchoBot color</h3>
-              <p>Color used for the BanchoBot name and highlight badge.</p>
-            </div>
-            <div class="settings-page__setting-control">
-              <ColorPicker v-model="banchoBotColorPicker" />
-              <InputText
-                v-model="banchoBotColorDraft"
-                aria-label="BanchoBot color hex value"
-                spellcheck="false"
-                @blur="commitChatColor(banchoBotColor, banchoBotColorDraft)"
-                @keydown.enter="commitChatColor(banchoBotColor, banchoBotColorDraft)"
-              />
-              <Button v-if="chatSettingChanged.banchoBotColor" text size="small" aria-label="Reset BanchoBot color" @click="resetChatSetting('banchoBotColor')">
-                <RotateCcw :size="14" />
-                <span>Reset</span>
-              </Button>
-            </div>
-          </div>
-
-          <div class="settings-page__setting">
-            <div class="settings-page__setting-info">
-              <h3>Red team color</h3>
-              <p>Color used for player names assigned to the red team.</p>
-            </div>
-            <div class="settings-page__setting-control">
-              <ColorPicker v-model="redTeamColorPicker" />
-              <InputText
-                v-model="redTeamColorDraft"
-                aria-label="Red team color hex value"
-                spellcheck="false"
-                @blur="commitChatColor(redTeamColor, redTeamColorDraft)"
-                @keydown.enter="commitChatColor(redTeamColor, redTeamColorDraft)"
-              />
-              <Button v-if="chatSettingChanged.redTeamColor" text size="small" aria-label="Reset red team color" @click="resetChatSetting('redTeamColor')">
-                <RotateCcw :size="14" />
-                <span>Reset</span>
-              </Button>
-            </div>
-          </div>
-
-          <div class="settings-page__setting">
-            <div class="settings-page__setting-info">
-              <h3>Blue team color</h3>
-              <p>Color used for player names assigned to the blue team.</p>
-            </div>
-            <div class="settings-page__setting-control">
-              <ColorPicker v-model="blueTeamColorPicker" />
-              <InputText
-                v-model="blueTeamColorDraft"
-                aria-label="Blue team color hex value"
-                spellcheck="false"
-                @blur="commitChatColor(blueTeamColor, blueTeamColorDraft)"
-                @keydown.enter="commitChatColor(blueTeamColor, blueTeamColorDraft)"
-              />
-              <Button v-if="chatSettingChanged.blueTeamColor" text size="small" aria-label="Reset blue team color" @click="resetChatSetting('blueTeamColor')">
-                <RotateCcw :size="14" />
-                <span>Reset</span>
-              </Button>
-            </div>
-          </div>
-
-          <div class="settings-page__setting">
-            <div class="settings-page__setting-info">
-              <h3>Unassigned player color</h3>
-              <p>Use a stable random palette color or choose a custom one.</p>
-            </div>
-            <div class="settings-page__setting-control settings-page__setting-control--wrap">
-              <SelectButton v-model="unassignedColorMode" :options="unassignedColorModes" optionLabel="label" optionValue="value" :allowEmpty="false" aria-label="Unassigned player color mode" />
-              <template v-if="unassignedColorMode === 'custom'">
-                <ColorPicker v-model="unassignedColorPicker" />
+            <div class="settings-page__setting">
+              <div class="settings-page__setting-info">
+                <h3>Red team color</h3>
+                <p>Color used for player names assigned to the red team.</p>
+              </div>
+              <div class="settings-page__setting-control">
+                <ColorPicker v-model="redTeamColorPicker" />
                 <InputText
-                  v-model="unassignedColorDraft"
-                  aria-label="Unassigned player color hex value"
+                  v-model="redTeamColorDraft"
+                  aria-label="Red team color hex value"
                   spellcheck="false"
-                  @blur="commitChatColor(unassignedColor, unassignedColorDraft)"
-                  @keydown.enter="commitChatColor(unassignedColor, unassignedColorDraft)"
+                  @blur="commitChatColor(redTeamColor, redTeamColorDraft)"
+                  @keydown.enter="commitChatColor(redTeamColor, redTeamColorDraft)"
                 />
-              </template>
-              <Button
-                v-if="unassignedColorMode === 'custom' && chatSettingChanged.unassignedColor"
-                text
-                size="small"
-                aria-label="Reset unassigned player color"
-                @click="resetChatSetting('unassignedColor')"
-              >
-                <RotateCcw :size="14" />
-                <span>Reset</span>
-              </Button>
+                <Button v-if="chatSettingChanged.redTeamColor" text size="small" aria-label="Reset red team color" @click="resetChatSetting('redTeamColor')">
+                  <RotateCcw :size="14" />
+                  <span>Reset</span>
+                </Button>
+              </div>
+            </div>
+
+            <div class="settings-page__setting">
+              <div class="settings-page__setting-info">
+                <h3>Blue team color</h3>
+                <p>Color used for player names assigned to the blue team.</p>
+              </div>
+              <div class="settings-page__setting-control">
+                <ColorPicker v-model="blueTeamColorPicker" />
+                <InputText
+                  v-model="blueTeamColorDraft"
+                  aria-label="Blue team color hex value"
+                  spellcheck="false"
+                  @blur="commitChatColor(blueTeamColor, blueTeamColorDraft)"
+                  @keydown.enter="commitChatColor(blueTeamColor, blueTeamColorDraft)"
+                />
+                <Button v-if="chatSettingChanged.blueTeamColor" text size="small" aria-label="Reset blue team color" @click="resetChatSetting('blueTeamColor')">
+                  <RotateCcw :size="14" />
+                  <span>Reset</span>
+                </Button>
+              </div>
+            </div>
+
+            <div class="settings-page__setting">
+              <div class="settings-page__setting-info">
+                <h3>Unassigned player color</h3>
+                <p>Use a stable random palette color or choose a custom one.</p>
+              </div>
+              <div class="settings-page__setting-control settings-page__setting-control--wrap">
+                <SelectButton v-model="unassignedColorMode" :options="unassignedColorModes" optionLabel="label" optionValue="value" :allowEmpty="false" aria-label="Unassigned player color mode" />
+                <template v-if="unassignedColorMode === 'custom'">
+                  <ColorPicker v-model="unassignedColorPicker" />
+                  <InputText
+                    v-model="unassignedColorDraft"
+                    aria-label="Unassigned player color hex value"
+                    spellcheck="false"
+                    @blur="commitChatColor(unassignedColor, unassignedColorDraft)"
+                    @keydown.enter="commitChatColor(unassignedColor, unassignedColorDraft)"
+                  />
+                </template>
+                <Button
+                  v-if="unassignedColorMode === 'custom' && chatSettingChanged.unassignedColor"
+                  text
+                  size="small"
+                  aria-label="Reset unassigned player color"
+                  @click="resetChatSetting('unassignedColor')"
+                >
+                  <RotateCcw :size="14" />
+                  <span>Reset</span>
+                </Button>
+              </div>
+            </div>
+
+            <div class="settings-page__setting">
+              <div class="settings-page__setting-info">
+                <h3>Timestamp format</h3>
+                <p>Choose between minute-only and full timestamps in chat.</p>
+              </div>
+              <div class="settings-page__setting-control">
+                <SelectButton v-model="timestampMode" :options="timestampModes" optionLabel="label" optionValue="value" :allowEmpty="false" aria-label="Timestamp format" />
+              </div>
             </div>
           </div>
+        </section>
 
-          <div class="settings-page__setting">
-            <div class="settings-page__setting-info">
-              <h3>Timestamp format</h3>
-              <p>Choose between minute-only and full timestamps in chat.</p>
-            </div>
-            <div class="settings-page__setting-control">
-              <SelectButton v-model="timestampMode" :options="timestampModes" optionLabel="label" optionValue="value" :allowEmpty="false" aria-label="Timestamp format" />
-            </div>
+        <Popover ref="highlightStylesPopover" class="settings-page__styles-popover">
+          <div class="settings-page__styles-popover-body">
+            <button
+              v-for="option in HIGHLIGHT_STYLE_OPTIONS"
+              :key="option.value"
+              type="button"
+              class="settings-page__styles-option"
+              :class="{ 'settings-page__styles-option--selected': highlightStyleSelected(option.value) }"
+              :aria-pressed="highlightStyleSelected(option.value)"
+              @click="toggleHighlightStyle(option.value)"
+            >
+              <span class="settings-page__styles-option-left">
+                <Check v-if="highlightStyleSelected(option.value)" :size="14" class="settings-page__styles-option-check" />
+                <span v-else class="settings-page__styles-option-check settings-page__styles-option-check--spacer" aria-hidden="true"></span>
+                <component :is="option.icon" :size="14" />
+                <span class="settings-page__styles-option-label">{{ option.label }}</span>
+              </span>
+            </button>
           </div>
-        </div>
-      </section>
-
-      <Popover ref="highlightStylesPopover" class="settings-page__styles-popover">
-        <div class="settings-page__styles-popover-body">
-          <button
-            v-for="option in HIGHLIGHT_STYLE_OPTIONS"
-            :key="option.value"
-            type="button"
-            class="settings-page__styles-option"
-            :class="{ 'settings-page__styles-option--selected': highlightStyleSelected(option.value) }"
-            :aria-pressed="highlightStyleSelected(option.value)"
-            @click="toggleHighlightStyle(option.value)"
-          >
-            <span class="settings-page__styles-option-left">
-              <Check v-if="highlightStyleSelected(option.value)" :size="14" class="settings-page__styles-option-check" />
-              <span v-else class="settings-page__styles-option-check settings-page__styles-option-check--spacer" aria-hidden="true"></span>
-              <component :is="option.icon" :size="14" />
-              <span class="settings-page__styles-option-label">{{ option.label }}</span>
-            </span>
-          </button>
-        </div>
-      </Popover>
+        </Popover>
       </template>
     </SettingsModal>
 
@@ -2549,7 +2554,13 @@ function handleSendResult(result) {
         </SidebarSectionCard>
         <PlayerListCard :players="activeLobbyDisplayPlayers" :current-user="currentUser" :disabled="Boolean(roomClosedByChat[activeChat])" @open-players="playersDialogOpen = true" />
         <SidebarSectionCard title="Mappool" :icon="MapIcon" scrollable>
-          <MappoolCard :disabled="Boolean(roomClosedByChat[activeChat])" :lobby-id="activeChat" :qualification-mode="activeQualificationMode" @send-command="handleCommand" @pick-map="handleMappoolPick" />
+          <MappoolCard
+            :disabled="Boolean(roomClosedByChat[activeChat])"
+            :lobby-id="activeChat"
+            :qualification-mode="activeQualificationMode"
+            @send-command="handleCommand"
+            @pick-map="handleMappoolPick"
+          />
         </SidebarSectionCard>
       </div>
 
@@ -2566,7 +2577,14 @@ function handleSendResult(result) {
         @kick-player="kickLobbyPlayer"
         @set-host="setLobbyHost"
       />
-      <LobbySetupDialog v-model:visible="lobbySetupDialogOpen" :disabled="Boolean(roomClosedByChat[activeChat])" :initial-game-mode="lobbySetupGameMode" :initial-win-condition="lobbySetupWinCondition" :initial-open-slots="lobbySetupOpenSlots" @send="sendLobbySetup" />
+      <LobbySetupDialog
+        v-model:visible="lobbySetupDialogOpen"
+        :disabled="Boolean(roomClosedByChat[activeChat])"
+        :initial-game-mode="lobbySetupGameMode"
+        :initial-win-condition="lobbySetupWinCondition"
+        :initial-open-slots="lobbySetupOpenSlots"
+        @send="sendLobbySetup"
+      />
     </div>
   </AppSidebar>
 </template>

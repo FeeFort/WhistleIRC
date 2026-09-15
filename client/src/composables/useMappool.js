@@ -17,7 +17,16 @@ function normalizeMultipliers(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return {};
   return Object.fromEntries(
     Object.entries(value)
-      .map(([mods, multiplier]) => [String(mods).trim().toUpperCase().split(/[+\s]+/).filter(Boolean).sort().join("+"), Number(multiplier)])
+      .map(([mods, multiplier]) => [
+        String(mods)
+          .trim()
+          .toUpperCase()
+          .split(/[+\s]+/)
+          .filter(Boolean)
+          .sort()
+          .join("+"),
+        Number(multiplier),
+      ])
       .filter(([mods, multiplier]) => mods && Number.isFinite(multiplier) && multiplier > 0),
   );
 }
@@ -80,7 +89,9 @@ function readMappools() {
   try {
     const value = JSON.parse(localStorage.getItem(MAPPOOLS_KEY) || "[]");
     return Array.isArray(value) ? value.map(normalizeConfig) : [];
-  } catch { return []; }
+  } catch {
+    return [];
+  }
 }
 const mappools = ref(readMappools());
 const qualificationModeByLobbyId = ref(storedState.qualificationModeByLobbyId);
@@ -132,15 +143,17 @@ function normalizeConfig(value) {
   const sourceCategories = Array.isArray(source.categories) ? source.categories : [];
   const freeModMultipliers = normalizeMultipliers(source.freeModMultipliers);
   const slots = sourceSlots.map((slot) => ({
-    slotId: String(slot.slotId || crypto.randomUUID()), beatmapId: Number(slot.beatmapId) || 0,
+    slotId: String(slot.slotId || crypto.randomUUID()),
+    beatmapId: Number(slot.beatmapId) || 0,
     category: String(slot.category || categoryFromSlotKey(slot.slotId)),
     mods: Array.isArray(slot.mods) ? slot.mods.map(String).filter(Boolean) : [],
     preview: normalizePreview(slot.preview),
     commands: normalizeCommands(slot.commands),
     freeMod: slot.freeMod === true || slot.winCondition?.template === "freemod",
-    winCondition: slot.freeMod === true && !slot.winCondition
-      ? { type: "script", version: 1, template: "freemod", reverse: false, source: winConditionSource("freemod", false, freeModMultipliers) }
-      : normalizeWinCondition(slot.winCondition),
+    winCondition:
+      slot.freeMod === true && !slot.winCondition
+        ? { type: "script", version: 1, template: "freemod", reverse: false, source: winConditionSource("freemod", false, freeModMultipliers) }
+        : normalizeWinCondition(slot.winCondition),
   }));
   const categories = [...new Set([...sourceCategories.map(String).filter(Boolean), ...slots.map((slot) => slot.category)])];
   return {
@@ -192,9 +205,18 @@ function normalizePreview(value) {
   return { beatmapId: id, artist, title, diff, author, beatmapsetId: Number.isFinite(beatmapsetId) ? beatmapsetId : null, starRating: Number.isFinite(starRating) ? starRating : null, totalSeconds };
 }
 
-function addMappool(value) { const poolValue = normalizeConfig(value); mappools.value.push(poolValue); return poolValue; }
-function updateMappool(id, value) { const index = mappools.value.findIndex((item) => item.id === id); if (index >= 0) mappools.value[index] = normalizeConfig({ ...mappools.value[index], ...value, id }); }
-function deleteMappool(id) { mappools.value = mappools.value.filter((item) => item.id !== id); }
+function addMappool(value) {
+  const poolValue = normalizeConfig(value);
+  mappools.value.push(poolValue);
+  return poolValue;
+}
+function updateMappool(id, value) {
+  const index = mappools.value.findIndex((item) => item.id === id);
+  if (index >= 0) mappools.value[index] = normalizeConfig({ ...mappools.value[index], ...value, id });
+}
+function deleteMappool(id) {
+  mappools.value = mappools.value.filter((item) => item.id !== id);
+}
 
 function normalizeCommands(value) {
   if (!Array.isArray(value)) return [];

@@ -46,9 +46,7 @@ const renameValidationError = computed(() => {
   });
   if (existingConflict) return "Already exists";
 
-  const duplicateInImport = importedItems.value.some(
-    (item) => item !== currentConflict.value && normalizeShortcutName(item.imported.label) === normalizedName,
-  );
+  const duplicateInImport = importedItems.value.some((item) => item !== currentConflict.value && normalizeShortcutName(item.imported.label) === normalizedName);
   if (duplicateInImport) return "Duplicate within this import";
   return "";
 });
@@ -245,10 +243,10 @@ function remove() {
       <Upload :size="32" aria-hidden="true" />
       <strong>Import shortcuts</strong>
       <span>Choose a JSON file containing your shortcut definitions.</span>
-        <Button outlined @click="openImportPicker">
-          <Upload :size="15" />
-          <span>Choose JSON file</span>
-        </Button>
+      <Button outlined @click="openImportPicker">
+        <Upload :size="15" />
+        <span>Choose JSON file</span>
+      </Button>
     </div>
     <div v-else class="shortcut-dialog">
       <div class="shortcut-dialog__preview">
@@ -447,10 +445,27 @@ function remove() {
   font-weight: 700;
 }
 
-.shortcut-dialog__conflict-label svg { color: var(--app-muted); }
-.shortcut-dialog__conflict-card strong { overflow: hidden; color: var(--app-text); font-size: 0.8rem; text-overflow: ellipsis; white-space: nowrap; }
-.shortcut-dialog__conflict-card code { overflow: hidden; color: var(--app-muted); font-size: 0.7rem; text-overflow: ellipsis; white-space: nowrap; }
-.shortcut-dialog__conflict-card .p-inputtext { width: 100%; min-width: 0; }
+.shortcut-dialog__conflict-label svg {
+  color: var(--app-muted);
+}
+.shortcut-dialog__conflict-card strong {
+  overflow: hidden;
+  color: var(--app-text);
+  font-size: 0.8rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.shortcut-dialog__conflict-card code {
+  overflow: hidden;
+  color: var(--app-muted);
+  font-size: 0.7rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.shortcut-dialog__conflict-card .p-inputtext {
+  width: 100%;
+  min-width: 0;
+}
 .shortcut-dialog__conflict-card .shortcut-dialog__input--invalid,
 .shortcut-dialog__conflict-card .shortcut-dialog__input--invalid:focus {
   border-color: var(--app-danger, #f87171) !important;
@@ -461,13 +476,36 @@ function remove() {
   font-size: 0.68rem;
   line-height: 1.3;
 }
-.shortcut-dialog__import-name { display: flex; align-items: center; gap: 0.25rem; min-width: 0; }
-.shortcut-dialog__import-name .p-button { width: 1.35rem; height: 1.35rem; flex-shrink: 0; padding: 0; color: var(--app-muted); }
-.shortcut-dialog__import-name .p-button:hover { color: var(--app-primary-bright); }
+.shortcut-dialog__import-name {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  min-width: 0;
+}
+.shortcut-dialog__import-name .p-button {
+  width: 1.35rem;
+  height: 1.35rem;
+  flex-shrink: 0;
+  padding: 0;
+  color: var(--app-muted);
+}
+.shortcut-dialog__import-name .p-button:hover {
+  color: var(--app-primary-bright);
+}
 
-.shortcut-dialog__apply-all { display: flex; align-items: center; gap: 0.55rem; color: var(--app-muted); font-size: 0.76rem; }
-.shortcut-dialog__apply-all--disabled { color: var(--app-muted); }
-.shortcut-dialog__apply-all--disabled > span { opacity: 0.42; }
+.shortcut-dialog__apply-all {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  color: var(--app-muted);
+  font-size: 0.76rem;
+}
+.shortcut-dialog__apply-all--disabled {
+  color: var(--app-muted);
+}
+.shortcut-dialog__apply-all--disabled > span {
+  opacity: 0.42;
+}
 .shortcut-dialog__apply-all--disabled .shortcut-dialog__toggle--disabled,
 .shortcut-dialog__apply-all--disabled .shortcut-dialog__toggle--disabled :deep(.p-toggleswitch-slider),
 .shortcut-dialog__apply-all--disabled .shortcut-dialog__toggle--disabled :deep(.p-toggleswitch-handle) {
@@ -475,8 +513,14 @@ function remove() {
   filter: saturate(0.35) !important;
 }
 
-.shortcut-dialog__conflict-actions { display: flex; gap: 0.6rem; }
-.shortcut-dialog__conflict-actions .p-button { flex: 1 1 0; justify-content: center; }
+.shortcut-dialog__conflict-actions {
+  display: flex;
+  gap: 0.6rem;
+}
+.shortcut-dialog__conflict-actions .p-button {
+  flex: 1 1 0;
+  justify-content: center;
+}
 
 .shortcut-dialog__rename-link {
   align-self: center;
@@ -491,7 +535,9 @@ function remove() {
   cursor: pointer;
 }
 
-.shortcut-dialog__rename-link:hover { color: var(--app-text); }
+.shortcut-dialog__rename-link:hover {
+  color: var(--app-text);
+}
 
 .shortcut-dialog__import-picker {
   align-items: center;

@@ -40,16 +40,19 @@ onMounted(() => {
   });
 });
 
-watch(() => props.modelValue, (value) => {
-  if (!editor || value === editor.getValue()) return;
-  applyingExternalValue = true;
-  // Preserve cursor/scroll position instead of a full reset — matters when the
-  // update round-trips back in (e.g. through a parent-held ref).
-  const position = editor.getPosition();
-  editor.setValue(value);
-  if (position) editor.setPosition(position);
-  applyingExternalValue = false;
-});
+watch(
+  () => props.modelValue,
+  (value) => {
+    if (!editor || value === editor.getValue()) return;
+    applyingExternalValue = true;
+    // Preserve cursor/scroll position instead of a full reset — matters when the
+    // update round-trips back in (e.g. through a parent-held ref).
+    const position = editor.getPosition();
+    editor.setValue(value);
+    if (position) editor.setPosition(position);
+    applyingExternalValue = false;
+  },
+);
 
 onBeforeUnmount(() => editor?.dispose());
 </script>
@@ -57,5 +60,11 @@ onBeforeUnmount(() => editor?.dispose());
   <div ref="container" class="monaco-editor-host" />
 </template>
 <style scoped>
-.monaco-editor-host { width: 100%; height: 22rem; border: 1px solid var(--app-border); border-radius: .6rem; overflow: hidden; }
+.monaco-editor-host {
+  width: 100%;
+  height: 22rem;
+  border: 1px solid var(--app-border);
+  border-radius: 0.6rem;
+  overflow: hidden;
+}
 </style>

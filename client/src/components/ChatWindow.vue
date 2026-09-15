@@ -562,7 +562,7 @@ function forwardCommand(command) {
       <Transition name="chat-new-messages">
         <button v-if="newMessageCount > 0" type="button" class="chat-new-messages" @click="scrollToLatestMessages">
           <ArrowDown :size="14" aria-hidden="true" />
-          <span>{{ newMessageCount }} new message{{ newMessageCount === 1 ? '' : 's' }}</span>
+          <span>{{ newMessageCount }} new message{{ newMessageCount === 1 ? "" : "s" }}</span>
         </button>
       </Transition>
     </div>
