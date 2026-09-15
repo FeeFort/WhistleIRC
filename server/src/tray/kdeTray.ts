@@ -35,14 +35,23 @@ function readPixmap(): [number, number, Buffer] {
       const up = y ? pixels[(y - 1) * stride + x] : 0;
       const ul = y && x >= 4 ? pixels[(y - 1) * stride + x - 4] : 0;
       const value = raw[src++];
-      const p = left + up - ul; const pa = Math.abs(p - left); const pb = Math.abs(p - up); const pc = Math.abs(p - ul);
+      const p = left + up - ul;
+      const pa = Math.abs(p - left);
+      const pb = Math.abs(p - up);
+      const pc = Math.abs(p - ul);
       const predictor = filter === 1 ? left : filter === 2 ? up : filter === 3 ? Math.floor((left + up) / 2) : filter === 4 ? (pa <= pb && pa <= pc ? left : pb <= pc ? up : ul) : 0;
       pixels[y * stride + x] = (value + predictor) & 255;
     }
   }
   for (let i = 0; i < pixels.length; i += 4) {
-    const r = pixels[i]; const g = pixels[i + 1]; const b = pixels[i + 2]; const a = pixels[i + 3];
-    pixels[i] = a; pixels[i + 1] = r; pixels[i + 2] = g; pixels[i + 3] = b;
+    const r = pixels[i];
+    const g = pixels[i + 1];
+    const b = pixels[i + 2];
+    const a = pixels[i + 3];
+    pixels[i] = a;
+    pixels[i + 1] = r;
+    pixels[i + 2] = g;
+    pixels[i + 3] = b;
   }
   return [width, height, pixels];
 }
@@ -109,31 +118,38 @@ export async function createKdeTray(options: KdeTrayOptions): Promise<KdeTrayIns
     constructor() {
       super("com.canonical.dbusmenu");
     }
-    get Version() { return 3; }
-    get TextDirection() { return "ltr"; }
-    get Status() { return "normal"; }
-    get IconThemePath() { return ""; }
+    get Version() {
+      return 3;
+    }
+    get TextDirection() {
+      return "ltr";
+    }
+    get Status() {
+      return "normal";
+    }
+    get IconThemePath() {
+      return "";
+    }
     GetLayout(parent: number, _depth: number, _properties: string[]) {
       void parent;
-      const item = (id: number, label: string) => new dbus.Variant("(ia{sv}av)", [id, {
-        label: new dbus.Variant("s", label),
-        enabled: new dbus.Variant("b", true),
-        visible: new dbus.Variant("b", true),
-        type: new dbus.Variant("s", "standard"),
-      }, []]);
-      return [
-        0,
-        [
-          1,
-          {},
-          [
-            item(2, "Open WhistleIRC"),
-            item(3, "Quit"),
-          ],
-        ],
-      ];
+      void _depth;
+      void _properties;
+      const item = (id: number, label: string) =>
+        new dbus.Variant("(ia{sv}av)", [
+          id,
+          {
+            label: new dbus.Variant("s", label),
+            enabled: new dbus.Variant("b", true),
+            visible: new dbus.Variant("b", true),
+            type: new dbus.Variant("s", "standard"),
+          },
+          [],
+        ]);
+      return [0, [1, {}, [item(2, "Open WhistleIRC"), item(3, "Quit")]]];
     }
     Event(id: number, event: string, _data: unknown, _timestamp: number): void {
+      void _data;
+      void _timestamp;
       if (event !== "clicked") return;
       if (id === 2) openInBrowser(`http://localhost:${options.port}`);
       if (id === 3) options.onQuit();
@@ -153,7 +169,10 @@ export async function createKdeTray(options: KdeTrayOptions): Promise<KdeTrayIns
   }
   Menu.configureMembers({
     properties: {
-      Version: { signature: "u" }, TextDirection: { signature: "s" }, Status: { signature: "s" }, IconThemePath: { signature: "s" },
+      Version: { signature: "u" },
+      TextDirection: { signature: "s" },
+      Status: { signature: "s" },
+      IconThemePath: { signature: "s" },
     },
     methods: {
       GetLayout: { inSignature: "iias", outSignature: "u(ia{sv}av)" },
@@ -173,7 +192,7 @@ export async function createKdeTray(options: KdeTrayOptions): Promise<KdeTrayIns
     const watcherInterface = watcher.getInterface("org.kde.StatusNotifierWatcher");
     await watcherInterface.RegisterStatusNotifierItem(serviceName);
   } catch (error) {
-    const details = error instanceof Error ? error.stack ?? error.message : String(error);
+    const details = error instanceof Error ? (error.stack ?? error.message) : String(error);
     console.error(`[Tray] KDE registration failed: ${details}`);
     bus.disconnect();
     throw error;
