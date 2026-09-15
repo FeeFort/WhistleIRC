@@ -72,6 +72,16 @@ function buildAppImage(buildDir, rawBinaryPath, arch) {
   const iconPng = path.join(__dirname, "icon.png");
   if (fs.existsSync(iconPng)) {
     fs.copyFileSync(iconPng, path.join(appDir, `${baseName}.png`));
+
+    // AppImageLauncher's icon extractor looks for the icon under the standard
+    // freedesktop hicolor hierarchy first, and can silently fail to integrate
+    // the app icon if it's only present at the AppDir root (see
+    // https://github.com/TheAssassin/AppImageLauncher/issues/740). Placing a
+    // copy here fixes that without affecting the root-level icon lookup that
+    // other tooling relies on.
+    const hicolorIconDir = path.join(appDir, "usr", "share", "icons", "hicolor", "256x256", "apps");
+    fs.mkdirSync(hicolorIconDir, { recursive: true });
+    fs.copyFileSync(iconPng, path.join(hicolorIconDir, `${baseName}.png`));
   } else {
     console.warn(`\nWarning: ${iconPng} not found — AppImage will be built without an icon. ` + `Generate it once from icon.ico, e.g.: convert icon.ico -resize 256x256 icon.png`);
   }
