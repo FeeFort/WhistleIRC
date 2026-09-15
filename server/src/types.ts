@@ -194,10 +194,12 @@ export type ClientMessage =
   | { type: "part_channel"; channel: string }
   | { type: "set_lobby_score"; channel: string; teamRedScore: number; teamBlueScore: number }
   | { type: "set_lobby_settings"; channel: string; bestOf: number | null; nextPickTeam: string | null }
+  | { type: "set_active_win_condition"; channel: string; beatmapId: number; source: string | null }
   | { type: "check_update" }
   | { type: "start_update" }
   | { type: "cancel_update" }
-  | { type: "confirm_install" };
+  | { type: "confirm_install" }
+  | { type: "test_win_condition"; slotId: string; source: string; sampleContext: Record<string, unknown> };
 
 export interface PersistedSession {
   clientId: string;

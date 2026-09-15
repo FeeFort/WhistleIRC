@@ -1,6 +1,6 @@
 <script setup>
 import { computed } from "vue";
-import { Lock, LockOpen, Users } from "@lucide/vue";
+import { Lock, LockOpen, Settings, Users } from "@lucide/vue";
 import { useNickColor } from "../composables/useNickColor";
 import { useChatSettings } from "../composables/useChatSettings";
 
@@ -14,6 +14,7 @@ const props = defineProps({
   },
   currentUser: { type: String, default: "" },
 });
+const emit = defineEmits(["open-players"]);
 
 const { nickColor } = useNickColor();
 const { redTeamColor, blueTeamColor } = useChatSettings();
@@ -30,6 +31,18 @@ const MOD_CODES = Object.freeze({
   relax: "RX",
   relax2: "AP",
   spunout: "SO",
+  key1: "1K",
+  key2: "2K",
+  key3: "3K",
+  key4: "4K",
+  key5: "5K",
+  key6: "6K",
+  key7: "7K",
+  key8: "8K",
+  key9: "9K",
+  keycoop: "CO",
+  mirror: "MR",
+  fadein: "FI",
 });
 
 const visiblePlayers = computed(() => props.players.filter((player) => !player.isReferee));
@@ -66,7 +79,10 @@ function playerMods(player) {
   <div class="player-list">
     <div class="player-list__header">
       <span class="player-list__heading"><Users :size="18" /> Players</span>
-      <span class="player-list__count">{{ realPlayerCount }}</span>
+      <span class="player-list__header-actions">
+        <span class="player-list__count">{{ realPlayerCount }}</span>
+        <button type="button" class="player-list__settings" aria-label="Manage players" title="Manage players" @click="emit('open-players')"><Settings :size="14" /></button>
+      </span>
     </div>
 
     <ul class="player-list__items" :class="{ 'player-list__items--scrollable': visiblePlayers.length > 5 }">
@@ -139,6 +155,37 @@ function playerMods(player) {
   background: var(--app-surface-hover);
   font-size: 0.72rem;
   color: var(--app-text);
+}
+
+.player-list__header-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.player-list__settings {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.7rem;
+  height: 1.7rem;
+  padding: 0;
+  border: 0;
+  border-radius: 0.45rem;
+  background: transparent;
+  color: var(--app-muted);
+  cursor: pointer;
+  transition: color 140ms ease, background 140ms ease;
+}
+
+.player-list__settings:hover {
+  background: var(--app-surface-hover);
+  color: var(--app-primary-bright);
+}
+
+.player-list__settings:focus-visible {
+  outline: 2px solid var(--app-primary-bright);
+  outline-offset: 2px;
 }
 
 .player-list__items {

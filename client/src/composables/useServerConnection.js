@@ -31,6 +31,10 @@ function sendChannelCommand(type, channel) {
   return socket.value ? send(socket.value, { type, channel }) : false;
 }
 
+function testWinCondition(slotId, source, sampleContext) {
+  return socket.value ? send(socket.value, { type: "test_win_condition", slotId, source, sampleContext }) : false;
+}
+
 function getRequestSocket() {
   const existingSocket = socket.value;
   if (existingSocket && [WebSocket.OPEN, WebSocket.CONNECTING].includes(existingSocket.readyState)) {
@@ -142,6 +146,10 @@ function setLobbySettings(channel, bestOf, nextPickTeam) {
         nextPickTeam,
       })
     : false;
+}
+
+function setActiveWinCondition(channel, beatmapId, source) {
+  return socket.value ? send(socket.value, { type: "set_active_win_condition", channel, beatmapId, source }) : false;
 }
 
 function sendUpdateCommand(type) {
@@ -344,6 +352,8 @@ export function useServerConnection() {
     partChannel,
     setLobbyScore,
     setLobbySettings,
+    setActiveWinCondition,
+    testWinCondition,
     checkUpdate: requestUpdateCheck,
     startUpdate: () => sendUpdateCommand("start_update"),
     cancelUpdate: () => sendUpdateCommand("cancel_update"),

@@ -59,6 +59,18 @@ const MOD_NAMES: Record<string, string> = Object.freeze({
   RX: "Relax",
   AP: "Relax2",
   SO: "SpunOut",
+  "1K": "Key1",
+  "2K": "Key2",
+  "3K": "Key3",
+  "4K": "Key4",
+  "5K": "Key5",
+  "6K": "Key6",
+  "7K": "Key7",
+  "8K": "Key8",
+  "9K": "Key9",
+  CO: "KeyCoop",
+  MR: "Mirror",
+  FI: "FadeIn",
 });
 
 const MOD_CODES: Map<string, string> = new Map(

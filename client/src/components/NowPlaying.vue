@@ -28,13 +28,13 @@ function formatElapsed(seconds) {
 }
 
 const mapDuration = computed(() => {
-  const total = Number(props.map?.totalSeconds ?? props.map?.total_seconds);
+  const total = Number(props.map?.totalSeconds);
   return Number.isFinite(total) && total > 0 ? formatElapsed(total) : "";
 });
 
 function updateProgress() {
   const map = props.map;
-  const total = Number(map?.totalSeconds ?? map?.total_seconds);
+  const total = Number(map?.totalSeconds);
   if (!map || !props.showProgressBar || map.status !== "playing" || map.progressAborted || !map.startTimestamp || !Number.isFinite(total) || total <= 0) {
     progressDelayElapsed.value = false;
     progressPercent.value = 0;
@@ -103,6 +103,18 @@ const modLabels = Object.freeze({
   spunout: "SO",
   touchdevice: "TD",
   freemod: "FM",
+  key1: "1K",
+  key2: "2K",
+  key3: "3K",
+  key4: "4K",
+  key5: "5K",
+  key6: "6K",
+  key7: "7K",
+  key8: "8K",
+  key9: "9K",
+  keycoop: "CO",
+  mirror: "MR",
+  fadein: "FI",
 });
 const mods = computed(() =>
   String(props.map?.mods || "")
@@ -170,7 +182,7 @@ const pickedByStyle = computed(() => {
       </div>
       <Transition name="now-playing-progress">
         <div
-          v-if="showProgressBar && map.status === 'playing' && !map.progressAborted && progressDelayElapsed && mapDuration && Number(map.totalSeconds ?? map.total_seconds) > 0"
+          v-if="showProgressBar && map.status === 'playing' && !map.progressAborted && progressDelayElapsed && mapDuration && Number(map.totalSeconds) > 0"
           class="now-playing__progress"
           aria-label="Map progress"
         >

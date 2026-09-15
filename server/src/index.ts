@@ -13,6 +13,7 @@ import { UpdateError, UpdateManager } from "./updater/updateManager.js";
 import { applyPendingUpdate } from "./updater/applyUpdate.js";
 import { openInBrowser } from "./browser.js";
 import { createTray } from "./tray/index.js";
+import { evaluateWinCondition, WinConditionContext } from "./winConditionRunner.js";
 
 const IRC_HOST = "irc.ppy.sh";
 const IRC_PORT = 6667;
@@ -105,9 +106,15 @@ function getNick(prefix: string | null): string | null {
 }
 
 function normalizeChannel(channel: string | null | undefined): string {
-  return String(channel || "")
+  const normalized = String(channel || "")
     .replace(/^:/, "")
     .toLowerCase();
+  // The UI identifies multiplayer tabs as `mp-<id>`, while IRC sends
+  // `#mp_<id>`. Keep one canonical key for state, score buffers and active
+  // win conditions so a script selected from the UI survives until the IRC
+  // match-finished event arrives.
+  const multiplayer = normalized.match(/^#?mp[-_](\d+)$/);
+  return multiplayer ? `#mp_${multiplayer[1]}` : normalized;
 }
 
 function getMultiplayerId(channel: string): number | null {
@@ -215,6 +222,7 @@ class BanchoConnection {
   clients: Set<WebSocket> = new Set();
   lobbyStates: Map<string, LobbyState> = new Map();
   matchScoreBuffers: Map<string, Map<string, number>> = new Map();
+  activeWinConditions: Map<string, { beatmapId: number; source: string }> = new Map();
   pendingAutoSettings: Set<string> = new Set();
 
   addClient(client: WebSocket): void {
@@ -262,6 +270,7 @@ class BanchoConnection {
     if (!this.lobbyStates.has(key) || reset) {
       this.lobbyStates.set(key, createLobbyState(channel));
       this.matchScoreBuffers.set(key, new Map());
+      this.activeWinConditions.delete(key);
     }
     return this.lobbyStates.get(key)!;
   }
@@ -352,6 +361,7 @@ class BanchoConnection {
     state.status = "closed";
     state.timer = { active: false, endsAt: null };
     this.matchScoreBuffers.set(normalizeChannel(channel), new Map());
+    this.activeWinConditions.delete(normalizeChannel(channel));
     if (changed) this.sendLobbyState(channel, state);
   }
 
@@ -414,23 +424,60 @@ class BanchoConnection {
     this.matchScoreBuffers.set(key, scores);
   }
 
-  finishMatch(channel: string): void {
+  async finishMatch(channel: string): Promise<void> {
     const state = this.getLobbyState(channel);
-    const scores = this.matchScoreBuffers.get(normalizeChannel(channel)) || new Map();
-    if (!scores.size) return;
+    const channelKey = normalizeChannel(channel);
+    const scores = this.matchScoreBuffers.get(channelKey) || new Map();
+    if (!scores.size) {
+      this.activeWinConditions.delete(channelKey);
+      return;
+    }
 
     const sumTeam = (players: string[]) => players.reduce((total, username) => total + (scores.get(username.toLowerCase()) || 0), 0);
     const teamRedScore = sumTeam(state.teamRedPlayers);
     const teamBlueScore = sumTeam(state.teamBluePlayers);
-    const winnerTeam = teamRedScore === teamBlueScore ? null : teamRedScore > teamBlueScore ? "red" : "blue";
-    const scoreDifference = winnerTeam ? Math.abs(teamRedScore - teamBlueScore) : 0;
+    let winnerTeam: Team | null = teamRedScore === teamBlueScore ? null : teamRedScore > teamBlueScore ? "red" : "blue";
+    let scoreDifference = winnerTeam ? Math.abs(teamRedScore - teamBlueScore) : 0;
+    let resultRedScore = teamRedScore;
+    let resultBlueScore = teamBlueScore;
+    const activeWinCondition = this.activeWinConditions.get(channelKey);
+
+    if (activeWinCondition && activeWinCondition.beatmapId === state.currentBeatmap?.id) {
+      const outcome = await evaluateWinCondition(activeWinCondition.source, {
+        redScore: teamRedScore,
+        blueScore: teamBlueScore,
+        redCombo: 0,
+        blueCombo: 0,
+        redAccuracy: 0,
+        blueAccuracy: 0,
+        redMisses: 0,
+        blueMisses: 0,
+        matchId: state.id ?? undefined,
+        players: state.players,
+      });
+      winnerTeam = outcome.winner === "tie" ? null : outcome.winner;
+      resultRedScore = outcome.result?.beatmapTeamRedScore ?? teamRedScore;
+      resultBlueScore = outcome.result?.beatmapTeamBlueScore ?? teamBlueScore;
+      scoreDifference = outcome.result?.scoreDifference ?? (winnerTeam ? Math.abs(resultRedScore - resultBlueScore) : 0);
+      this.broadcast({
+        type: "win_condition_result",
+        channel: channel.replace(/^:/, ""),
+        winner: outcome.winner,
+        result: outcome.result,
+        systemMessages: outcome.systemMessages,
+        error: outcome.error,
+      });
+      console.log(`[${formatLogTime()}] win_condition ${channel} beatmap=${activeWinCondition.beatmapId} match=${state.id ?? "unknown"} winner=${outcome.winner}${outcome.error ? ` error=${outcome.error}` : ""}`);
+    } else if (activeWinCondition) {
+      console.warn(`[${formatLogTime()}] win_condition skipped for ${channel}: active beatmap=${activeWinCondition.beatmapId}, current beatmap=${state.currentBeatmap?.id ?? "unknown"}`);
+    }
     const nextPickTeam = getOppositePickTeam(state);
     const winningScore = getWinningScore(state.bestOf);
 
     this.updateLobbyState(channel, {
       lastPlay: {
-        teamRedScore,
-        teamBlueScore,
+        teamRedScore: resultRedScore,
+        teamBlueScore: resultBlueScore,
         scoreDifference,
         winnerTeam,
       },
@@ -439,6 +486,7 @@ class BanchoConnection {
       ...(winnerTeam === "blue" && (!winningScore || state.teamBlueScore < winningScore) ? { teamBlueScore: state.teamBlueScore + 1 } : {}),
     });
     scores.clear();
+    this.activeWinConditions.delete(channelKey);
   }
 
   handleLobbyMessage(channel: string, nick: string | null, text: string): void {
@@ -463,6 +511,12 @@ class BanchoConnection {
       });
     } else if (parsed.type === "settings" || parsed.type === "size") {
       this.updateLobbyState(channel, parsed.value);
+      if (parsed.type === "settings" && this.pendingAutoSettings.has(normalizeChannel(channel))) {
+        this.broadcast({
+          type: "lobby_settings_synced",
+          channel: channel.replace(/^:/, ""),
+        });
+      }
     } else if (parsed.type === "slot_lock") {
       const slotLocks = [...this.getLobbyState(channel).slotLocks];
       slotLocks[parsed.value.slot - 1] = parsed.value.locked;
@@ -484,7 +538,7 @@ class BanchoConnection {
     } else if (parsed.type === "player_score") {
       this.recordPlayerScore(channel, parsed.value);
     } else if (parsed.type === "match_finished") {
-      this.finishMatch(channel);
+      void this.finishMatch(channel);
     } else if (parsed.type === "metadata") {
       this.updateLobbyState(channel, parsed.value);
     } else if (parsed.type === "timer") {
@@ -536,6 +590,7 @@ class BanchoConnection {
     this.credentials = { login: login.replaceAll(" ", "_"), password };
     this.lobbyStates.clear();
     this.matchScoreBuffers.clear();
+    this.activeWinConditions.clear();
     this.pendingAutoSettings.clear();
     this.setState("connecting");
 
@@ -825,10 +880,20 @@ function validateMessage(message: unknown): string | null {
       }
       return null;
     },
+    set_active_win_condition: () => {
+      if (!isNonEmptyString(message.channel)) return "channel must be a non-empty string.";
+      if (!Number.isInteger(message.beatmapId) || (message.beatmapId as number) <= 0) return "beatmapId must be a positive integer.";
+      if (message.source !== null && typeof message.source !== "string") return "source must be a string or null.";
+      return null;
+    },
     check_update: () => null,
     start_update: () => null,
     cancel_update: () => null,
     confirm_install: () => null,
+    test_win_condition: () => {
+      if (!isNonEmptyString(message.slotId) || typeof message.source !== "string" || !isRecord(message.sampleContext)) return "slotId, source and sampleContext are required.";
+      return null;
+    },
   };
 
   const validator = validators[message.type];
@@ -875,6 +940,30 @@ function handleConfirmInstall(client: WebSocket): void {
   } catch (error) {
     sendUpdateError(client, error);
   }
+}
+
+async function handleTestWinCondition(client: WebSocket, message: ClientMessage): Promise<void> {
+  const payload = message as Extract<ClientMessage, { type: "test_win_condition" }>;
+  const result = await evaluateWinCondition(payload.source, payload.sampleContext as unknown as WinConditionContext);
+  if (result.error) {
+    console.error(`[${formatLogTime()}] win_condition_test ${payload.slotId} failed: ${result.error}`);
+  } else {
+    console.log(`[${formatLogTime()}] win_condition_test ${payload.slotId} → winner=${result.winner}${result.systemMessages.length ? ` messages=${JSON.stringify(result.systemMessages)}` : ""}`);
+  }
+  sendJson(client, { type: "win_condition_test_result", slotId: payload.slotId, ...result });
+}
+
+function handleSetActiveWinCondition(client: WebSocket, message: ClientMessage): void {
+  const payload = message as Extract<ClientMessage, { type: "set_active_win_condition" }>;
+  const channelKey = normalizeChannel(payload.channel);
+  const source = payload.source?.trim() || "";
+  if (source) {
+    banchoConnection.activeWinConditions.set(channelKey, { beatmapId: payload.beatmapId, source });
+  } else {
+    banchoConnection.activeWinConditions.delete(channelKey);
+  }
+  console.log(`[${formatLogTime()}] active_win_condition ${channelKey}: ${source ? `beatmap=${payload.beatmapId}` : "cleared"}`);
+  sendJson(client, { type: "ack", received: message.type });
 }
 
 function handleLogin(client: WebSocket, message: ClientMessage): void {
@@ -1040,10 +1129,12 @@ function handleClientMessage(client: WebSocket, rawMessage: unknown): void {
     part_channel: handlePartChannel,
     set_lobby_score: handleSetLobbyScore,
     set_lobby_settings: handleSetLobbySettings,
+    set_active_win_condition: handleSetActiveWinCondition,
     check_update: handleCheckUpdate,
     start_update: handleStartUpdate,
     cancel_update: handleCancelUpdate,
     confirm_install: handleConfirmInstall,
+    test_win_condition: handleTestWinCondition,
   };
 
   handlers[message.type](client, message);

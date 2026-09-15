@@ -2,7 +2,7 @@
 import { ref, computed, nextTick, watch, onMounted, onBeforeUnmount } from "vue";
 import Button from "primevue/button";
 import Textarea from "primevue/textarea";
-import { Menu, Send, Hash, Timer, ClipboardCheck, Flag, Gamepad2, Link, ArrowDown } from "@lucide/vue";
+import { Menu, Send, Hash, Timer, ClipboardCheck, Flag, Gamepad2, Link, ArrowDown, ArrowDownToLine } from "@lucide/vue";
 import { useNickColor } from "../composables/useNickColor";
 import { useChatSettings } from "../composables/useChatSettings";
 import { highlightTextStyle, messageHasHighlight } from "../composables/useMessageHighlighting";
@@ -30,6 +30,7 @@ const {
 
 const props = defineProps({
   title: { type: String, default: "Referee chat" },
+  chatId: { type: String, default: "" },
   connected: { type: Boolean, default: false },
   currentUser: { type: String, default: "you" },
   refereeUsers: { type: Array, default: () => [] },
@@ -66,9 +67,10 @@ const timerLabel = computed(() => (props.timerActive ? formatTimer(props.timerSe
 
 const statusLabel = computed(() => (props.connected ? "Connected" : "Disconnected"));
 
-const emit = defineEmits(["send", "toggle-sidebar", "send-command", "create-lobby"]);
+const emit = defineEmits(["send", "toggle-sidebar", "send-command", "create-lobby", "download-chat-history"]);
 
 const draft = ref("");
+const sentMessageHistory = new Map();
 const chatInput = ref(null);
 const listEl = ref(null);
 const shouldAutoScroll = ref(true);
@@ -79,6 +81,55 @@ let isAutoScrolling = false;
 let animationFrameId;
 let autoScrollTimer;
 let forceAutoScroll = false;
+let applyingHistoryDraft = false;
+
+function currentHistory() {
+  const key = props.chatId || props.title;
+  if (!sentMessageHistory.has(key)) {
+    sentMessageHistory.set(key, { messages: [], index: -1, draftBeforeNavigation: "" });
+  }
+  return sentMessageHistory.get(key);
+}
+
+function setHistoryDraft(value) {
+  applyingHistoryDraft = true;
+  draft.value = value;
+  nextTick(() => {
+    applyingHistoryDraft = false;
+  });
+}
+
+function handleDraftInput() {
+  if (applyingHistoryDraft) return;
+  const history = currentHistory();
+  history.index = -1;
+  history.draftBeforeNavigation = "";
+}
+
+function navigateMessageHistory(direction) {
+  const history = currentHistory();
+  if (!history.messages.length) return;
+
+  if (direction < 0) {
+    if (history.index === -1) {
+      history.draftBeforeNavigation = draft.value;
+      history.index = history.messages.length;
+    }
+    history.index = Math.max(0, history.index - 1);
+    setHistoryDraft(history.messages[history.index]);
+    return;
+  }
+
+  if (history.index === -1) return;
+  if (history.index < history.messages.length - 1) {
+    history.index += 1;
+    setHistoryDraft(history.messages[history.index]);
+  } else {
+    history.index = -1;
+    setHistoryDraft(history.draftBeforeNavigation);
+    history.draftBeforeNavigation = "";
+  }
+}
 
 function getChatInputEl() {
   const el = chatInput.value?.$el || chatInput.value;
@@ -400,6 +451,11 @@ function send() {
   if (props.roomClosed) return;
   const text = draft.value.trim();
   if (!text) return;
+  const history = currentHistory();
+  history.messages.push(text);
+  if (history.messages.length > 100) history.messages.shift();
+  history.index = -1;
+  history.draftBeforeNavigation = "";
   forceAutoScroll = true;
   shouldAutoScroll.value = true;
   emit("send", text);
@@ -408,6 +464,16 @@ function send() {
 }
 
 function onKeydown(e) {
+  if (e.key === "ArrowUp" && !e.shiftKey) {
+    e.preventDefault();
+    navigateMessageHistory(-1);
+    return;
+  }
+  if (e.key === "ArrowDown" && !e.shiftKey) {
+    e.preventDefault();
+    navigateMessageHistory(1);
+    return;
+  }
   if (e.key === "Enter" && !e.shiftKey) {
     e.preventDefault();
     send();
@@ -488,6 +554,10 @@ function forwardCommand(command) {
             </span>
           </template>
         </div>
+        <button v-if="roomClosed" type="button" class="chat-history-download" @click="emit('download-chat-history')">
+          <ArrowDownToLine :size="14" aria-hidden="true" />
+          <span>Download chat history</span>
+        </button>
       </div>
       <Transition name="chat-new-messages">
         <button v-if="newMessageCount > 0" type="button" class="chat-new-messages" @click="scrollToLatestMessages">
@@ -501,7 +571,7 @@ function forwardCommand(command) {
     <CommandBar v-else-if="shortcutMode === 'referee'" docked :disabled="roomClosed" @send-command="forwardCommand" />
 
     <div class="chat-input">
-      <Textarea ref="chatInput" v-model="draft" placeholder="Write a message" rows="1" autoResize class="chat-input__field" :disabled="roomClosed" @keydown="onKeydown" />
+      <Textarea ref="chatInput" v-model="draft" placeholder="Write a message" rows="1" autoResize class="chat-input__field" :disabled="roomClosed" @input="handleDraftInput" @keydown="onKeydown" />
       <Button rounded aria-label="Send message" class="chat-input__send" :disabled="roomClosed || !draft.trim()" @click="send">
         <Send :size="17" />
       </Button>
@@ -657,6 +727,33 @@ function forwardCommand(command) {
   gap: 0.15rem;
 }
 
+.chat-history-download {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  align-self: center;
+  gap: 0.35rem;
+  margin: 0.85rem auto 0.45rem;
+  padding: 0.2rem 0.35rem;
+  border: 0;
+  background: transparent;
+  color: var(--app-primary-bright);
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition:
+    color 160ms ease,
+    opacity 160ms ease;
+}
+
+.chat-history-download:hover {
+  color: var(--app-primary);
+  opacity: 0.86;
+  text-decoration: underline;
+  text-underline-offset: 0.15rem;
+}
+
 .chat-new-messages {
   position: sticky;
   bottom: 0.85rem;
@@ -779,7 +876,7 @@ function forwardCommand(command) {
   display: flex;
   align-items: center;
   gap: 0.8rem;
-  padding: 0.7rem 0;
+  padding: 0.35rem 0;
 }
 
 @media (max-width: 640px) {

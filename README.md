@@ -206,7 +206,7 @@ If you clear the browser's site data, these local settings and authorization det
 
 ## Mappool builder
 
-The optional `mappool_builder.py` script helps create a mappool JSON file using osu! API v2. It asks for tournament details, map slots, beatmap IDs or URLs, mods, and additional commands, then builds everything into a JSON file. You'll need [Python](https://www.python.org/downloads/) installed for it to work.
+The optional `mappool_builder.py` script helps create a mappool JSON file using osu! API v2. It asks for the mappool name, stage, map slots, beatmap IDs or URLs, mods, and additional commands, then builds everything into the current `categories`/`slots` JSON format. You'll need [Python](https://www.python.org/downloads/) installed for it to work.
 
 Before running it, check the osu! API credentials near the top of the script:
 
