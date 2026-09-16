@@ -80,7 +80,8 @@ function onWheel(event) {
       @keydown="onKeydown"
       @keydown.backspace="removeLast"
       @blur="add"
-  /></div>
+    />
+  </div>
 </template>
 <style scoped>
 .tag-input {

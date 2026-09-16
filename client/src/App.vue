@@ -67,12 +67,8 @@ const lobbySetupUntouched = computed(() => {
   const lobby = activeLobbyState.value;
   return !lobby || (lobby.teamMode === "HeadToHead" && lobby.scoreMode === "Score");
 });
-const lobbySetupGameMode = computed(() =>
-  lobbySetupUntouched.value ? 2 : ({ HeadToHead: 0, "Tag co-op": 1, "Team VS": 2, "Tag-team VS": 3 })[activeLobbyState.value?.teamMode] ?? 2,
-);
-const lobbySetupWinCondition = computed(() =>
-  lobbySetupUntouched.value ? 3 : ({ Score: 0, Accuracy: 1, Combo: 2, "Score V2": 3 })[activeLobbyState.value?.scoreMode] ?? 3,
-);
+const lobbySetupGameMode = computed(() => (lobbySetupUntouched.value ? 2 : ({ HeadToHead: 0, "Tag co-op": 1, "Team VS": 2, "Tag-team VS": 3 }[activeLobbyState.value?.teamMode] ?? 2)));
+const lobbySetupWinCondition = computed(() => (lobbySetupUntouched.value ? 3 : ({ Score: 0, Accuracy: 1, Combo: 2, "Score V2": 3 }[activeLobbyState.value?.scoreMode] ?? 3)));
 const lobbySetupOpenSlots = computed(() => Math.max(0, Math.min(16, Number(activeLobbyState.value?.size ?? 16))));
 const activeChat = ref("bancho");
 const unreadChats = reactive({ bancho: false });
