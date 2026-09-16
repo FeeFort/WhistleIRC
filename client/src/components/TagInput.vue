@@ -1,12 +1,31 @@
 <script setup>
 import { ref } from "vue";
-const props = defineProps({ modelValue: { type: Array, default: () => [] }, placeholder: { type: String, default: "Add value" } });
+const props = defineProps({
+  modelValue: { type: Array, default: () => [] },
+  placeholder: { type: String, default: "Add value" },
+  splitOnSpace: { type: Boolean, default: false },
+});
 const emit = defineEmits(["update:modelValue"]);
 const draft = ref("");
 function add() {
   const value = draft.value.trim();
-  if (value) emit("update:modelValue", [...props.modelValue, value]);
+  if (!value) {
+    draft.value = "";
+    return;
+  }
+  if (props.splitOnSpace) {
+    const values = value.split(/\s+/).filter(Boolean);
+    if (values.length) emit("update:modelValue", [...props.modelValue, ...values]);
+  } else {
+    emit("update:modelValue", [...props.modelValue, value]);
+  }
   draft.value = "";
+}
+function onKeydown(event) {
+  if (!props.splitOnSpace) return;
+  if (event.key !== " " && event.code !== "Space") return;
+  event.preventDefault();
+  add();
 }
 function remove(index) {
   emit(
@@ -53,8 +72,15 @@ function onWheel(event) {
         @keydown="onRemoveKeydown($event, index)"
         >×</span
       ></span
-    ><input v-model="draft" :placeholder="modelValue.length ? '' : placeholder" @keydown.enter.prevent="add" @keydown.,.prevent="add" @keydown.backspace="removeLast" @blur="add" />
-  </div>
+    ><input
+      v-model="draft"
+      :placeholder="modelValue.length ? '' : placeholder"
+      @keydown.enter.prevent="add"
+      @keydown.,.prevent="add"
+      @keydown="onKeydown"
+      @keydown.backspace="removeLast"
+      @blur="add"
+  /></div>
 </template>
 <style scoped>
 .tag-input {

@@ -293,7 +293,7 @@ function isFreemodSlot(slot) {
 function editSlot(pool, slot) {
   clearTimeout(slotEditCloseTimer);
   const condition = slot.winCondition;
-  const inferredFreeMod = !condition && isFreemodSlot(slot);
+  const inferredFreeMod = !slot.freemodResolved && isFreemodSlot(slot);
   editingSlot.value = {
     pool,
     winTemplate: slot.freeMod || inferredFreeMod ? "freemod" : condition?.template || (condition?.source ? "custom" : "score"),
@@ -331,6 +331,7 @@ function configureWinCondition() {
 function saveSlot() {
   const { pool, slot, winTemplate, winReverse } = editingSlot.value;
   slot.freeMod = editingSlot.value.freeMod === true;
+  slot.freemodResolved = true;
   if (slot.freeMod) slot.winCondition = { type: "script", template: "freemod", reverse: winReverse, source: winConditionSource("freemod", winReverse, pool.freeModMultipliers) };
   else if (winTemplate === "score") slot.winCondition = undefined;
   else if (winTemplate === "custom") slot.winCondition = slot.winCondition?.source ? { type: "script", template: "custom", reverse: winReverse, source: slot.winCondition.source } : undefined;
@@ -668,7 +669,7 @@ watch(editing, (value) => {
                   <div v-for="slot in category.slots" :key="slot.slotId" class="slot">
                     <div class="slot__fields" @click.stop>
                       <label class="slot__field"><span>Beatmap ID</span><InputText v-model="slot.beatmapId" inputmode="numeric" @input="handleBeatmapInput(pool, slot)" /></label
-                      ><label class="slot__field"><span>Mods</span><TagInput v-model="slot.mods" placeholder="Add mod" /></label>
+                      ><label class="slot__field"><span>Mods</span><TagInput v-model="slot.mods" placeholder="Add mod" split-on-space /></label>
                     </div>
                     <Transition name="slot-preview">
                       <div

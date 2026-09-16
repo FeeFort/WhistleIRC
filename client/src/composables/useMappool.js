@@ -150,6 +150,7 @@ function normalizeConfig(value) {
     preview: normalizePreview(slot.preview),
     commands: normalizeCommands(slot.commands),
     freeMod: slot.freeMod === true || slot.winCondition?.template === "freemod",
+    freemodResolved: slot.freemodResolved === true,
     winCondition:
       slot.freeMod === true && !slot.winCondition
         ? { type: "script", version: 1, template: "freemod", reverse: false, source: winConditionSource("freemod", false, freeModMultipliers) }
@@ -186,6 +187,7 @@ function serializeMappool(value) {
       ...(slot.preview ? { preview: { ...slot.preview } } : {}),
       commands: [...slot.commands],
       ...(slot.freeMod ? { freeMod: true } : {}),
+      ...(slot.freemodResolved ? { freemodResolved: true } : {}),
       ...(slot.winCondition ? { winCondition: { ...slot.winCondition } } : {}),
     })),
   };
