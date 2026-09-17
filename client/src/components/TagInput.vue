@@ -63,8 +63,8 @@ function onWheel(event) {
     <span v-for="(value, index) in modelValue" :key="`${value}-${index}`" class="tag-input__tag"
       ><span class="tag-input__value">{{ value }}</span
       ><span
-        class="tag-input__remove-hit"
         v-tooltip.top="`Remove ${value}`"
+        class="tag-input__remove-hit"
         role="button"
         tabindex="0"
         @pointerdown="onRemovePointerDown"

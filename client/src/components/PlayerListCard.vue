@@ -82,7 +82,7 @@ function playerMods(player) {
       <span class="player-list__heading"><Users :size="18" /> Players</span>
       <span class="player-list__header-actions">
         <span class="player-list__count">{{ realPlayerCount }}</span>
-        <button type="button" class="player-list__settings" v-tooltip.top="'Manage players'" :disabled="disabled" aria-label="Manage players" @click="emit('open-players')">
+        <button v-tooltip.top="'Manage players'" type="button" class="player-list__settings" :disabled="disabled" aria-label="Manage players" @click="emit('open-players')">
           <Settings :size="14" />
         </button>
       </span>

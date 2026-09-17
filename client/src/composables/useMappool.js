@@ -32,7 +32,10 @@ function normalizeMultipliers(value) {
 }
 
 function winConditionSource(template, reverse = false, multipliers = {}) {
-  if (template === "score") return "";
+  if (template === "score") {
+    return `system.sendMessage(\`Scores: \${redScore} - \${blueScore}\`);
+return calculateWinner({ red: redScore, blue: blueScore }, { reverse: ${reverse ? "true" : "false"}, onTie: "manual" });`;
+  }
   if (template === "freemod") {
     const multiplierTable = JSON.stringify(normalizeMultipliers(multipliers));
     return `const room = await parseRoom();

@@ -106,6 +106,8 @@ export async function evaluateWinCondition(source: string | undefined, context: 
       }),
       parseRoom,
       calculateWinner,
+      redScore,
+      blueScore,
       math: scriptMath,
       Math,
     }),

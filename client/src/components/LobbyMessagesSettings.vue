@@ -304,9 +304,9 @@ watch(
             <button
               v-for="variable in LOBBY_TEMPLATE_VARIABLES"
               :key="variable.key"
+              v-tooltip.top="variable.label"
               type="button"
               class="lobby-messages-dialog__variable"
-              v-tooltip.top="variable.label"
               @click="insertVariable(variable.key)"
             >
               {{ variableToken(variable.key) }}

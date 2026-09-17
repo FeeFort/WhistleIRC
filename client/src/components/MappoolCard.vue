@@ -187,7 +187,7 @@ onBeforeUnmount(() => {
         </Teleport>
       </div>
       <div class="mappool-card__toolbar-actions">
-        <Button text rounded class="mappool-card__settings" v-tooltip.top="'Open mappools'" aria-label="Open mappools" :disabled="disabled" @click="mappoolsVisible = true"
+        <Button v-tooltip.top="'Open mappools'" text rounded class="mappool-card__settings" aria-label="Open mappools" :disabled="disabled" @click="mappoolsVisible = true"
           ><Settings :size="16"
         /></Button>
       </div>
@@ -223,13 +223,13 @@ onBeforeUnmount(() => {
             <div class="mappool-map__actions">
               <button
                 v-if="!qualificationMode && !mapState(map).protected"
+                v-tooltip.top="`${mapState(map).banned ? 'Unban' : 'Ban'} ${map.slotId}`"
                 type="button"
                 class="mappool-map__action mappool-map__action--ban"
                 :class="{
                   'mappool-map__action--active': mapState(map).banned,
                 }"
                 :aria-label="`${mapState(map).banned ? 'Unban' : 'Ban'} ${map.slotId}`"
-                v-tooltip.top="`${mapState(map).banned ? 'Unban' : 'Ban'} ${map.slotId}`"
                 :disabled="disabled"
                 @click="runAction(map, 'ban')"
               >
@@ -237,13 +237,13 @@ onBeforeUnmount(() => {
               </button>
               <button
                 v-if="!qualificationMode && !mapState(map).banned"
+                v-tooltip.top="`${mapState(map).protected ? 'Unprotect' : 'Protect'} ${map.slotId}`"
                 type="button"
                 class="mappool-map__action mappool-map__action--protect"
                 :class="{
                   'mappool-map__action--active': mapState(map).protected,
                 }"
                 :aria-label="`${actionLabel('protect')} ${map.slotId}`"
-                v-tooltip.top="`${mapState(map).protected ? 'Unprotect' : 'Protect'} ${map.slotId}`"
                 :disabled="disabled"
                 @click="runAction(map, 'protect')"
               >
@@ -251,6 +251,7 @@ onBeforeUnmount(() => {
               </button>
               <button
                 v-if="!mapState(map).banned"
+                v-tooltip.top="`${mapState(map).picked ? 'Unpick' : 'Pick'} ${map.slotId}`"
                 type="button"
                 class="mappool-map__action mappool-map__action--pick"
                 :class="{
@@ -258,7 +259,6 @@ onBeforeUnmount(() => {
                 }"
                 :aria-label="`${actionLabel('pick')} ${map.slotId}`"
                 :disabled="disabled || mapState(map).banned"
-                v-tooltip.top="`${mapState(map).picked ? 'Unpick' : 'Pick'} ${map.slotId}`"
                 @click="runAction(map, 'pick')"
               >
                 <Crosshair :size="13" />
