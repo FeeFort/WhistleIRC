@@ -285,7 +285,7 @@ async function copyMpLink() {
           <strong>Lobby configuration</strong>
           <span>Change the game mode, win condition, or open slots.</span>
         </div>
-        <Button text severity="secondary" v-tooltip.top="'Configure lobby'" aria-label="Configure lobby" @click="configureLobby">
+        <Button v-tooltip.top="'Configure lobby'" text severity="secondary" aria-label="Configure lobby" @click="configureLobby">
           <SlidersHorizontal :size="15" />
           <span>Configure</span>
         </Button>

@@ -138,11 +138,11 @@ function switchTeamStyle(player) {
         <span v-if="player.isSlot" class="players-dialog__state" :class="{ 'players-dialog__state--locked': player.isLocked }">{{ player.isLocked ? "Locked" : "Open" }}</span>
         <Button
           v-if="!player.isSlot"
+          v-tooltip.top="'Switch team'"
           text
           rounded
           severity="secondary"
           class="players-dialog__team-button"
-          v-tooltip.top="'Switch team'"
           :style="switchTeamStyle(player)"
           :disabled="disabled || !player.team"
           :aria-label="'Switch ' + player.name + ' team'"
@@ -152,11 +152,11 @@ function switchTeamStyle(player) {
         </Button>
         <Button
           v-if="!player.isSlot"
+          v-tooltip.top="'Make host'"
           text
           rounded
           severity="secondary"
           class="players-dialog__action-button players-dialog__action-button--host"
-          v-tooltip.top="'Make host'"
           :disabled="disabled || player.isHost"
           :aria-label="'Make ' + player.name + ' host'"
           @click.stop="setHost(player)"
@@ -168,11 +168,11 @@ function switchTeamStyle(player) {
         </Button>
         <Button
           v-if="!player.isSlot"
+          v-tooltip.top="'Kick player'"
           text
           rounded
           severity="danger"
           class="players-dialog__action-button players-dialog__action-button--kick"
-          v-tooltip.top="'Kick player'"
           :disabled="disabled"
           :aria-label="'Kick ' + player.name"
           @click.stop="kickPlayer(player)"

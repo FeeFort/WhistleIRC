@@ -2119,11 +2119,11 @@ function handleSendResult(result) {
                   >
                     <button type="button" class="settings-page__sound-dropdown-select" @click="selectNotificationSound(item.value)">{{ item.label }}</button>
                     <button
+                      v-tooltip.top="`Preview ${item.label}`"
                       type="button"
                       class="settings-page__sound-dropdown-preview"
                       :disabled="!soundEnabled"
                       :aria-label="`Preview ${item.label}`"
-                      v-tooltip.top="`Preview ${item.label}`"
                       @click.stop="previewNotificationSound(item.value)"
                     >
                       <Play :size="13" />

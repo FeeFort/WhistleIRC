@@ -53,7 +53,7 @@ defineExpose({ applyTestResult });
     <div class="win-editor__test">
       <InputNumber v-model="redScore" :min="0" placeholder="Red score" />
       <InputNumber v-model="blueScore" :min="0" placeholder="Blue score" />
-      <Button text v-tooltip.top="'Test script'" aria-label="Test script" @click="test">Test</Button>
+      <Button v-tooltip.top="'Test script'" text aria-label="Test script" @click="test">Test</Button>
     </div>
     <div v-if="result" class="win-editor__result">
       <p :class="{ 'win-editor__error': result.error }">{{ result.error || `Winner: ${result.winner}` }}</p>
