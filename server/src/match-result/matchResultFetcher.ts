@@ -1,9 +1,8 @@
-import { getAccessToken } from "./auth/auth.js";
-import { fetchApi } from "./osu-api/osuApiClient.js";
+import { getAccessToken } from "../auth/auth.js";
+import { fetchApi } from "../osu-api/osuApiClient.js";
 import { parseLastMapResult } from "./matchResultParser.js";
-import type { MapResult, RawMatchResponse } from "./matchResultParser.js";
+import type { MapResult, RawMatchResponse } from "../types.js";
 
-// The API client owns the application's request queue; retries here only delay this one request.
 export async function fetchLastMapResult(matchId: number): Promise<MapResult | null> {
   for (let attempt = 0; attempt < 3; attempt += 1) {
     try {
