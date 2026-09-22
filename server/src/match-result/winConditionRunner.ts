@@ -2,10 +2,8 @@ import vm from "node:vm";
 import { fetchLastMapResult } from "./matchResultFetcher.js";
 import type { TeamMapResult, WinConditionContext, WinConditionOutcome, WinConditionWinner } from "../types.js";
 
-
-
-const SYNC_TIMEOUT_MS = 200; 
-const ASYNC_TIMEOUT_MS = 12000; 
+const SYNC_TIMEOUT_MS = 200;
+const ASYNC_TIMEOUT_MS = 12000;
 
 function fallback(context: { redScore: number; blueScore: number }): WinConditionWinner {
   return context.redScore === context.blueScore ? "tie" : context.redScore > context.blueScore ? "red" : "blue";
