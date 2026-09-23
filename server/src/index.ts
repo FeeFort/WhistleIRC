@@ -7,18 +7,20 @@ import { parseBanchoBotMessage, parseLobbyCommand } from "./banchoBotParser.js";
 import { login as loginOsu, logout as logoutOsu, getAccessToken, restoreSession } from "./auth/auth.js";
 import { fetchApi } from "./osu-api/osuApiClient.js";
 import { config } from "./config.js";
-import { ClientMessage, ConnectionState, IrcCredentials, IrcLine, LobbyState, ParsedBanchoBotMessage, Player, PlayerScore, Team } from "./types.js";
+import { ClientMessage, ConnectionState, IrcCredentials, IrcLine, LobbyState, ParsedBanchoBotMessage, Player, PlayerScore, Team, WinConditionContext } from "./types.js";
 import { fileURLToPath } from "node:url";
 import { UpdateError, UpdateManager } from "./updater/updateManager.js";
 import { applyPendingUpdate } from "./updater/applyUpdate.js";
 import { openInBrowser } from "./browser.js";
 import { createTray } from "./tray/index.js";
-import { evaluateWinCondition, WinConditionContext } from "./winConditionRunner.js";
+import { evaluateWinCondition } from "./match-result/winConditionRunner.js";
 
 const IRC_HOST = "irc.ppy.sh";
 const IRC_PORT = 6667;
 const AUTH_ERROR = "Login or password is incorrect.";
 const launchedAfterUpdate = process.argv.includes("--updated");
+
+// TODO: add actual normal comments to this mess
 
 if (process.argv[2] === "--apply-update") {
   try {
@@ -109,10 +111,6 @@ function normalizeChannel(channel: string | null | undefined): string {
   const normalized = String(channel || "")
     .replace(/^:/, "")
     .toLowerCase();
-  // The UI identifies multiplayer tabs as `mp-<id>`, while IRC sends
-  // `#mp_<id>`. Keep one canonical key for state, score buffers and active
-  // win conditions so a script selected from the UI survives until the IRC
-  // match-finished event arrives.
   const multiplayer = normalized.match(/^#?mp[-_](\d+)$/);
   return multiplayer ? `#mp_${multiplayer[1]}` : normalized;
 }

@@ -1,46 +1,14 @@
 import vm from "node:vm";
 import { fetchLastMapResult } from "./matchResultFetcher.js";
-import type { TeamMapResult } from "./matchResultParser.js";
+import type { TeamMapResult, WinConditionContext, WinConditionOutcome, WinConditionWinner } from "../types.js";
 
-export type WinConditionWinner = "red" | "blue" | "tie";
-
-export interface WinConditionContext {
-  redScore: number;
-  blueScore: number;
-  redCombo: number;
-  blueCombo: number;
-  redAccuracy: number;
-  blueAccuracy: number;
-  redMisses: number;
-  blueMisses: number;
-  players?: unknown[];
-  // Present only when a live match is being scored (not from the editor's "Test" panel).
-  // parseRoom() falls back to the already-known context fields when matchId is missing.
-  matchId?: number;
-  [key: string]: unknown;
-}
-
-export interface WinConditionOutcome {
-  winner: WinConditionWinner;
-  error: string | null;
-  systemMessages: string[];
-  // Populated only once the script calls calculateWinner(). Feeds the
-  // beatmapWinner / beatmapTeamRedScore / beatmapTeamBlueScore / scoreDifference
-  // result-variables that message templates read after scoring finishes.
-  result: { beatmapWinner: WinConditionWinner; beatmapTeamRedScore: number; beatmapTeamBlueScore: number; scoreDifference: number } | null;
-}
-
-const SYNC_TIMEOUT_MS = 200; // guards the synchronous portion of a script, i.e. everything before its first await
-const ASYNC_TIMEOUT_MS = 12000; // guards the whole run once it goes async (network calls inside parseRoom(), etc.)
+const SYNC_TIMEOUT_MS = 200;
+const ASYNC_TIMEOUT_MS = 12000;
 
 function fallback(context: { redScore: number; blueScore: number }): WinConditionWinner {
   return context.redScore === context.blueScore ? "tie" : context.redScore > context.blueScore ? "red" : "blue";
 }
 
-// Strips anything that isn't plain, serializable data before it crosses into the sandbox.
-// This doesn't add sandbox-escape protection (codeGeneration:{strings:false} is what does that) —
-// it protects against accidentally handing the script a live object with real methods on it
-// (a DB row, a socket, anything richer than data) just because it happened to be nearby in context.
 function toPlainData<T>(value: T): T {
   try {
     return JSON.parse(JSON.stringify(value));
@@ -49,9 +17,6 @@ function toPlainData<T>(value: T): T {
   }
 }
 
-// sum/average/min/max — the reduction helpers the script needs for accuracy/combo, which
-// arrive as per-player arrays instead of a pre-decided aggregate. Kept separate from the
-// native Math global so `math.average(...)` and `Math.round(...)` both stay obviously distinct.
 const scriptMath = Object.freeze({
   sum: (values: number[]) => (Array.isArray(values) ? values.reduce((total, value) => total + (Number(value) || 0), 0) : 0),
   average: (values: number[]) => (Array.isArray(values) && values.length ? scriptMath.sum(values) / values.length : 0),
