@@ -195,6 +195,7 @@ async function main() {
   }
 
   const clientDir = path.join(__dirname, "..", "client");
+  console.log("\r")
   showProgress("Building client");
   await run(`npm run build --prefix "${clientDir}"`);
   progressStage("Client built");
