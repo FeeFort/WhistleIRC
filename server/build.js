@@ -56,8 +56,12 @@ async function run(cmd) {
     const child = spawn(cmd, { shell: true, stdio: debug ? "inherit" : ["ignore", "pipe", "pipe"] });
     let output = "";
     if (!debug) {
-      child.stdout.on("data", (chunk) => { output += chunk; });
-      child.stderr.on("data", (chunk) => { output += chunk; });
+      child.stdout.on("data", (chunk) => {
+        output += chunk;
+      });
+      child.stderr.on("data", (chunk) => {
+        output += chunk;
+      });
     }
     child.on("error", reject);
     child.on("close", (code) => {
@@ -195,7 +199,7 @@ async function main() {
   }
 
   const clientDir = path.join(__dirname, "..", "client");
-  console.log("\r")
+  console.log("\r");
   showProgress("Building client");
   await run(`npm run build --prefix "${clientDir}"`);
   progressStage("Client built");
@@ -233,7 +237,7 @@ async function main() {
   for (const arch of ["x64", "arm64"]) {
     const rawBinary = path.join(buildDir, `${baseName}-${arch}.exe`);
     if (fs.existsSync(rawBinary)) {
-      fs.renameSync(rawBinary, path.join(buildDir, `${baseName}-win-${arch}.exe`))
+      fs.renameSync(rawBinary, path.join(buildDir, `${baseName}-win-${arch}.exe`));
       progressStage(`Naming Windows ${arch}`);
     }
   }
