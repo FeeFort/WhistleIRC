@@ -393,3 +393,15 @@ export interface WinConditionOutcome {
   systemMessages: string[];
   result: { beatmapWinner: WinConditionWinner; beatmapTeamRedScore: number; beatmapTeamBlueScore: number; scoreDifference: number } | null;
 }
+
+// SignalR API types
+export type HubEventHandler = (eventType: string, payload: unknown) => void;
+export type ResyncHandler = (rooms: unknown) => void;
+
+export interface RoomState {
+  roomId: number;
+  [key: string]: unknown;
+}
+
+export type RoomChangeListener = (room: RoomState) => void;
+export type RoomRemovedListener = (roomId: number) => void;
