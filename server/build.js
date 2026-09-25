@@ -4,6 +4,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import colors from "ansi-colors";
 import cliProgress from "cli-progress";
+import { need as fetchPkgRuntime } from "@yao-pkg/pkg-fetch";
+import { rcedit } from "rcedit";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -13,7 +15,7 @@ const appVersion = pkgJson.version;
 const appName = "WhistleIRC";
 const baseName = pkgJson.name;
 const debug = process.argv.includes("--debug") || process.argv.includes("-d");
-const progressTotal = 12;
+const progressTotal = 9;
 let progressCurrent = 0;
 const progressBar = debug
   ? null
@@ -85,6 +87,23 @@ function progressStage(label) {
   showProgress(label);
 }
 
+async function withProgressPaused(task) {
+  const originalWrite = process.stdout.write;
+  const originalConsole = { log: console.log, info: console.info, warn: console.warn };
+  process.stdout.write = () => true;
+  console.log = () => {};
+  console.info = () => {};
+  console.warn = () => {};
+  try {
+    return await task();
+  } finally {
+    process.stdout.write = originalWrite;
+    console.log = originalConsole.log;
+    console.info = originalConsole.info;
+    console.warn = originalConsole.warn;
+  }
+}
+
 function commandExists(cmd) {
   try {
     execSync(`command -v ${cmd}`, { stdio: "ignore" });
@@ -110,6 +129,12 @@ function toFourPartVersion(version) {
   const parts = version.split(".").map((p) => parseInt(p, 10) || 0);
   while (parts.length < 4) parts.push(0);
   return parts.slice(0, 4).join(".");
+}
+
+function renamePkgOutput(sourceNames, targetName) {
+  const source = sourceNames.map((name) => path.join(path.dirname(targetName), name)).find((candidate) => fs.existsSync(candidate));
+  if (!source) throw new Error(`pkg did not produce ${targetName}`);
+  if (source !== targetName) fs.renameSync(source, targetName);
 }
 
 async function buildAppImage(buildDir, rawBinaryPath, arch) {
@@ -185,6 +210,32 @@ async function buildMacZip(buildDir, rawBinaryPath, arch) {
   fs.rmSync(rawBinaryPath);
 }
 
+async function prepareWindowsRuntime(arch) {
+  const runtimeDir = path.join(__dirname, "dist", "pkg-runtime");
+  fs.mkdirSync(runtimeDir, { recursive: true });
+  const originalConsole = { log: console.log, info: console.info, warn: console.warn };
+  console.log = () => {};
+  console.info = () => {};
+  console.warn = () => {};
+  try {
+    await fetchPkgRuntime({ nodeRange: "node22", platform: "win", arch, output: runtimeDir });
+    const runtimeName = fs.readdirSync(runtimeDir).find((file) => file.includes(`-win-${arch}`));
+    if (!runtimeName) throw new Error(`pkg-fetch did not produce a Windows ${arch} runtime`);
+    const runtimePath = path.join(runtimeDir, runtimeName);
+    await rcedit(runtimePath, {
+      icon: path.join(__dirname, "icon.ico"),
+      "version-string": { CompanyName: "FeeFort", ProductName: appName, FileDescription: `${appName} osu! referee client` },
+      "file-version": toFourPartVersion(appVersion),
+      "product-version": toFourPartVersion(appVersion),
+    });
+    return runtimePath;
+  } finally {
+    console.log = originalConsole.log;
+    console.info = originalConsole.info;
+    console.warn = originalConsole.warn;
+  }
+}
+
 async function main() {
   checkDependencies();
 
@@ -208,63 +259,40 @@ async function main() {
   await run(`npx esbuild src/index.ts --bundle --platform=node --format=esm --external:x11 ` + `--define:__APP_VERSION__='"${appVersion}"' --outfile=dist/bundle.js`);
   progressStage("Server bundled");
 
-  showProgress("Building Windows executables");
-  await run(`npx pkg . --targets node22-win-x64,node22-win-arm64 --no-bytecode --public-packages "${publicPackages}" --public --compress Brotli`);
-  progressStage("Windows executables built");
-
-  showProgress("Building macOS and Linux executables");
-  await run(`npx pkg . --targets node22-macos-x64,node22-macos-arm64,node22-linux-x64,node22-linux-arm64 --no-bytecode --public-packages "${publicPackages}" --public --compress GZip`);
-  progressStage("macOS and Linux executables built");
-
   for (const arch of ["x64", "arm64"]) {
-    const rawBinary = path.join(buildDir, `${baseName}-linux-${arch}`);
-    if (fs.existsSync(rawBinary)) {
-      showProgress(`Packaging Linux ${arch}`);
-      await buildAppImage(buildDir, rawBinary, arch);
-      progressStage(`Packaging Linux ${arch}`);
+    showProgress(`Preparing Windows ${arch} template`);
+    const runtimePath = await withProgressPaused(() => prepareWindowsRuntime(arch));
+    showProgress(`Building Windows ${arch}`);
+    const previousPkgNodePath = process.env.PKG_NODE_PATH;
+    process.env.PKG_NODE_PATH = runtimePath;
+    try {
+      await run(`npx pkg . --targets node22-win-${arch} --no-bytecode --public-packages "${publicPackages}" --public --compress GZip`);
+    } finally {
+      if (previousPkgNodePath === undefined) delete process.env.PKG_NODE_PATH;
+      else process.env.PKG_NODE_PATH = previousPkgNodePath;
+      fs.rmSync(path.dirname(runtimePath), { recursive: true, force: true });
     }
-  }
-
-  for (const arch of ["x64", "arm64"]) {
-    const rawBinary = path.join(buildDir, `${baseName}-macos-${arch}`);
-    if (fs.existsSync(rawBinary)) {
-      showProgress(`Packaging macOS ${arch}`);
-      await buildMacZip(buildDir, rawBinary, arch);
-      progressStage(`Packaging macOS ${arch}`);
-    }
+    renamePkgOutput([`${baseName}.exe`, `${baseName}-win-${arch}.exe`], path.join(buildDir, `${baseName}-win-${arch}.exe`));
+    progressStage(`Windows ${arch} built`);
   }
 
   for (const arch of ["x64", "arm64"]) {
-    const rawBinary = path.join(buildDir, `${baseName}-${arch}.exe`);
-    if (fs.existsSync(rawBinary)) {
-      fs.renameSync(rawBinary, path.join(buildDir, `${baseName}-win-${arch}.exe`));
-      progressStage(`Naming Windows ${arch}`);
-    }
+    showProgress(`Building macOS ${arch}`);
+    const rawBinary = path.join(buildDir, `.raw-${arch}`);
+    await run(`npx pkg . --targets node22-macos-${arch} --output "${rawBinary}" --no-bytecode --public-packages "${publicPackages}" --public --compress GZip`);
+    await buildMacZip(buildDir, rawBinary, arch);
+    progressStage(`macOS ${arch} packaged`);
   }
 
-  const fourPartVersion = toFourPartVersion(appVersion);
-  for (const file of fs.readdirSync(buildDir)) {
-    if (file.endsWith(".exe")) {
-      const fullPath = path.join(buildDir, file);
-      const tmpPath = `${fullPath}.tmp`;
-      if (debug) console.log(`\nSetting icon and version (${appVersion}) for ${file}...`);
-
-      showProgress(`Applying metadata to ${file}`);
-      await run(
-        `npx resedit "${fullPath}" "${tmpPath}" ` +
-          `--icon 1,"${path.join(__dirname, "icon.ico")}" ` +
-          `--company-name "FeeFort" ` +
-          `--product-name "${appName}" ` +
-          `--file-description "${appName} osu! referee client" ` +
-          `--file-version ${fourPartVersion} ` +
-          `--product-version ${fourPartVersion}`,
-      );
-      fs.rmSync(fullPath);
-      fs.renameSync(tmpPath, fullPath);
-      progressStage(`Applied metadata to ${file}`);
-    }
+  for (const arch of ["x64", "arm64"]) {
+    showProgress(`Building Linux ${arch}`);
+    const rawBinary = path.join(buildDir, `.raw-${arch}`);
+    await run(`npx pkg . --targets node22-linux-${arch} --output "${rawBinary}" --no-bytecode --public-packages "${publicPackages}" --public --compress GZip`);
+    await buildAppImage(buildDir, rawBinary, arch);
+    progressStage(`Linux ${arch} packaged`);
   }
 
+  progressStage("Build finished");
   progressBar?.stop();
 
   console.log(colors.magenta(`\nDone! ${appName} v${appVersion} artifacts are in /build`));
