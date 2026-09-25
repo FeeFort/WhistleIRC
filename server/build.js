@@ -1,7 +1,9 @@
-import { execSync } from "node:child_process";
+import { execSync, spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import colors from "ansi-colors";
+import cliProgress from "cli-progress";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -10,6 +12,28 @@ const pkgJson = JSON.parse(fs.readFileSync(path.join(__dirname, "package.json"),
 const appVersion = pkgJson.version;
 const appName = "WhistleIRC";
 const baseName = pkgJson.name;
+const debug = process.argv.includes("--debug") || process.argv.includes("-d");
+const progressTotal = 12;
+let progressCurrent = 0;
+const progressBar = debug
+  ? null
+  : new cliProgress.SingleBar({
+      format: (options, params, payload) => {
+        const bar = options.barCompleteString.slice(0, Math.round(params.progress * options.barsize));
+        const remaining = options.barIncompleteString.slice(0, options.barsize - bar.length);
+        return `${colors.magenta("Build")} [${colors.magenta(bar)}${colors.gray(remaining)}] ${colors.magenta(`${params.value}/${params.total}`)} | ${colors.magenta(payload.stage)}`;
+      },
+      barsize: 40,
+      barCompleteChar: "#",
+      barIncompleteChar: "-",
+      forceRedraw: true,
+      hideCursor: true,
+    });
+const lockJson = JSON.parse(fs.readFileSync(path.join(__dirname, "package-lock.json"), "utf-8"));
+const publicPackages = Object.keys(lockJson.packages ?? {})
+  .filter((packagePath) => packagePath.startsWith("node_modules/") && lockJson.packages[packagePath].dev !== true)
+  .map((packagePath) => packagePath.slice("node_modules/".length))
+  .join(",");
 
 const REQUIRED_TOOLS = [
   {
@@ -24,9 +48,37 @@ const REQUIRED_TOOLS = [
   },
 ];
 
-function run(cmd) {
-  console.log(`\n> ${cmd}`);
-  execSync(cmd, { stdio: "inherit" });
+async function run(cmd) {
+  if (debug) {
+    console.log(`\n> ${cmd}`);
+  }
+  await new Promise((resolve, reject) => {
+    const child = spawn(cmd, { shell: true, stdio: debug ? "inherit" : ["ignore", "pipe", "pipe"] });
+    let output = "";
+    if (!debug) {
+      child.stdout.on("data", (chunk) => { output += chunk; });
+      child.stderr.on("data", (chunk) => { output += chunk; });
+    }
+    child.on("error", reject);
+    child.on("close", (code) => {
+      if (code === 0) return resolve();
+      progressBar?.stop();
+      if (output) console.error(output);
+      reject(new Error(`Command failed (${code}): ${cmd}`));
+    });
+  });
+}
+
+function showProgress(label) {
+  if (progressBar) {
+    if (!progressBar.isActive) progressBar.start(progressTotal, progressCurrent, { stage: label });
+    else progressBar.update(progressCurrent, { stage: label });
+  }
+}
+
+function progressStage(label) {
+  progressCurrent += 1;
+  showProgress(label);
 }
 
 function commandExists(cmd) {
@@ -56,7 +108,7 @@ function toFourPartVersion(version) {
   return parts.slice(0, 4).join(".");
 }
 
-function buildAppImage(buildDir, rawBinaryPath, arch) {
+async function buildAppImage(buildDir, rawBinaryPath, arch) {
   const appDir = path.join(buildDir, `${baseName}-${arch}.AppDir`);
   fs.rmSync(appDir, { recursive: true, force: true });
   fs.mkdirSync(path.join(appDir, "usr", "bin"), { recursive: true });
@@ -72,13 +124,6 @@ function buildAppImage(buildDir, rawBinaryPath, arch) {
   const iconPng = path.join(__dirname, "icon.png");
   if (fs.existsSync(iconPng)) {
     fs.copyFileSync(iconPng, path.join(appDir, `${baseName}.png`));
-
-    // AppImageLauncher's icon extractor looks for the icon under the standard
-    // freedesktop hicolor hierarchy first, and can silently fail to integrate
-    // the app icon if it's only present at the AppDir root (see
-    // https://github.com/TheAssassin/AppImageLauncher/issues/740). Placing a
-    // copy here fixes that without affecting the root-level icon lookup that
-    // other tooling relies on.
     const hicolorIconDir = path.join(appDir, "usr", "share", "icons", "hicolor", "256x256", "apps");
     fs.mkdirSync(hicolorIconDir, { recursive: true });
     fs.copyFileSync(iconPng, path.join(hicolorIconDir, `${baseName}.png`));
@@ -88,13 +133,13 @@ function buildAppImage(buildDir, rawBinaryPath, arch) {
 
   const outputPath = path.join(buildDir, `${baseName}-linux-${arch}.AppImage`);
 
-  run(`QT_QPA_PLATFORM=xcb appimagetool "${appDir}" "${outputPath}"`);
+  await run(`QT_QPA_PLATFORM=xcb appimagetool "${appDir}" "${outputPath}"`);
 
   fs.rmSync(appDir, { recursive: true, force: true });
   fs.rmSync(rawBinaryPath);
 }
 
-function buildMacZip(buildDir, rawBinaryPath, arch) {
+async function buildMacZip(buildDir, rawBinaryPath, arch) {
   const appBundle = path.join(buildDir, `${appName}.app`);
   fs.rmSync(appBundle, { recursive: true, force: true });
   fs.mkdirSync(path.join(appBundle, "Contents", "MacOS"), { recursive: true });
@@ -130,7 +175,7 @@ function buildMacZip(buildDir, rawBinaryPath, arch) {
   );
 
   const zipPath = path.join(buildDir, `${baseName}-macos-${arch}.zip`);
-  run(`cd "${buildDir}" && zip -r -y "${path.basename(zipPath)}" "${appName}.app"`);
+  await run(`cd "${buildDir}" && zip -r -y "${path.basename(zipPath)}" "${appName}.app"`);
 
   fs.rmSync(appBundle, { recursive: true, force: true });
   fs.rmSync(rawBinaryPath);
@@ -150,23 +195,45 @@ async function main() {
   }
 
   const clientDir = path.join(__dirname, "..", "client");
-  run(`npm run build --prefix "${clientDir}"`);
+  showProgress("Building client");
+  await run(`npm run build --prefix "${clientDir}"`);
+  progressStage("Client built");
 
-  run(`npx esbuild src/index.ts --bundle --platform=node --format=esm --external:x11 ` + `--define:__APP_VERSION__='"${appVersion}"' --outfile=dist/bundle.js`);
+  showProgress("Bundling server");
+  await run(`npx esbuild src/index.ts --bundle --platform=node --format=esm --external:x11 ` + `--define:__APP_VERSION__='"${appVersion}"' --outfile=dist/bundle.js`);
+  progressStage("Server bundled");
 
-  run("npx pkg . --targets node22-win-x64,node22-win-arm64,node22-macos-x64,node22-macos-arm64,node22-linux-x64,node22-linux-arm64 " + '--no-bytecode --public-packages "*" --public --compress GZip');
+  showProgress("Building Windows executables");
+  await run(`npx pkg . --targets node22-win-x64,node22-win-arm64 --no-bytecode --public-packages "${publicPackages}" --public --compress Brotli`);
+  progressStage("Windows executables built");
+
+  showProgress("Building macOS and Linux executables");
+  await run(`npx pkg . --targets node22-macos-x64,node22-macos-arm64,node22-linux-x64,node22-linux-arm64 --no-bytecode --public-packages "${publicPackages}" --public --compress GZip`);
+  progressStage("macOS and Linux executables built");
 
   for (const arch of ["x64", "arm64"]) {
     const rawBinary = path.join(buildDir, `${baseName}-linux-${arch}`);
     if (fs.existsSync(rawBinary)) {
-      buildAppImage(buildDir, rawBinary, arch);
+      showProgress(`Packaging Linux ${arch}`);
+      await buildAppImage(buildDir, rawBinary, arch);
+      progressStage(`Packaging Linux ${arch}`);
     }
   }
 
   for (const arch of ["x64", "arm64"]) {
     const rawBinary = path.join(buildDir, `${baseName}-macos-${arch}`);
     if (fs.existsSync(rawBinary)) {
-      buildMacZip(buildDir, rawBinary, arch);
+      showProgress(`Packaging macOS ${arch}`);
+      await buildMacZip(buildDir, rawBinary, arch);
+      progressStage(`Packaging macOS ${arch}`);
+    }
+  }
+
+  for (const arch of ["x64", "arm64"]) {
+    const rawBinary = path.join(buildDir, `${baseName}-${arch}.exe`);
+    if (fs.existsSync(rawBinary)) {
+      fs.renameSync(rawBinary, path.join(buildDir, `${baseName}-win-${arch}.exe`))
+      progressStage(`Naming Windows ${arch}`);
     }
   }
 
@@ -175,9 +242,10 @@ async function main() {
     if (file.endsWith(".exe")) {
       const fullPath = path.join(buildDir, file);
       const tmpPath = `${fullPath}.tmp`;
-      console.log(`\nSetting icon and version (${appVersion}) for ${file}...`);
+      if (debug) console.log(`\nSetting icon and version (${appVersion}) for ${file}...`);
 
-      run(
+      showProgress(`Applying metadata to ${file}`);
+      await run(
         `npx resedit "${fullPath}" "${tmpPath}" ` +
           `--icon 1,"${path.join(__dirname, "icon.ico")}" ` +
           `--company-name "FeeFort" ` +
@@ -186,16 +254,19 @@ async function main() {
           `--file-version ${fourPartVersion} ` +
           `--product-version ${fourPartVersion}`,
       );
-
       fs.rmSync(fullPath);
       fs.renameSync(tmpPath, fullPath);
+      progressStage(`Applied metadata to ${file}`);
     }
   }
 
-  console.log(`\nDone! ${appName} v${appVersion} artifacts are in /build`);
+  progressBar?.stop();
+
+  console.log(colors.magenta(`\nDone! ${appName} v${appVersion} artifacts are in /build`));
 }
 
 main().catch((err) => {
+  progressBar?.stop();
   console.error(err.message ?? err);
   process.exit(1);
 });
