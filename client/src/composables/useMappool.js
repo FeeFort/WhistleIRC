@@ -121,6 +121,20 @@ localStorage.setItem(MAPPOOLS_KEY, JSON.stringify(mappools.value.map(serializeMa
 
 export { DEFAULT_WIN_CONDITION, WIN_CONDITION_TEMPLATES, winConditionSource, serializeMappool };
 
+export function sortMappoolSlots(slots, categories = []) {
+  const grouped = new Map();
+  (Array.isArray(slots) ? slots : []).forEach((slot) => {
+    const group = slot.category || "Other";
+    if (!grouped.has(group)) grouped.set(group, []);
+    grouped.get(group).push(slot);
+  });
+
+  const order = new Map((Array.isArray(categories) ? categories : []).map((category, index) => [category, index]));
+  const groupOrder = (group) => (order.has(group) ? order.get(group) : Number.MAX_SAFE_INTEGER);
+
+  return [...grouped.entries()].sort(([first], [second]) => groupOrder(first) - groupOrder(second)).flatMap(([, groupSlots]) => groupSlots);
+}
+
 function categoryFromSlotKey(value) {
   const slotKey = String(value || "").trim();
   const match = slotKey.match(/^(.*?)(?:\d+)$/);

@@ -4,6 +4,7 @@ import { normalizeHighlightStyles, normalizeHighlightWords } from "./useMessageH
 export const DEFAULT_CHAT_SETTINGS = {
   highlightReferee: true,
   highlightBanchoBot: true,
+  highlightTeams: true,
   banchoBotColor: "#f2b84b",
   redTeamColor: "#ff6d78",
   blueTeamColor: "#63b3ff",
@@ -40,6 +41,7 @@ function loadSettings() {
 const storedSettings = loadSettings();
 const highlightReferee = ref(storedSettings.highlightReferee);
 const highlightBanchoBot = ref(storedSettings.highlightBanchoBot);
+const highlightTeams = ref(storedSettings.highlightTeams);
 const banchoBotColor = ref(storedSettings.banchoBotColor);
 const redTeamColor = ref(storedSettings.redTeamColor);
 const blueTeamColor = ref(storedSettings.blueTeamColor);
@@ -55,6 +57,7 @@ const fullSlots = ref(storedSettings.fullSlots);
 const settings = {
   highlightReferee,
   highlightBanchoBot,
+  highlightTeams,
   banchoBotColor,
   redTeamColor,
   blueTeamColor,

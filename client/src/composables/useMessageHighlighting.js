@@ -8,8 +8,20 @@ export const HIGHLIGHT_STYLE_OPTIONS = Object.freeze([
 
 const HIGHLIGHT_STYLE_ORDER = HIGHLIGHT_STYLE_OPTIONS.map((option) => option.value);
 
-function escapeRegExp(value) {
+export function escapeRegExp(value) {
   return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+export function normalizeTeamHighlights(teams) {
+  return (Array.isArray(teams) ? teams : [])
+    .map((team) => ({ name: String(team?.name || "").trim(), color: team?.color || "" }))
+    .filter((team) => team.name)
+    .filter((team, index, list) => list.findIndex((item) => item.name.toLowerCase() === team.name.toLowerCase()) === index)
+    .sort((left, right) => right.name.length - left.name.length);
+}
+
+export function teamTextStyle(color) {
+  return { color, fontWeight: 800 };
 }
 
 export function normalizeHighlightWords(words) {
