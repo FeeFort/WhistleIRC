@@ -64,9 +64,6 @@ const ACTION_PATTERNS = [
   },
 ];
 
-// Common osu! pool categories have stable Cyrillic spellings. The generated
-// transliteration below also covers custom categories without requiring a
-// manual alias entry.
 const RUSSIAN_CATEGORY_ALIASES = {
   NM: ["НМ"],
   FM: ["ФМ"],

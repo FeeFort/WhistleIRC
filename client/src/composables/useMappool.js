@@ -13,6 +13,13 @@ const WIN_CONDITION_TEMPLATES = Object.freeze([
   { label: "Custom", value: "custom" },
 ]);
 
+const CATEGORY_DEFAULT_MODS = Object.freeze({ HD: "HD", HR: "HR", DT: "DT", FM: "Freemod", TB: "Freemod" });
+
+export function defaultModsForCategory(category) {
+  const normalized = String(category || "").trim().toUpperCase();
+  return ["NF", CATEGORY_DEFAULT_MODS[normalized]].filter(Boolean);
+}
+
 function normalizeMultipliers(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return {};
   return Object.fromEntries(
@@ -163,7 +170,10 @@ function normalizeConfig(value) {
     slotId: String(slot.slotId || crypto.randomUUID()),
     beatmapId: Number(slot.beatmapId) || 0,
     category: String(slot.category || categoryFromSlotKey(slot.slotId)),
-    mods: Array.isArray(slot.mods) ? slot.mods.map(String).filter(Boolean) : [],
+    mods: (() => {
+      const normalizedMods = Array.isArray(slot.mods) ? slot.mods.map(String).filter(Boolean) : [];
+      return normalizedMods.length ? normalizedMods : defaultModsForCategory(slot.category || categoryFromSlotKey(slot.slotId));
+    })(),
     preview: normalizePreview(slot.preview),
     commands: normalizeCommands(slot.commands),
     freeMod: slot.freeMod === true || slot.winCondition?.template === "freemod",

@@ -182,7 +182,7 @@ async function startImport() {
       </div>
     </template>
     <div v-if="processing" class="bulk-import-dialog__content">
-      <p class="bulk-import-dialog__subtitle">Please wait while osu! API data is loaded.</p>
+      <p class="bulk-import-dialog__subtitle">Please wait until the maps data is fetched from osu! API</p>
       <div class="bulk-import-dialog__progress-meta">
         <span>{{ processed }} of {{ total }} beatmaps</span><strong>{{ progress }}%</strong>
       </div>
@@ -384,6 +384,19 @@ async function startImport() {
   margin-top: 0.05rem;
   overflow: hidden;
   border-radius: 999px;
+}
+.bulk-import-dialog .p-progressbar {
+  width: 100% !important;
+  align-self: stretch;
+  height: 0.5rem !important;
+  overflow: hidden;
+  border: 1px solid var(--app-border) !important;
+  border-radius: 999px !important;
+  background: var(--app-control) !important;
+}
+.bulk-import-dialog .p-progressbar-value {
+  border-radius: 999px !important;
+  background: var(--app-primary) !important;
 }
 .bulk-import-dialog__download-meta {
   margin: 0.05rem 0 0.75rem;

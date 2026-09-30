@@ -10,7 +10,7 @@ import TagInput from "./TagInput.vue";
 import WinConditionEditor from "./WinConditionEditor.vue";
 import BulkBeatmapImportDialog from "./BulkBeatmapImportDialog.vue";
 import { escapeRegExp } from "../composables/useMessageHighlighting";
-import { DEFAULT_WIN_CONDITION, WIN_CONDITION_TEMPLATES, serializeMappool, useMappool, winConditionSource } from "../composables/useMappool";
+import { DEFAULT_WIN_CONDITION, WIN_CONDITION_TEMPLATES, defaultModsForCategory, serializeMappool, useMappool, winConditionSource } from "../composables/useMappool";
 import { useServerConnection } from "../composables/useServerConnection";
 const props = defineProps({ visible: Boolean });
 const emit = defineEmits(["update:visible"]);
@@ -149,7 +149,9 @@ function applyCategoryRename(pool, category) {
     slots: pool.slots.map((slot, index, allSlots) => {
       if (slot.category !== category) return slot;
       const number = allSlots.slice(0, index + 1).filter((item) => item.category === category).length;
-      return { ...slot, category: name, slotId: `${name}${number}` };
+      const previousDefaults = defaultModsForCategory(category);
+      const shouldApplyCategoryDefaults = !slot.mods?.length || JSON.stringify(slot.mods) === JSON.stringify(previousDefaults);
+      return { ...slot, category: name, slotId: `${name}${number}`, ...(shouldApplyCategoryDefaults ? { mods: defaultModsForCategory(name) } : {}) };
     }),
   });
   const next = new Set(expandedCategories.value);
@@ -230,7 +232,7 @@ function newPool() {
     globalCommands: [],
     freeModMultipliers: [],
     categories: [category],
-    slots: [{ slotId: `${category}1`, category, beatmapId: 0, mods: [], commands: [] }],
+    slots: [{ slotId: `${category}1`, category, beatmapId: 0, mods: defaultModsForCategory(category), commands: [] }],
   });
 }
 function closePoolEditor() {
@@ -453,7 +455,7 @@ function addCategory(pool) {
   while (existing.has(name)) name = `Untitled category ${suffix++}`;
   updateMappool(pool.id, {
     categories: [...(pool.categories || []), name],
-    slots: [...pool.slots, { slotId: `${name}1`, category: name, beatmapId: 0, mods: [], commands: [] }],
+    slots: [...pool.slots, { slotId: `${name}1`, category: name, beatmapId: 0, mods: defaultModsForCategory(name), commands: [] }],
   });
   const next = new Set(expandedCategories.value);
   next.add(categoryKey(pool, name));
@@ -466,7 +468,7 @@ function addSlot(pool, category) {
   const used = new Set(pool.slots.map((slot) => slot.slotId));
   let number = 1;
   while (used.has(`${category}${number}`)) number += 1;
-  updateMappool(pool.id, { slots: [...pool.slots, { slotId: `${category}${number}`, category, beatmapId: 0, mods: [], commands: [] }] });
+  updateMappool(pool.id, { slots: [...pool.slots, { slotId: `${category}${number}`, category, beatmapId: 0, mods: defaultModsForCategory(category), commands: [] }] });
 }
 function previewKey(pool, slot) {
   return `${pool.id}:${slot.slotId}`;
@@ -594,7 +596,7 @@ function importBulkMaps({ maps }) {
     const emptySlot = slots.find((slot) => slot.category === category && Number(slot.beatmapId) <= 0);
     const value = {
       beatmapId: Number(map.id),
-      mods: [],
+      mods: defaultModsForCategory(category),
       commands: [],
       preview: map.preview,
     };
