@@ -4,8 +4,8 @@ export const config = {
   httpHost: process.env.HTTP_HOST || "0.0.0.0",
   httpPort: Number(process.env.HTTP_PORT) || 3000,
   allowedApiEndpoints: [/^\/beatmaps\/\d+$/, /^\/beatmapsets\/\d+$/, /^\/users\/\d+$/, /^\/beatmaps\/\d+\/attributes$/] as RegExp[],
-  spectatorServerUrl: "https://spectator.pyy.sh",
+  spectatorServerUrl: "https://spectator.ppy.sh",
   ircHost: "https://irc.ppy.sh",
   ircPort: 6667,
-  authError: "Login or password is incorrect."
+  authError: "Login or password is incorrect.",
 };

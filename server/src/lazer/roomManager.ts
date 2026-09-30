@@ -6,8 +6,6 @@ interface RoomState {
   [key: string]: unknown;
 }
 
-
-
 class RoomManager {
   private rooms = new Map<number, RoomState>();
   private onRoomChanged: RoomChangeListener | null = null;
