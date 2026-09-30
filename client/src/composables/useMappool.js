@@ -16,7 +16,9 @@ const WIN_CONDITION_TEMPLATES = Object.freeze([
 const CATEGORY_DEFAULT_MODS = Object.freeze({ HD: "HD", HR: "HR", DT: "DT", FM: "Freemod", TB: "Freemod" });
 
 export function defaultModsForCategory(category) {
-  const normalized = String(category || "").trim().toUpperCase();
+  const normalized = String(category || "")
+    .trim()
+    .toUpperCase();
   return ["NF", CATEGORY_DEFAULT_MODS[normalized]].filter(Boolean);
 }
 
