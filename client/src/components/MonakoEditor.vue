@@ -1,12 +1,12 @@
 <script setup>
 import { onBeforeUnmount, onMounted, ref, watch } from "vue";
-import * as monaco from "monaco-editor";
+import * as monaco from "monaco-editor/editor/editor.api";
+import "monaco-editor/languages/definitions/javascript/register";
 import EditorWorker from "monaco-editor/editor/editor.worker?worker";
-import TypeScriptWorker from "monaco-editor/language/typescript/ts.worker?worker";
 
 self.MonacoEnvironment = {
-  getWorker(_moduleId, label) {
-    return label === "typescript" || label === "javascript" ? new TypeScriptWorker() : new EditorWorker();
+  getWorker() {
+    return new EditorWorker();
   },
 };
 

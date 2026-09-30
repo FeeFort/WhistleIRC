@@ -2,20 +2,22 @@
 import { ref, computed, nextTick, watch, onMounted, onBeforeUnmount } from "vue";
 import Button from "primevue/button";
 import Textarea from "primevue/textarea";
-import { Menu, Send, Hash, Timer, ClipboardCheck, Flag, Gamepad2, Link, ArrowDown, ArrowDownToLine } from "@lucide/vue";
+import { Menu, Send, Hash, Timer, ClipboardCheck, Flag, Gamepad2, Link, ArrowDown, ArrowDownToLine, Ban, ShieldCheck, Crosshair } from "@lucide/vue";
 import { useNickColor } from "../composables/useNickColor";
 import { useChatSettings } from "../composables/useChatSettings";
-import { highlightTextStyle, messageHasHighlight } from "../composables/useMessageHighlighting";
+import { escapeRegExp, highlightTextStyle, messageHasHighlight, normalizeTeamHighlights, teamTextStyle } from "../composables/useMessageHighlighting";
 import BanchoBotCommandBar from "./BanchoBotCommandBar.vue";
 import CommandBar from "./CommandBar.vue";
 import { useDarkMode } from "../composables/useDarkMode";
 import NowPlaying from "./NowPlaying.vue";
+import { parseMappoolMessage } from "../composables/useMappoolChat";
 
 const { nickColor: baseNickColor } = useNickColor();
 const { primaryColor } = useDarkMode();
 const {
   highlightReferee,
   highlightBanchoBot,
+  highlightTeams,
   banchoBotColor,
   redTeamColor,
   blueTeamColor,
@@ -27,6 +29,17 @@ const {
   highlightColorMode,
   highlightColor,
 } = useChatSettings();
+
+const teamHighlights = computed(() =>
+  normalizeTeamHighlights([
+    { name: "Team A", color: redTeamColor.value },
+    { name: "Team B", color: blueTeamColor.value },
+    { name: "Team Red", color: redTeamColor.value },
+    { name: "Team Blue", color: blueTeamColor.value },
+    { name: props.teamRedName, color: redTeamColor.value },
+    { name: props.teamBlueName, color: blueTeamColor.value },
+  ]),
+);
 
 const props = defineProps({
   title: { type: String, default: "Referee chat" },
@@ -54,6 +67,8 @@ const props = defineProps({
   showProgressTimeLabel: { type: Boolean, default: true },
   teamRedName: { type: String, default: "" },
   teamBlueName: { type: String, default: "" },
+  mappoolSlots: { type: Array, default: () => [] },
+  getMappoolState: { type: Function, default: null },
 });
 
 function formatTimer(seconds) {
@@ -67,7 +82,7 @@ const timerLabel = computed(() => (props.timerActive ? formatTimer(props.timerSe
 
 const statusLabel = computed(() => (props.connected ? "Connected" : "Disconnected"));
 
-const emit = defineEmits(["send", "toggle-sidebar", "send-command", "create-lobby", "download-chat-history"]);
+const emit = defineEmits(["send", "toggle-sidebar", "send-command", "create-lobby", "download-chat-history", "mappool-action"]);
 
 const draft = ref("");
 const sentMessageHistory = new Map();
@@ -276,6 +291,75 @@ function messageSegments(text) {
   }
 
   return segments.length ? segments : [{ type: "text", value }];
+}
+
+function teamSegments(text) {
+  const value = String(text || "");
+  if (!highlightTeams.value || !teamHighlights.value.length) return [{ type: "text", value }];
+
+  const pattern = teamHighlights.value.map((team) => escapeRegExp(team.name)).join("|");
+  const matcher = new RegExp(`(^|[^\\p{L}\\p{N}_])(${pattern})(?=$|[^\\p{L}\\p{N}_])`, "giu");
+  const segments = [];
+  let lastIndex = 0;
+
+  for (const match of value.matchAll(matcher)) {
+    const start = match.index ?? 0;
+    const prefix = match[1] || "";
+    const nameStart = start + prefix.length;
+    if (start > lastIndex) segments.push({ type: "text", value: value.slice(lastIndex, start) });
+    if (prefix) segments.push({ type: "text", value: prefix });
+    const team = teamHighlights.value.find((item) => item.name.toLowerCase() === match[2].toLowerCase());
+    segments.push({ type: "team", value: match[2], color: team?.color });
+    lastIndex = nameStart + match[2].length;
+  }
+
+  if (lastIndex < value.length) segments.push({ type: "text", value: value.slice(lastIndex) });
+  return segments.length ? segments : [{ type: "text", value }];
+}
+
+function renderMessageSegments(text) {
+  return messageSegments(text).flatMap((segment) => (segment.type === "text" ? teamSegments(segment.value) : [segment]));
+}
+
+function mappoolStatus(slotId, action) {
+  const state = props.getMappoolState?.(slotId) || {};
+  if (state.banned) return { kind: "status", label: "banned", value: slotId };
+  if (state.picked) return { kind: "status", label: "picked", value: slotId };
+  if (action === "ban" && state.protected) return { kind: "status", label: "can't ban, protected", value: slotId };
+  if (action === "protect" && state.protected) return { kind: "status", label: "protected", value: slotId };
+  return { kind: "action", action, value: slotId };
+}
+
+function actionIcon(action) {
+  return action === "ban" ? Ban : action === "protect" ? ShieldCheck : Crosshair;
+}
+
+function mappoolSegments(message) {
+  if (!props.mappoolSlots.length || message.phaseAtMessage === "finished") return [{ type: "text", value: String(message.text || "") }];
+  const parsed = parseMappoolMessage(message.text, props.mappoolSlots, message.phaseAtMessage || "unknown");
+  if (!parsed.slots.length) return [{ type: "text", value: String(message.text || "") }];
+  const segments = [];
+  let lastIndex = 0;
+  for (const slot of parsed.slots) {
+    if (slot.start > lastIndex) segments.push({ type: "text", value: String(message.text).slice(lastIndex, slot.start) });
+    const status = mappoolStatus(slot.slotId, slot.action);
+    segments.push({ type: "mappool", ...status, value: status.kind === "status" ? slot.text : status.value, text: slot.text, slotId: slot.slotId, action: slot.action });
+    lastIndex = slot.end;
+  }
+  if (lastIndex < String(message.text).length) segments.push({ type: "text", value: String(message.text).slice(lastIndex) });
+  return segments;
+}
+
+function renderChatMessageSegments(message) {
+  return mappoolSegments(message).flatMap((segment) => {
+    if (segment.type !== "text") return [segment];
+    return messageSegments(segment.value).flatMap((nested) => (nested.type === "text" ? teamSegments(nested.value) : [nested]));
+  });
+}
+
+function handleMappoolClick(segment) {
+  if (segment.type !== "mappool" || segment.kind !== "action") return;
+  emit("mappool-action", { slotId: segment.slotId, action: segment.action });
 }
 
 const highlightMessageColor = computed(() => {
@@ -544,11 +628,23 @@ function forwardCommand(command) {
               >{{ msg.author }}</span
             >
             <span class="chat-line__text" :style="messageTextStyle(msg.text)">
-              <template v-for="(segment, segmentIndex) in messageSegments(msg.text)" :key="`${msg.id}-${segmentIndex}`">
+              <template v-for="(segment, segmentIndex) in renderChatMessageSegments(msg)" :key="`${msg.id}-${segmentIndex}`">
                 <a v-if="segment.type === 'link'" class="chat-line__link" :href="segment.value" target="_blank" rel="noopener noreferrer">
                   <Link :size="12" aria-hidden="true" />
                   <span>{{ segment.value }}</span>
                 </a>
+                <span v-else-if="segment.type === 'team'" :style="teamTextStyle(segment.color)">{{ segment.value }}</span>
+                <button
+                  v-else-if="segment.type === 'mappool'"
+                  type="button"
+                  class="chat-line__mappool-link"
+                  :class="[`chat-line__mappool-link--${segment.kind}`, `chat-line__mappool-link--${segment.action || segment.label.split(' ')[0]}`]"
+                  :disabled="segment.kind !== 'action'"
+                  @click="handleMappoolClick(segment)"
+                >
+                  <component :is="actionIcon(segment.action)" v-if="segment.kind === 'action'" :size="12" aria-hidden="true" />
+                  <span>{{ segment.kind === "status" ? `${segment.label} ${segment.value}` : segment.text }}</span>
+                </button>
                 <template v-else>{{ segment.value }}</template>
               </template>
             </span>
@@ -870,6 +966,49 @@ function forwardCommand(command) {
   display: inline-block;
   margin-right: 0.22rem;
   vertical-align: -0.15em;
+}
+
+.chat-line__mappool-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.18rem;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-weight: 700;
+  line-height: inherit;
+  cursor: pointer;
+  transform: translateY(2px);
+}
+
+.chat-line__mappool-link--pick {
+  color: var(--app-green);
+}
+
+.chat-line__mappool-link--ban {
+  color: var(--app-red);
+}
+
+.chat-line__mappool-link--protect {
+  color: var(--app-yellow, #e7c45d);
+}
+
+.chat-line__mappool-link--status {
+  color: var(--app-muted);
+  font-style: italic;
+  font-weight: 600;
+  cursor: default;
+}
+
+.chat-line__mappool-link:disabled {
+  opacity: 1;
+}
+
+.chat-line__mappool-link:not(:disabled):hover {
+  text-decoration: underline;
+  text-underline-offset: 0.14em;
 }
 
 .chat-line--system {

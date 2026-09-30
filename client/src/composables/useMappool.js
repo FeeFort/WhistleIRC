@@ -13,6 +13,15 @@ const WIN_CONDITION_TEMPLATES = Object.freeze([
   { label: "Custom", value: "custom" },
 ]);
 
+const CATEGORY_DEFAULT_MODS = Object.freeze({ HD: "HD", HR: "HR", DT: "DT", FM: "Freemod", TB: "Freemod" });
+
+export function defaultModsForCategory(category) {
+  const normalized = String(category || "")
+    .trim()
+    .toUpperCase();
+  return ["NF", CATEGORY_DEFAULT_MODS[normalized]].filter(Boolean);
+}
+
 function normalizeMultipliers(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return {};
   return Object.fromEntries(
@@ -121,6 +130,20 @@ localStorage.setItem(MAPPOOLS_KEY, JSON.stringify(mappools.value.map(serializeMa
 
 export { DEFAULT_WIN_CONDITION, WIN_CONDITION_TEMPLATES, winConditionSource, serializeMappool };
 
+export function sortMappoolSlots(slots, categories = []) {
+  const grouped = new Map();
+  (Array.isArray(slots) ? slots : []).forEach((slot) => {
+    const group = slot.category || "Other";
+    if (!grouped.has(group)) grouped.set(group, []);
+    grouped.get(group).push(slot);
+  });
+
+  const order = new Map((Array.isArray(categories) ? categories : []).map((category, index) => [category, index]));
+  const groupOrder = (group) => (order.has(group) ? order.get(group) : Number.MAX_SAFE_INTEGER);
+
+  return [...grouped.entries()].sort(([first], [second]) => groupOrder(first) - groupOrder(second)).flatMap(([, groupSlots]) => groupSlots);
+}
+
 function categoryFromSlotKey(value) {
   const slotKey = String(value || "").trim();
   const match = slotKey.match(/^(.*?)(?:\d+)$/);
@@ -149,7 +172,10 @@ function normalizeConfig(value) {
     slotId: String(slot.slotId || crypto.randomUUID()),
     beatmapId: Number(slot.beatmapId) || 0,
     category: String(slot.category || categoryFromSlotKey(slot.slotId)),
-    mods: Array.isArray(slot.mods) ? slot.mods.map(String).filter(Boolean) : [],
+    mods: (() => {
+      const normalizedMods = Array.isArray(slot.mods) ? slot.mods.map(String).filter(Boolean) : [];
+      return normalizedMods.length ? normalizedMods : defaultModsForCategory(slot.category || categoryFromSlotKey(slot.slotId));
+    })(),
     preview: normalizePreview(slot.preview),
     commands: normalizeCommands(slot.commands),
     freeMod: slot.freeMod === true || slot.winCondition?.template === "freemod",

@@ -490,6 +490,51 @@ class BanchoConnection {
     this.activeWinConditions.delete(channelKey);
   }
 
+  async refreshLobbyTitle(channel: string): Promise<void> {
+    const matchId = getMultiplayerId(channel);
+    if (!matchId) return;
+
+    let lastError: unknown = null;
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      try {
+        const response = (await Promise.race([
+          fetchApi(await getAccessToken(), `/matches/${matchId}`),
+          new Promise((_, reject) => setTimeout(() => reject(new Error("osu! API request timed out.")), 10000)),
+        ])) as { match?: { name?: string } };
+        const name = response.match?.name?.trim();
+        if (!name) throw new Error("osu! API returned no room title.");
+        const parsed = parseBanchoBotMessage(`Room name: ${name}`);
+        if (parsed?.type !== "room") throw new Error("Unable to parse the room title returned by osu! API.");
+        this.updateLobbyState(channel, parsed.value);
+        return;
+      } catch (error) {
+        lastError = error;
+        const message = error instanceof Error ? error.message : String(error);
+        const retryable = /timed out|timeout|fetch failed|network|socket|connect/i.test(message);
+        if (!retryable || attempt >= 2) {
+          this.broadcast({
+            type: "lobby_system_message",
+            channel: channel.replace(/^:/, ""),
+            text: `Unable to load the room title from osu! API after ${attempt + 1} attempt${attempt ? "s" : ""}: ${message}. Falling back to IRC.`,
+          });
+          break;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+      }
+    }
+
+    console.error(`[${formatLogTime()}] lobby title refresh failed for ${channel}: ${(lastError as Error)?.message || String(lastError)}`);
+    try {
+      this.sendMessage(channel, "!mp settings");
+    } catch (error) {
+      this.broadcast({
+        type: "lobby_system_message",
+        channel: channel.replace(/^:/, ""),
+        text: `Unable to request the room title through IRC: ${(error as Error).message}`,
+      });
+    }
+  }
+
   handleLobbyMessage(channel: string, nick: string | null, text: string): void {
     const command = parseLobbyCommand(text);
     if (command) {
@@ -860,6 +905,10 @@ function validateMessage(message: unknown): string | null {
       }
       return null;
     },
+    refresh_lobby_title: () => {
+      if (!isNonEmptyString(message.channel)) return "channel must be a non-empty string.";
+      return null;
+    },
     set_lobby_score: () => {
       if (!isNonEmptyString(message.channel)) {
         return "channel must be a non-empty string.";
@@ -1076,6 +1125,12 @@ function handlePartChannel(client: WebSocket, message: ClientMessage): void {
   }
 }
 
+function handleSetLobbyTitle(client: WebSocket, message: ClientMessage): void {
+  const payload = message as Extract<ClientMessage, { type: "refresh_lobby_title" }>;
+  void banchoConnection.refreshLobbyTitle(payload.channel.trim());
+  sendJson(client, { type: "ack", received: message.type });
+}
+
 function handleSetLobbyScore(client: WebSocket, message: ClientMessage): void {
   const { channel, teamRedScore, teamBlueScore } = message as Extract<ClientMessage, { type: "set_lobby_score" }>;
   try {
@@ -1132,6 +1187,7 @@ function handleClientMessage(client: WebSocket, rawMessage: unknown): void {
     join_channel: handleJoinChannel,
     leave_channel: handleLeaveChannel,
     part_channel: handlePartChannel,
+    refresh_lobby_title: handleSetLobbyTitle,
     set_lobby_score: handleSetLobbyScore,
     set_lobby_settings: handleSetLobbySettings,
     set_active_win_condition: handleSetActiveWinCondition,

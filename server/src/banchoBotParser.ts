@@ -254,13 +254,22 @@ function parsePlayerSnapshot(text: string): PlayerSnapshot | null {
   const match = text.match(/^Slot\s+(\d+)\s+(Ready|Not Ready|No Map)\s+(https?:\/\/\S+)\s+(.+?)\s*$/i);
   if (!match) return null;
 
-  const playerDetails = match[4].match(/^(.*?)\s*\[([^\]]+)\]\s*$/);
-  const username = (playerDetails ? playerDetails[1] : match[4]).trim();
-  const details = playerDetails?.[2].trim() || "";
-  const detailParts = details
+  const playerDetails = match[4].match(/^(.*?)\s+\[([^\]]+)\]\s*$/);
+  const candidateDetails = playerDetails?.[2].trim() || "";
+  const detailParts = candidateDetails
     .split(/\s*\/\s*/)
     .map((part) => part.trim())
     .filter(Boolean);
+  const detailTokens = detailParts.flatMap((part) =>
+    part
+      .split(/\s*,\s*/)
+      .map((token) => token.trim())
+      .filter(Boolean),
+  );
+  const knownDetails = detailTokens.length > 0 && detailTokens.every((detail) => /^Host$/i.test(detail) || /^Team\s+(Red|Blue)$/i.test(detail) || MOD_CODES.has(detail.toLowerCase()));
+  const hasPlayerDetails = Boolean(playerDetails && knownDetails);
+  const username = (hasPlayerDetails ? playerDetails?.[1] || "" : match[4]).trim();
+  //const details = hasPlayerDetails ? candidateDetails : "";
   const teamPart = detailParts.find((part) => /^Team\s+(Red|Blue)$/i.test(part));
   const teamMatch = teamPart?.match(/^Team\s+(Red|Blue)$/i);
   const team = teamMatch ? (teamMatch[1].toLowerCase() as "red" | "blue") : null;
