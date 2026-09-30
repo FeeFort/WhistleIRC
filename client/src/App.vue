@@ -26,13 +26,23 @@ import ShortcutImportExportSettings from "./components/ShortcutImportExportSetti
 import UpdateDialog from "./components/UpdateDialog.vue";
 import { DEFAULT_PRIMARY_COLOR, useDarkMode } from "./composables/useDarkMode";
 import { DEFAULT_CHAT_SETTINGS, useChatSettings } from "./composables/useChatSettings";
-import { HIGHLIGHT_STYLE_OPTIONS, highlightTextStyle, messageHasHighlight, normalizeHighlightStyles, normalizeHighlightWords } from "./composables/useMessageHighlighting";
+import {
+  HIGHLIGHT_STYLE_OPTIONS,
+  escapeRegExp,
+  highlightTextStyle,
+  messageHasHighlight,
+  normalizeTeamHighlights,
+  normalizeHighlightStyles,
+  normalizeHighlightWords,
+  teamTextStyle,
+} from "./composables/useMessageHighlighting";
 import { useNickColor } from "./composables/useNickColor";
 import { clearRememberedCredentials, loadRememberedCredentials, loadOsuAuthData, saveRememberedCredentials, saveOsuAuthData } from "./composables/useRememberedCredentials";
 import { getOsuRedirectUri, readOsuAuthorizationCallback, startOsuAuthorization } from "./composables/useOsuOAuth";
 import { useServerConnection } from "./composables/useServerConnection";
 import { formatLobbyTemplate, useLobbyMessages } from "./composables/useLobbyMessages";
-import { useMappool } from "./composables/useMappool";
+import { sortMappoolSlots, useMappool } from "./composables/useMappool";
+import { advanceMappoolChatContext, createMappoolChatContext } from "./composables/useMappoolChat";
 import { useNowPlayingSettings } from "./composables/useNowPlayingSettings";
 import { NOTIFICATION_SOUNDS, NOTIFICATION_TRIGGER_OPTIONS, getNotificationSoundUrl, useNotifications } from "./composables/useNotifications";
 
@@ -76,6 +86,7 @@ const directChats = ref([]);
 const joinedChannels = ref([]);
 const lobbyStates = reactive({});
 const channelMessages = reactive({});
+const lobbyContexts = reactive({});
 const pendingPartChannels = new Set();
 const pendingLobbySeed = ref(null);
 const pendingLobbyCreatedViaApp = ref(false);
@@ -85,6 +96,7 @@ const { primaryColor, setPrimaryColor } = useDarkMode();
 const {
   highlightReferee,
   highlightBanchoBot,
+  highlightTeams,
   banchoBotColor,
   redTeamColor,
   blueTeamColor,
@@ -110,6 +122,8 @@ const {
   partChannel: partServerChannel,
   setLobbyScore,
   setLobbySettings,
+  refreshLobbyTitle,
+  setActiveWinCondition,
   requestApi,
   checkUpdate,
   startUpdate,
@@ -121,7 +135,7 @@ const toast = useToast();
 const loginToastGroup = "irc-login";
 const launchedAfterUpdate = new URLSearchParams(window.location.search).has("updated");
 const { activePreset } = useLobbyMessages();
-const { getActivePool, getMapState, getQualificationMode, hasQualificationMode, setQualificationMode, clearLobbyState } = useMappool();
+const { getActivePool, getMapState, setMapState, getQualificationMode, hasQualificationMode, setQualificationMode } = useMappool();
 const { soundEnabled, toastEnabled, ignoreBanchoBot, sound, soundTrigger, toastTrigger } = useNotifications();
 const { showNowPlaying, showProgressBar, showProgressTimeLabel } = useNowPlayingSettings();
 const nowPlayingByLobby = reactive({});
@@ -237,7 +251,41 @@ const chatPreviewMessages = [
     text: "This is a highlighted message!",
     highlightPreview: true,
   },
+  {
+    id: 7,
+    time: "12:05:14",
+    author: "referee",
+    role: "referee",
+    text: "Team Red and Team Blue are ready to start.",
+  },
 ];
+
+const previewTeams = computed(() =>
+  normalizeTeamHighlights([
+    { name: "Team Red", color: redTeamColor.value },
+    { name: "Team Blue", color: blueTeamColor.value },
+  ]),
+);
+
+function previewTeamSegments(text) {
+  if (!highlightTeams.value) return [{ type: "text", value: text }];
+  const pattern = previewTeams.value.map((team) => escapeRegExp(team.name)).join("|");
+  if (!pattern) return [{ type: "text", value: text }];
+  const result = [];
+  let lastIndex = 0;
+  for (const match of String(text).matchAll(new RegExp(`(^|[^\\p{L}\\p{N}_])(${pattern})(?=$|[^\\p{L}\\p{N}_])`, "giu"))) {
+    const start = match.index ?? 0;
+    const prefix = match[1] || "";
+    const nameStart = start + prefix.length;
+    if (start > lastIndex) result.push({ type: "text", value: text.slice(lastIndex, start) });
+    if (prefix) result.push({ type: "text", value: prefix });
+    const team = previewTeams.value.find((item) => item.name.toLowerCase() === match[2].toLowerCase());
+    result.push({ type: "team", value: match[2], color: team?.color });
+    lastIndex = nameStart + match[2].length;
+  }
+  if (lastIndex < text.length) result.push({ type: "text", value: text.slice(lastIndex) });
+  return result.length ? result : [{ type: "text", value: text }];
+}
 
 const highlightWordsDraft = computed({
   get: () => highlightWords.value,
@@ -334,6 +382,14 @@ watch(
       return;
     }
 
+    if (event?.type === "lobby_system_message") {
+      const chatId = channelId(event.channel);
+      if (chatId && joinedChannels.value.some((channel) => channel.id === chatId)) {
+        appendChatMessage(chatId, { id: nextId++, type: "system", text: event.text });
+      }
+      return;
+    }
+
     if (event?.type === "channel_joined") {
       const channel = addJoinedChannel(event.channel);
       const joinedChannelId = channelId(event.channel);
@@ -361,6 +417,8 @@ watch(
         }
         pendingLobbySeed.value = null;
         pendingLobbyCreatedViaApp.value = false;
+      } else if (channel && normalizeIrcNick(event.nick) === normalizeIrcNick(currentUser.value)) {
+        refreshLobbyTitle(channel.label);
       }
       return;
     }
@@ -676,6 +734,9 @@ function handleLogout() {
   });
   Object.keys(lobbyStates).forEach((channelIdValue) => {
     delete lobbyStates[channelIdValue];
+  });
+  Object.keys(lobbyContexts).forEach((channelIdValue) => {
+    delete lobbyContexts[channelIdValue];
   });
   Object.keys(roomClosedByChat).forEach((chatId) => {
     delete roomClosedByChat[chatId];
@@ -999,6 +1060,7 @@ const activeLobbySize = computed(() => activeLobbyState.value?.size ?? 16);
 const activeLobbyTeamMode = computed(() => activeLobbyState.value?.teamMode || "HeadToHead");
 const activeLobbyScoreMode = computed(() => activeLobbyState.value?.scoreMode || "Score");
 const activeLobbyGameMode = computed(() => activeLobbyState.value?.mode || "osu!");
+const activeMappoolSlots = computed(() => getActivePool(activeChat.value)?.slots || []);
 const activeNowPlaying = computed(() => {
   if (!showNowPlaying.value || activeChatKind.value !== "lobby" || roomClosedByChat[activeChat.value]) return null;
   const map = nowPlayingByLobby[activeChat.value];
@@ -1177,6 +1239,7 @@ function addJoinedChannel(channelName) {
   joinedChannels.value.push(channel);
   lobbyStates[channel.id] = channel.lobby;
   channelMessages[channel.id] = [];
+  lobbyContexts[channel.id] = createMappoolChatContext();
   unreadChats[channel.id] = false;
   return channel;
 }
@@ -1325,6 +1388,7 @@ function removeJoinedChannel(channelName) {
   delete channelMessages[channel.id];
   delete unreadChats[channel.id];
   delete lobbyStates[channel.id];
+  delete lobbyContexts[channel.id];
 }
 
 function selectChat(chatId) {
@@ -1438,7 +1502,12 @@ function notifyIncomingMessage(chatId, message) {
 
 function appendChatMessage(chatId, message, { notify = false } = {}) {
   const list = chatId === "bancho" ? banchoMessages.value : (channelMessages[chatId] ||= []);
-  list.push({ ...message, time: message.time || new Date().toISOString() });
+  const normalizedMessage = { ...message, time: message.time || new Date().toISOString() };
+  if (chatId !== "bancho" && joinedChannels.value.some((channel) => channel.id === chatId)) {
+    const context = (lobbyContexts[chatId] ||= createMappoolChatContext());
+    normalizedMessage.phaseAtMessage = advanceMappoolChatContext(context, normalizedMessage, { roomClosed: Boolean(roomClosedByChat[chatId]) });
+  }
+  list.push(normalizedMessage);
   if (activeChat.value !== chatId) {
     unreadChats[chatId] = true;
   }
@@ -1653,8 +1722,9 @@ function handleNowPlayingEvent(chatId, text) {
 function markRoomClosed(chatId) {
   if (roomClosedByChat[chatId]) return;
   roomClosedByChat[chatId] = true;
+  const context = (lobbyContexts[chatId] ||= createMappoolChatContext());
+  context.phase = "finished";
   delete nowPlayingByLobby[chatId];
-  clearLobbyState(chatId);
   clearCachedLobbyProfiles(chatId);
   const channel = joinedChannels.value.find((item) => item.id === chatId);
   if (channel) {
@@ -1739,6 +1809,7 @@ function closeActiveChat(chatId = activeChat.value) {
   delete channelMessages[chatId];
   delete unreadChats[chatId];
   delete roomClosedByChat[chatId];
+  delete lobbyContexts[chatId];
 
   activeChat.value = "bancho";
   unreadChats.bancho = false;
@@ -1895,8 +1966,8 @@ function getLobbyTemplateValues(lobby, result = {}) {
   const beatmapTeamBlueScore = formatBeatmapScore(rawBeatmapTeamBlueScore);
   const activeMappool = getActivePool(activeChat.value);
   const availableMaps =
-    activeMappool?.slots
-      ?.filter((slot) => {
+    sortMappoolSlots(activeMappool?.slots, activeMappool?.categories)
+      .filter((slot) => {
         const state = getMapState(activeChat.value, slot.slotId);
         return Number(slot.beatmapId) > 0 && !/^(?:TB|Tiebreaker)\d*$/i.test(String(slot.slotId).trim()) && !state.picked && !state.banned;
       })
@@ -1953,6 +2024,37 @@ function handleMappoolPick(map) {
   };
   setNowPlaying(activeChat.value, nextMap);
   refreshNowPlayingMapAttributes(activeChat.value, nextMap);
+}
+
+function rulesetNumber(ruleset) {
+  return ({ osu: 0, taiko: 1, fruits: 2, mania: 3 }[ruleset] ?? Number(ruleset)) || 0;
+}
+
+function handleChatMappoolAction({ slotId, action }) {
+  if (activeChatKind.value !== "lobby" || roomClosedByChat[activeChat.value]) return;
+  const pool = getActivePool(activeChat.value);
+  const slot = pool?.slots?.find((item) => item.slotId === slotId);
+  if (!slot) return;
+  const current = getMapState(activeChat.value, slot.slotId);
+
+  if (current.banned || current.picked) return;
+  if (action === "ban" && current.protected) return;
+
+  if (action === "ban") {
+    setMapState(activeChat.value, slot.slotId, { banned: true, picked: false });
+    return;
+  }
+  if (action === "protect") {
+    if (current.protected) return;
+    setMapState(activeChat.value, slot.slotId, { protected: true });
+    return;
+  }
+
+  const commands = [`!mp map ${slot.beatmapId} ${rulesetNumber(pool.ruleset)}`, slot.mods.length ? `!mp mods ${slot.mods.join(" ")}` : "!mp mods", ...slot.commands, ...(pool.globalCommands || [])];
+  commands.forEach(handleCommand);
+  setActiveWinCondition(activeChat.value, slot.beatmapId, slot.winCondition?.source || null);
+  setMapState(activeChat.value, slot.slotId, { picked: true });
+  handleMappoolPick(slot);
 }
 
 function handleSendResult(result) {
@@ -2278,12 +2380,25 @@ function handleSendResult(result) {
                 >{{ message.author }}</span
               >
               <span class="settings-page__chat-text" :class="{ 'settings-page__chat-text--highlighted': previewMessageHighlighted(message) }" :style="previewMessageStyle(message)">
-                {{ message.text }}
+                <template v-for="(segment, segmentIndex) in previewTeamSegments(message.text)" :key="`${message.id}-team-${segmentIndex}`">
+                  <span v-if="segment.type === 'team'" :style="teamTextStyle(segment.color)">{{ segment.value }}</span>
+                  <template v-else>{{ segment.value }}</template>
+                </template>
               </span>
             </div>
           </div>
 
           <div class="settings-page__settings-list">
+            <div class="settings-page__setting">
+              <div class="settings-page__setting-info">
+                <h3>Highlight team names</h3>
+                <p>Show team names in bold using the red and blue team colors.</p>
+              </div>
+              <div class="settings-page__setting-control">
+                <ToggleSwitch v-model="highlightTeams" inputId="highlight-team-names" class="app-solid-switch" />
+              </div>
+            </div>
+
             <div class="settings-page__setting">
               <div class="settings-page__setting-info">
                 <h3>Highlight referee</h3>
@@ -2528,7 +2643,10 @@ function handleSendResult(result) {
         :show-progress-time-label="showProgressTimeLabel"
         :team-red-name="activeLobbyState?.teamRed || ''"
         :team-blue-name="activeLobbyState?.teamBlue || ''"
+        :mappool-slots="activeMappoolSlots"
+        :get-mappool-state="(slotId) => getMapState(activeChat, slotId)"
         @send="handleSend"
+        @mappool-action="handleChatMappoolAction"
         @send-command="handleCommand"
         @create-lobby="createLobbyDialogOpen = true"
         @download-chat-history="downloadChatHistory"

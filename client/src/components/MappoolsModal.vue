@@ -8,7 +8,9 @@ import ToggleSwitch from "primevue/toggleswitch";
 import { Plus, Pencil, Trash2, Download, Upload, ChevronDown, ChevronRight, Settings, Check, AlertTriangle } from "@lucide/vue";
 import TagInput from "./TagInput.vue";
 import WinConditionEditor from "./WinConditionEditor.vue";
-import { DEFAULT_WIN_CONDITION, WIN_CONDITION_TEMPLATES, serializeMappool, useMappool, winConditionSource } from "../composables/useMappool";
+import BulkBeatmapImportDialog from "./BulkBeatmapImportDialog.vue";
+import { escapeRegExp } from "../composables/useMessageHighlighting";
+import { DEFAULT_WIN_CONDITION, WIN_CONDITION_TEMPLATES, defaultModsForCategory, serializeMappool, useMappool, winConditionSource } from "../composables/useMappool";
 import { useServerConnection } from "../composables/useServerConnection";
 const props = defineProps({ visible: Boolean });
 const emit = defineEmits(["update:visible"]);
@@ -26,6 +28,8 @@ const editingCategory = ref(null);
 const importInput = ref(null);
 const deleteConfirmation = ref(null);
 const invalidMappoolsConfirmation = ref(null);
+const bulkImportVisible = ref(false);
+const bulkImportPool = ref(null);
 const editor = ref(null);
 let poolEditCloseTimer;
 let slotEditCloseTimer;
@@ -145,7 +149,9 @@ function applyCategoryRename(pool, category) {
     slots: pool.slots.map((slot, index, allSlots) => {
       if (slot.category !== category) return slot;
       const number = allSlots.slice(0, index + 1).filter((item) => item.category === category).length;
-      return { ...slot, category: name, slotId: `${name}${number}` };
+      const previousDefaults = defaultModsForCategory(category);
+      const shouldApplyCategoryDefaults = !slot.mods?.length || JSON.stringify(slot.mods) === JSON.stringify(previousDefaults);
+      return { ...slot, category: name, slotId: `${name}${number}`, ...(shouldApplyCategoryDefaults ? { mods: defaultModsForCategory(name) } : {}) };
     }),
   });
   const next = new Set(expandedCategories.value);
@@ -226,7 +232,7 @@ function newPool() {
     globalCommands: [],
     freeModMultipliers: [],
     categories: [category],
-    slots: [{ slotId: `${category}1`, category, beatmapId: 0, mods: [], commands: [] }],
+    slots: [{ slotId: `${category}1`, category, beatmapId: 0, mods: defaultModsForCategory(category), commands: [] }],
   });
 }
 function closePoolEditor() {
@@ -449,7 +455,7 @@ function addCategory(pool) {
   while (existing.has(name)) name = `Untitled category ${suffix++}`;
   updateMappool(pool.id, {
     categories: [...(pool.categories || []), name],
-    slots: [...pool.slots, { slotId: `${name}1`, category: name, beatmapId: 0, mods: [], commands: [] }],
+    slots: [...pool.slots, { slotId: `${name}1`, category: name, beatmapId: 0, mods: defaultModsForCategory(name), commands: [] }],
   });
   const next = new Set(expandedCategories.value);
   next.add(categoryKey(pool, name));
@@ -462,7 +468,7 @@ function addSlot(pool, category) {
   const used = new Set(pool.slots.map((slot) => slot.slotId));
   let number = 1;
   while (used.has(`${category}${number}`)) number += 1;
-  updateMappool(pool.id, { slots: [...pool.slots, { slotId: `${category}${number}`, category, beatmapId: 0, mods: [], commands: [] }] });
+  updateMappool(pool.id, { slots: [...pool.slots, { slotId: `${category}${number}`, category, beatmapId: 0, mods: defaultModsForCategory(category), commands: [] }] });
 }
 function previewKey(pool, slot) {
   return `${pool.id}:${slot.slotId}`;
@@ -553,6 +559,52 @@ function exportPool(pool) {
   link.click();
   URL.revokeObjectURL(link.href);
 }
+
+function openBulkImport(pool) {
+  bulkImportPool.value = pool;
+  bulkImportVisible.value = true;
+}
+
+function importBulkMaps({ maps }) {
+  const pool = mappools.value.find((item) => item.id === bulkImportPool.value?.id);
+  if (!pool || !maps?.length) return;
+
+  const categories = [...(pool.categories || [])];
+  const slots = pool.slots.map((slot) => ({ ...slot, mods: [...(slot.mods || [])], commands: [...(slot.commands || [])] }));
+  const nextNumbers = new Map();
+  const ensureCategory = (name) => {
+    if (categories.some((category) => category.toLowerCase() === name.toLowerCase())) return categories.find((category) => category.toLowerCase() === name.toLowerCase());
+    categories.push(name);
+    return name;
+  };
+  const nextSlotId = (category) => {
+    let number = nextNumbers.get(category);
+    if (!number) {
+      number =
+        slots.reduce((max, slot) => {
+          if (slot.category !== category) return max;
+          const match = String(slot.slotId || "").match(new RegExp(`^${escapeRegExp(category)}(\\d+)$`, "i"));
+          return Math.max(max, Number(match?.[1] || 0));
+        }, 0) + 1;
+    }
+    nextNumbers.set(category, number + 1);
+    return `${category}${number}`;
+  };
+
+  maps.forEach((map) => {
+    const category = ensureCategory(map.category);
+    const emptySlot = slots.find((slot) => slot.category === category && Number(slot.beatmapId) <= 0);
+    const value = {
+      beatmapId: Number(map.id),
+      mods: defaultModsForCategory(category),
+      commands: [],
+      preview: map.preview,
+    };
+    if (emptySlot) Object.assign(emptySlot, value);
+    else slots.push({ slotId: nextSlotId(category), category, ...value });
+  });
+  updateMappool(pool.id, { categories, slots });
+}
 function importPool(event) {
   const file = event.target.files?.[0];
   event.target.value = "";
@@ -579,7 +631,8 @@ watch(editing, (value) => {
   <Dialog
     :visible="visible"
     modal
-    :dismissable-mask="true"
+    :dismissable-mask="!bulkImportVisible"
+    :close-on-escape="!bulkImportVisible"
     header="Mappools"
     class="mappools-dialog"
     :style="{ width: '46rem' }"
@@ -616,6 +669,7 @@ watch(editing, (value) => {
             @click="editing = { ...pool, globalCommands: [...pool.globalCommands], freeModMultipliers: multiplierRows(pool.freeModMultipliers) }"
             ><Pencil :size="15" /></Button
           ><Button v-tooltip.top="'Export mappool'" text rounded aria-label="Export mappool" @click="exportPool(pool)"><Download :size="15" /></Button
+          ><Button v-tooltip.top="'Add bulk of beatmaps'" text rounded aria-label="Add bulk of beatmaps" @click="openBulkImport(pool)"><Upload :size="15" /></Button
           ><Button v-tooltip.top="'Delete mappool'" text rounded severity="danger" aria-label="Delete mappool" @click="requestDelete(pool, { type: 'pool' })"><Trash2 :size="15" /></Button
         ></span>
       </header>
@@ -704,6 +758,7 @@ watch(editing, (value) => {
     </article>
     <p v-if="!mappools.length" class="mappools__empty">No mappools yet.</p>
   </Dialog>
+  <BulkBeatmapImportDialog v-model:visible="bulkImportVisible" :pool="bulkImportPool" @import="importBulkMaps" />
   <Dialog
     v-if="editing"
     :visible="poolEditVisible"

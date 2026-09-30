@@ -3,7 +3,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref } from "vue";
 import Button from "primevue/button";
 import { useToast } from "primevue/usetoast";
 import { Ban, ChevronDown, Crosshair, ShieldCheck, Settings } from "@lucide/vue";
-import { useMappool } from "../composables/useMappool";
+import { sortMappoolSlots, useMappool } from "../composables/useMappool";
 import { useServerConnection } from "../composables/useServerConnection";
 import MappoolsModal from "./MappoolsModal.vue";
 
@@ -34,19 +34,14 @@ const groups = computed(() => {
   if (!activePool.value) return [];
 
   const grouped = new Map();
-  activePool.value.slots.forEach((slot) => {
+  sortMappoolSlots(activePool.value.slots, activePool.value.categories).forEach((slot) => {
     const group = slot.category || "Other";
     if (!grouped.has(group)) grouped.set(group, []);
     grouped.get(group).push(slot);
   });
 
-  return [...grouped.entries()].sort(([first], [second]) => groupOrder(first) - groupOrder(second)).map(([name, maps]) => ({ name, maps }));
+  return [...grouped.entries()].map(([name, maps]) => ({ name, maps }));
 });
-
-function groupOrder(group) {
-  const order = ["NM", "HD", "HR", "DT", "HT", "FM", "TB", "Other"].indexOf(group);
-  return order === -1 ? 999 : order;
-}
 
 function send(command) {
   if (props.disabled) return;

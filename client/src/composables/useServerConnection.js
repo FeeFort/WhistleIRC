@@ -148,6 +148,10 @@ function setLobbySettings(channel, bestOf, nextPickTeam) {
     : false;
 }
 
+function refreshLobbyTitle(channel) {
+  return socket.value ? send(socket.value, { type: "refresh_lobby_title", channel }) : false;
+}
+
 function setActiveWinCondition(channel, beatmapId, source) {
   return socket.value ? send(socket.value, { type: "set_active_win_condition", channel, beatmapId, source }) : false;
 }
@@ -352,6 +356,7 @@ export function useServerConnection() {
     partChannel,
     setLobbyScore,
     setLobbySettings,
+    refreshLobbyTitle,
     setActiveWinCondition,
     testWinCondition,
     checkUpdate: requestUpdateCheck,

@@ -198,6 +198,7 @@ export type ClientMessage =
   | { type: "join_channel"; channel: string }
   | { type: "leave_channel"; channel: string }
   | { type: "part_channel"; channel: string }
+  | { type: "refresh_lobby_title"; channel: string }
   | { type: "set_lobby_score"; channel: string; teamRedScore: number; teamBlueScore: number }
   | { type: "set_lobby_settings"; channel: string; bestOf: number | null; nextPickTeam: string | null }
   | { type: "set_active_win_condition"; channel: string; beatmapId: number; source: string | null }
