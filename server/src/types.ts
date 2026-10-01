@@ -206,7 +206,27 @@ export type ClientMessage =
   | { type: "start_update" }
   | { type: "cancel_update" }
   | { type: "confirm_install" }
-  | { type: "test_win_condition"; slotId: string; source: string; sampleContext: Record<string, unknown> };
+  | { type: "test_win_condition"; slotId: string; source: string; sampleContext: Record<string, unknown> }
+  | ({ type: "lazer_make_room" } & MakeRoomRequest)
+  | { type: "lazer_join_room"; room_id: number }
+  | { type: "lazer_leave_room"; room_id: number }
+  | { type: "lazer_close_room"; room_id: number }
+  | { type: "lazer_invite_player"; room_id: number; user_id: number }
+  | { type: "lazer_kick_player"; room_id: number; user_id: number }
+  | { type: "lazer_ban_user"; room_id: number; user_id: number }
+  | { type: "lazer_add_referee"; room_id: number; user_id: number }
+  | { type: "lazer_remove_referee"; room_id: number; user_id: number }
+  | ({ type: "lazer_change_room_settings"; room_id: number } & ChangeRoomSettingsRequest)
+  | ({ type: "lazer_edit_current_playlist_item"; room_id: number } & EditCurrentPlaylistItemRequest)
+  | ({ type: "lazer_add_playlist_item"; room_id: number } & AddPlaylistItemRequest)
+  | ({ type: "lazer_edit_playlist_item"; room_id: number } & EditPlaylistItemRequest)
+  | ({ type: "lazer_remove_playlist_item"; room_id: number } & RemovePlaylistItemRequest)
+  | ({ type: "lazer_roll"; room_id: number } & RollRequest)
+  | ({ type: "lazer_move_user"; room_id: number } & MoveUserRequest)
+  | ({ type: "lazer_set_lock_state"; room_id: number } & SetLockStateRequest)
+  | ({ type: "lazer_start_match"; room_id: number } & StartGameplayRequest)
+  | { type: "lazer_stop_match_countdown"; room_id: number }
+  | { type: "lazer_abort_match"; room_id: number };
 
 export interface PersistedSession {
   clientId: string;
@@ -393,4 +413,248 @@ export interface WinConditionOutcome {
   error: string | null;
   systemMessages: string[];
   result: { beatmapWinner: WinConditionWinner; beatmapTeamRedScore: number; beatmapTeamBlueScore: number; scoreDifference: number } | null;
+}
+
+// SignalR API types
+
+export type HubEventHandler = (eventType: string, payload: unknown) => void;
+export type ResyncHandler = (rooms: unknown) => void;
+
+export interface RoomState {
+  roomId: number;
+  [key: string]: unknown;
+}
+
+export type RoomChangeListener = (room: RoomState) => void;
+export type RoomRemovedListener = (roomId: number) => void;
+
+export type MatchType = "head_to_head" | "team_versus";
+export type MatchTeam = "red" | "blue";
+export type MatchUserStatus = "idle" | "ready" | "playing" | "finished_play" | "spectating";
+export type CountdownType = "match_start" | "server_shutting_down";
+
+export interface LazerMod {
+  acronym: string;
+  settings?: Record<string, unknown>;
+}
+
+// ---- Requests ----
+
+export interface MakeRoomRequest {
+  ruleset_id: number;
+  beatmap_id: number;
+  name: string;
+  max_participants?: number;
+}
+
+export interface ChangeRoomSettingsRequest {
+  name?: string | null;
+  password?: string | null;
+  match_type?: MatchType | null;
+  max_participants?: number | null;
+}
+
+export interface EditPlaylistItemRequestParameters {
+  ruleset_id?: number | null;
+  beatmap_id?: number | null;
+  required_mods?: LazerMod[] | null;
+  allowed_mods?: LazerMod[] | null;
+  freestyle?: boolean | null;
+}
+
+export type EditCurrentPlaylistItemRequest = EditPlaylistItemRequestParameters;
+
+export interface EditPlaylistItemRequest extends EditPlaylistItemRequestParameters {
+  playlist_item_id: number;
+}
+
+export interface AddPlaylistItemRequest {
+  ruleset_id: number;
+  beatmap_id: number;
+  required_mods?: LazerMod[];
+  allowed_mods?: LazerMod[];
+  freestyle?: boolean;
+}
+
+export interface RemovePlaylistItemRequest {
+  playlist_item_id: number;
+}
+
+export interface MoveUserRequest {
+  user_id: number;
+  slot?: number | null;
+  team?: MatchTeam | null;
+}
+
+export interface RollRequest {
+  max?: number;
+}
+
+export interface SetLockStateRequest {
+  locked: boolean;
+}
+
+export interface StartGameplayRequest {
+  countdown?: number | null;
+}
+
+// ---- Responses ----
+
+export interface LazerStyle {
+  ruleset_id: number | null;
+  beatmap_id: number | null;
+}
+
+export interface LazerPlayer {
+  user_id: number;
+  status: MatchUserStatus;
+  style: LazerStyle;
+  mods: LazerMod[];
+  team: MatchTeam | null;
+}
+
+export interface LazerReferee {
+  user_id: number;
+}
+
+export interface LazerPlaylistItem {
+  id: number;
+  ruleset_id: number;
+  beatmap_id: number;
+  required_mods: LazerMod[];
+  allowed_mods: LazerMod[];
+  freestyle: boolean;
+  was_played: boolean;
+  order: number;
+}
+
+export interface LazerMatchState {
+  type: MatchType;
+  locked: boolean;
+  slots: (number | null)[] | null;
+}
+
+export interface RoomJoinedResponse {
+  room_id: number;
+  chat_channel_id: number;
+  name: string;
+  password: string;
+  max_participants: number;
+  state: LazerMatchState;
+  playlist: LazerPlaylistItem[];
+  players: LazerPlayer[];
+  referees: LazerReferee[];
+}
+
+export interface ListRoomsResponse {
+  room_ids: number[];
+}
+
+// ---- Events (IRefereeHubClient) ----
+
+export interface RefereeAddedEvent {
+  room_id: number;
+  user_id: number;
+}
+export interface RefereeRemovedEvent {
+  room_id: number;
+  user_id: number;
+}
+export interface RefereeInvitedEvent {
+  room_id: number;
+}
+export interface RoomSettingsChangedEvent {
+  room_id: number;
+  name: string;
+  password: string;
+  type: MatchType;
+  playlist_item_id: number;
+  max_participants: number | null;
+}
+export interface MatchStateChangedEvent {
+  room_id: number;
+  state: LazerMatchState;
+}
+export interface PlaylistItemAddedEvent {
+  room_id: number;
+  playlist_item: LazerPlaylistItem;
+}
+export interface PlaylistItemChangedEvent {
+  room_id: number;
+  playlist_item: LazerPlaylistItem;
+}
+export interface PlaylistItemRemovedEvent {
+  room_id: number;
+  playlist_item_id: number;
+}
+export interface RollCompletedEvent {
+  room_id: number;
+  user_id: number;
+  max: number;
+  result: number;
+}
+export interface UserStatusChangedEvent {
+  room_id: number;
+  user_id: number;
+  status: MatchUserStatus;
+}
+export interface UserModsChangedEvent {
+  room_id: number;
+  user_id: number;
+  mods: LazerMod[];
+}
+export interface UserStyleChangedEvent {
+  room_id: number;
+  user_id: number;
+  beatmap_id: number | null;
+  ruleset_id: number | null;
+}
+export interface UserTeamChangedEvent {
+  room_id: number;
+  user_id: number;
+  team: MatchTeam | null;
+}
+export interface CountdownStartedEvent {
+  room_id: number;
+  countdown_id: number;
+  seconds: number;
+  type: CountdownType;
+}
+export interface CountdownStoppedEvent {
+  room_id: number;
+  countdown_id: number;
+  type: CountdownType;
+}
+export interface MatchStartedEvent {
+  room_id: number;
+  playlist_item_id: number;
+  type: MatchType;
+  teams: Record<string, MatchTeam> | null;
+  slots: Record<string, number> | null;
+}
+export interface MatchAbortedEvent {
+  room_id: number;
+  playlist_item_id: number;
+}
+export interface MatchCompletedEvent {
+  room_id: number;
+  playlist_item_id: number;
+}
+export interface UserJoinedEvent {
+  room_id: number;
+  user_id: number;
+}
+export interface UserLeftEvent {
+  room_id: number;
+  user_id: number;
+}
+export interface UserKickedEvent {
+  room_id: number;
+  kicked_user_id: number;
+  kicking_user_id: number;
+}
+export interface UserBannedEvent {
+  room_id: number;
+  banned_user_id: number;
+  banning_user_id: number;
 }

@@ -4,7 +4,7 @@ import path from "node:path";
 import express, { Request, Response } from "express";
 import { WebSocket, WebSocketServer } from "ws";
 import { parseBanchoBotMessage, parseLobbyCommand } from "./banchoBotParser.js";
-import { login as loginOsu, logout as logoutOsu, getAccessToken, restoreSession } from "./auth/auth.js";
+import { login as loginOsu, logout as logoutOsu, getAccessToken, restoreSession, getState } from "./auth/auth.js";
 import { fetchApi } from "./osu-api/osuApiClient.js";
 import { config } from "./config.js";
 import { ClientMessage, ConnectionState, IrcCredentials, IrcLine, LobbyState, ParsedBanchoBotMessage, Player, PlayerScore, Team, WinConditionContext } from "./types.js";
@@ -14,14 +14,14 @@ import { applyPendingUpdate } from "./updater/applyUpdate.js";
 import { openInBrowser } from "./browser.js";
 import { createTray } from "./tray/index.js";
 import { evaluateWinCondition } from "./match-result/winConditionRunner.js";
+import { addClient, removeClient, sendJson, broadcast, clientCount } from "./wsGateway.js";
+import { connectToRefereeHub } from "./lazer/refereeHubClient.js";
+import { roomManager } from "./lazer/roomManager.js";
+import * as lazerHandlers from "./lazer/handlers.js";
 
-const IRC_HOST = "irc.ppy.sh";
-const IRC_PORT = 6667;
-const AUTH_ERROR = "Login or password is incorrect.";
 const launchedAfterUpdate = process.argv.includes("--updated");
 
 // TODO: add actual normal comments to this mess
-
 if (process.argv[2] === "--apply-update") {
   try {
     await applyPendingUpdate(process.argv[3], process.argv[4]);
@@ -56,12 +56,6 @@ app.get("/", (_request: Request, response: Response) => {
 app.get("/health", (_request: Request, response: Response) => {
   response.status(200).send("ok");
 });
-
-function sendJson(socket: WebSocket, payload: unknown): void {
-  if (socket.readyState === WebSocket.OPEN) {
-    socket.send(JSON.stringify(payload));
-  }
-}
 
 function parseIrcLine(line: string): IrcLine {
   let rest = line;
@@ -211,35 +205,28 @@ function sameLobbyValue(left: unknown, right: unknown): boolean {
   return JSON.stringify(left) === JSON.stringify(right);
 }
 
+async function startLazerSession(): Promise<void> {
+  roomManager.setListeners(
+    (room) => broadcast({ type: "lazer_room_state", room }),
+    (roomId) => broadcast({ type: "lazer_room_closed", roomId }),
+  );
+
+  await connectToRefereeHub(
+    (eventType, payload) => roomManager.handleHubEvent(eventType, payload as Record<string, unknown>),
+    () => roomManager.resync(),
+  );
+}
+
 class BanchoConnection {
   socket: net.Socket | null = null;
   state: ConnectionState = "disconnected";
   buffer = "";
   intentionalClose = false;
   credentials: IrcCredentials | null = null;
-  clients: Set<WebSocket> = new Set();
   lobbyStates: Map<string, LobbyState> = new Map();
   matchScoreBuffers: Map<string, Map<string, number>> = new Map();
   activeWinConditions: Map<string, { beatmapId: number; source: string }> = new Map();
   pendingAutoSettings: Set<string> = new Set();
-
-  addClient(client: WebSocket): void {
-    this.clients.add(client);
-    this.sendStatus(client);
-    for (const [channel, state] of this.lobbyStates) {
-      this.sendLobbyState(channel, state, client);
-    }
-  }
-
-  removeClient(client: WebSocket): void {
-    this.clients.delete(client);
-  }
-
-  broadcast(payload: unknown): void {
-    for (const client of this.clients) {
-      sendJson(client, payload);
-    }
-  }
 
   sendStatus(client: WebSocket | null = null, detail: string | null = null) {
     const payload: { type: string; state: ConnectionState; detail?: string } = { type: "status", state: this.state };
@@ -250,7 +237,7 @@ class BanchoConnection {
     if (client) {
       sendJson(client, payload);
     } else {
-      this.broadcast(payload);
+      broadcast(payload);
     }
   }
 
@@ -283,7 +270,7 @@ class BanchoConnection {
     if (client) {
       sendJson(client, payload);
     } else {
-      this.broadcast(payload);
+      broadcast(payload);
     }
   }
 
@@ -472,7 +459,7 @@ class BanchoConnection {
       resultRedScore = outcome.result?.beatmapTeamRedScore ?? teamRedScore;
       resultBlueScore = outcome.result?.beatmapTeamBlueScore ?? teamBlueScore;
       scoreDifference = outcome.result?.scoreDifference ?? (winnerTeam ? Math.abs(resultRedScore - resultBlueScore) : 0);
-      this.broadcast({
+      broadcast({
         type: "win_condition_result",
         channel: channel.replace(/^:/, ""),
         winner: outcome.winner,
@@ -526,7 +513,7 @@ class BanchoConnection {
         const message = error instanceof Error ? error.message : String(error);
         const retryable = /timed out|timeout|fetch failed|network|socket|connect/i.test(message);
         if (!retryable || attempt >= 2) {
-          this.broadcast({
+          broadcast({
             type: "lobby_system_message",
             channel: channel.replace(/^:/, ""),
             text: `Unable to load the room title from osu! API after ${attempt + 1} attempt${attempt ? "s" : ""}: ${message}. Falling back to IRC.`,
@@ -541,7 +528,7 @@ class BanchoConnection {
     try {
       this.sendMessage(channel, "!mp settings");
     } catch (error) {
-      this.broadcast({
+      broadcast({
         type: "lobby_system_message",
         channel: channel.replace(/^:/, ""),
         text: `Unable to request the room title through IRC: ${(error as Error).message}`,
@@ -572,7 +559,7 @@ class BanchoConnection {
     } else if (parsed.type === "settings" || parsed.type === "size") {
       this.updateLobbyState(channel, parsed.value);
       if (parsed.type === "settings" && this.pendingAutoSettings.has(normalizeChannel(channel))) {
-        this.broadcast({
+        broadcast({
           type: "lobby_settings_synced",
           channel: channel.replace(/^:/, ""),
         });
@@ -657,7 +644,7 @@ class BanchoConnection {
     this.pendingAutoSettings.clear();
     this.setState("connecting");
 
-    const socket = net.createConnection({ host: IRC_HOST, port: IRC_PORT });
+    const socket = net.createConnection({ host: config.ircHost, port: config.ircPort });
     this.socket = socket;
 
     socket.setEncoding("utf8");
@@ -733,14 +720,14 @@ class BanchoConnection {
     }
 
     if (["433", "451", "464"].includes(message.command)) {
-      this.setState("error", AUTH_ERROR);
+      this.setState("error", config.authError);
     }
 
     if (message.command === "372" && message.params.some((param) => param.toLowerCase().includes("required to authenticate"))) {
-      this.setState("error", AUTH_ERROR);
+      this.setState("error", config.authError);
     }
 
-    this.broadcast({
+    broadcast({
       type: "irc_event",
       raw: line,
       command: message.command,
@@ -759,7 +746,7 @@ class BanchoConnection {
         this.handleLobbyMessage(channel, nick, text);
       }
       if (!this.consumeAutoSettings(channel, nick, text)) {
-        this.broadcast({
+        broadcast({
           type: "message",
           channel,
           nick,
@@ -781,7 +768,7 @@ class BanchoConnection {
           this.closeLobby(channel);
         }
       }
-      this.broadcast({
+      broadcast({
         type: message.command === "JOIN" ? "channel_joined" : "channel_parted",
         channel,
         nick,
@@ -1036,7 +1023,7 @@ function handleSetActiveWinCondition(client: WebSocket, message: ClientMessage):
 function handleLogin(client: WebSocket, message: ClientMessage): void {
   const { login, password } = message as Extract<ClientMessage, { type: "login" }>;
   try {
-    banchoConnection.addClient(client);
+    addClient(client);
     banchoConnection.connect(login.trim(), password);
     sendJson(client, { type: "ack", received: message.type });
   } catch (error) {
@@ -1053,6 +1040,7 @@ async function handleOsuLogin(client: WebSocket, message: ClientMessage): Promis
   const { clientId, clientSecret, code, redirectUri } = message as Extract<ClientMessage, { type: "osu_login" }>;
   try {
     const user = await loginOsu({ clientId: clientId.trim(), clientSecret: clientSecret, redirectUri: redirectUri.trim() }, code.trim());
+    await startLazerSession();
     sendJson(client, { type: "osu_user", user });
   } catch (error) {
     console.error(`[${formatLogTime()}] osu! OAuth request failed: ${(error as Error).message}`);
@@ -1209,13 +1197,38 @@ function handleClientMessage(client: WebSocket, rawMessage: unknown): void {
     cancel_update: handleCancelUpdate,
     confirm_install: handleConfirmInstall,
     test_win_condition: handleTestWinCondition,
+    lazer_make_room: lazerHandlers.handleLazerMakeRoom,
+    lazer_join_room: lazerHandlers.handleLazerJoinRoom,
+    lazer_leave_room: lazerHandlers.handleLazerLeaveRoom,
+    lazer_close_room: lazerHandlers.handleLazerCloseRoom,
+    lazer_invite_player: lazerHandlers.handleLazerInvitePlayer,
+    lazer_kick_player: lazerHandlers.handleLazerKickPlayer,
+    lazer_ban_user: lazerHandlers.handleLazerBanUser,
+    lazer_add_referee: lazerHandlers.handleLazerAddReferee,
+    lazer_remove_referee: lazerHandlers.handleLazerRemoveReferee,
+    lazer_change_room_settings: lazerHandlers.handleLazerChangeRoomSettings,
+    lazer_edit_current_playlist_item: lazerHandlers.handleLazerEditCurrentPlaylistItem,
+    lazer_add_playlist_item: lazerHandlers.handleLazerAddPlaylistItem,
+    lazer_edit_playlist_item: lazerHandlers.handleLazerEditPlaylistItem,
+    lazer_remove_playlist_item: lazerHandlers.handleLazerRemovePlaylistItem,
+    lazer_roll: lazerHandlers.handleLazerRoll,
+    lazer_move_user: lazerHandlers.handleLazerMoveUser,
+    lazer_set_lock_state: lazerHandlers.handleLazerSetLockState,
+    lazer_start_match: lazerHandlers.handleLazerStartMatch,
+    lazer_stop_match_countdown: lazerHandlers.handleLazerStopMatchCountdown,
+    lazer_abort_match: lazerHandlers.handleLazerAbortMatch,
+    lazer_list_rooms: lazerHandlers.handleLazerListRooms,
   };
 
   handlers[message.type](client, message);
 }
 
 webSocketServer.on("connection", (client) => {
-  banchoConnection.addClient(client);
+  addClient(client);
+  banchoConnection.sendStatus(client);
+  for (const [channel, state] of banchoConnection.lobbyStates) {
+    banchoConnection.sendLobbyState(channel, state, client);
+  }
 
   client.on("message", (data) => {
     let message: unknown;
@@ -1232,14 +1245,17 @@ webSocketServer.on("connection", (client) => {
   });
 
   client.on("close", () => {
-    banchoConnection.removeClient(client);
-    if (banchoConnection.clients.size === 0) {
+    removeClient(client);
+    if (clientCount() === 0) {
       banchoConnection.logout();
     }
   });
 });
 
 await restoreSession();
+if (getState().status === "authenticated") {
+  await startLazerSession();
+}
 
 httpServer.listen(config.httpPort, config.httpHost, () => {
   console.log(`[${formatLogTime()}] WhistleIRC server listening on http://${config.httpHost}:${config.httpPort}`);
