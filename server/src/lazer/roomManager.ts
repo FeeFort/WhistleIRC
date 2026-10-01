@@ -1,49 +1,27 @@
-import { RoomChangeListener, RoomRemovedListener } from "../types.js";
+import type {
+  RoomJoinedResponse, RoomSettingsChangedEvent, MatchStateChangedEvent,
+  PlaylistItemAddedEvent, PlaylistItemChangedEvent, PlaylistItemRemovedEvent,
+  UserStatusChangedEvent, UserModsChangedEvent, UserStyleChangedEvent, UserTeamChangedEvent,
+  UserJoinedEvent, UserLeftEvent, UserKickedEvent, UserBannedEvent,
+  RefereeAddedEvent, RefereeRemovedEvent, LazerPlayer, MatchUserStatus,
+  ListRoomsResponse,
+} from "../types.js";
 import { invokeHub } from "./refereeHubClient.js";
 
-interface RoomState {
-  roomId: number;
-  [key: string]: unknown;
-}
+type RoomState = RoomJoinedResponse;
 
 class RoomManager {
   private rooms = new Map<number, RoomState>();
-  private onRoomChanged: RoomChangeListener | null = null;
-  private onRoomRemoved: RoomRemovedListener | null = null;
+  private onRoomChanged: ((room: RoomState) => void) | null = null;
+  private onRoomRemoved: ((roomId: number) => void) | null = null;
 
-  setListeners(onChanged: RoomChangeListener, onRemoved: RoomRemovedListener): void {
+  setListeners(onChanged: (room: RoomState) => void, onRemoved: (roomId: number) => void): void {
     this.onRoomChanged = onChanged;
     this.onRoomRemoved = onRemoved;
   }
 
-  handleHubEvent(eventType: string, payload: Record<string, unknown>): void {
-    const roomId = payload.room_id;
-    if (typeof roomId !== "number") {
-      console.warn(`[roomManager] event ${eventType} has no room_id, ignoring`, payload);
-      return;
-    }
-    // server reports about being added as a ref to the lobby with id, but doesn't join the room automatically, therefore invoking the method to join
-    if (eventType === "RefereeAdded") {
-      this.joinRoom(roomId).catch((error) => {
-        console.error(`[roomManager] failed to join room ${roomId} after RefereeAdded: ${(error as Error).message}`);
-      });
-      return;
-    }
-
-    let room = this.rooms.get(roomId);
-    if (!room) {
-      room = { roomId };
-      this.rooms.set(roomId, room);
-    }
-
-    Object.assign(room, payload);
-    this.onRoomChanged?.(room);
-  }
-
-  private async joinRoom(roomId: number): Promise<void> {
-    const response = await invokeHub("JoinRoom", roomId);
-    const room: RoomState = { roomId, ...(response as object) };
-    this.rooms.set(roomId, room);
+  trackRoom(room: RoomState): void {
+    this.rooms.set(room.room_id, room);
     this.onRoomChanged?.(room);
   }
 
@@ -55,22 +33,145 @@ class RoomManager {
     return [...this.rooms.values()];
   }
 
+  private findPlayer(room: RoomState, userId: number): LazerPlayer | undefined {
+    return room.players.find((p) => p.user_id === userId);
+  }
+
+  private upsertPlayerStub(room: RoomState, userId: number): LazerPlayer {
+    let player = this.findPlayer(room, userId);
+    if (!player) {
+      player = { user_id: userId, status: "idle", style: { ruleset_id: null, beatmap_id: null }, mods: [], team: null };
+      room.players.push(player);
+    }
+    return player;
+  }
+
+  handleHubEvent(eventType: string, payload: Record<string, unknown>): void {
+    const roomId = payload.room_id;
+    if (typeof roomId !== "number") {
+      console.warn(`[roomManager] event ${eventType} has no room_id, ignoring`, payload);
+      return;
+    }
+
+    if (eventType === "RefereeAdded") {
+      const event = payload as unknown as RefereeAddedEvent;
+      this.joinRoom(event.room_id).catch((error) => {
+        console.error(`[roomManager] failed to join room ${event.room_id} after RefereeAdded: ${(error as Error).message}`);
+      });
+      return;
+    }
+
+    const room = this.rooms.get(roomId);
+    if (!room) {
+      // Событие по комнате, о которой мы ещё не знаем (например, RefereeRemoved
+      // пришёл раньше, чем мы успели обработать RefereeAdded) — игнорируем безопасно.
+      console.warn(`[roomManager] event ${eventType} for unknown room ${roomId}, ignoring`);
+      return;
+    }
+
+    switch (eventType) {
+      case "RoomSettingsChanged": {
+        const e = payload as unknown as RoomSettingsChangedEvent;
+        room.name = e.name;
+        room.password = e.password;
+        room.state.type = e.type;
+        room.max_participants = e.max_participants ?? room.max_participants;
+        break;
+      }
+      case "MatchStateChanged": {
+        const e = payload as unknown as MatchStateChangedEvent;
+        room.state = e.state;
+        break;
+      }
+      case "PlaylistItemAdded": {
+        const e = payload as unknown as PlaylistItemAddedEvent;
+        room.playlist.push(e.playlist_item);
+        break;
+      }
+      case "PlaylistItemChanged": {
+        const e = payload as unknown as PlaylistItemChangedEvent;
+        const index = room.playlist.findIndex((item) => item.id === e.playlist_item.id);
+        if (index !== -1) room.playlist[index] = e.playlist_item;
+        break;
+      }
+      case "PlaylistItemRemoved": {
+        const e = payload as unknown as PlaylistItemRemovedEvent;
+        room.playlist = room.playlist.filter((item) => item.id !== e.playlist_item_id);
+        break;
+      }
+      case "UserJoined": {
+        const e = payload as unknown as UserJoinedEvent;
+        this.upsertPlayerStub(room, e.user_id);
+        break;
+      }
+      case "UserLeft": {
+        const e = payload as unknown as UserLeftEvent;
+        room.players = room.players.filter((p) => p.user_id !== e.user_id);
+        break;
+      }
+      case "UserKicked": {
+        const e = payload as unknown as UserKickedEvent;
+        room.players = room.players.filter((p) => p.user_id !== e.kicked_user_id);
+        break;
+      }
+      case "UserBanned": {
+        const e = payload as unknown as UserBannedEvent;
+        room.players = room.players.filter((p) => p.user_id !== e.banned_user_id);
+        break;
+      }
+      case "UserStatusChanged": {
+        const e = payload as unknown as UserStatusChangedEvent;
+        this.upsertPlayerStub(room, e.user_id).status = e.status as MatchUserStatus;
+        break;
+      }
+      case "UserModsChanged": {
+        const e = payload as unknown as UserModsChangedEvent;
+        this.upsertPlayerStub(room, e.user_id).mods = e.mods;
+        break;
+      }
+      case "UserStyleChanged": {
+        const e = payload as unknown as UserStyleChangedEvent;
+        this.upsertPlayerStub(room, e.user_id).style = { ruleset_id: e.ruleset_id, beatmap_id: e.beatmap_id };
+        break;
+      }
+      case "UserTeamChanged": {
+        const e = payload as unknown as UserTeamChangedEvent;
+        this.upsertPlayerStub(room, e.user_id).team = e.team;
+        break;
+      }
+      case "RefereeRemoved": {
+        const e = payload as unknown as RefereeRemovedEvent;
+        room.referees = room.referees.filter((r) => r.user_id !== e.user_id);
+        break;
+      }
+      // CountdownStarted/Stopped, MatchStarted/Aborted/Completed, RollCompleted, RefereeInvited
+      // don't mutate room state directly, rather they're transported to frontend as is
+      // without RoomState changes (see index.ts).
+      default:
+        break;
+    }
+
+    this.onRoomChanged?.(room);
+  }
+
   removeRoom(roomId: number): void {
     if (this.rooms.delete(roomId)) {
       this.onRoomRemoved?.(roomId);
     }
   }
-  // checks local rooms list against the one on the server, should be called on reconnect
+
+  private async joinRoom(roomId: number): Promise<void> {
+    const response = await invokeHub<RoomJoinedResponse>("JoinRoom", roomId);
+    this.trackRoom(response);
+  }
+
   async resync(): Promise<void> {
-    const response = await invokeHub<{ room_ids: number[] }>("ListRooms");
+    const response = await invokeHub<ListRoomsResponse>("ListRooms");
     const liveRoomIds = new Set(response.room_ids);
 
     for (const roomId of this.rooms.keys()) {
-      if (!liveRoomIds.has(roomId)) {
-        this.removeRoom(roomId);
-      }
+      if (!liveRoomIds.has(roomId)) this.removeRoom(roomId);
     }
-
     for (const roomId of liveRoomIds) {
       if (!this.rooms.has(roomId)) {
         try {
