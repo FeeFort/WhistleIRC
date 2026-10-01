@@ -17,6 +17,7 @@ import { evaluateWinCondition } from "./match-result/winConditionRunner.js";
 import { addClient, removeClient, sendJson, broadcast, clientCount } from "./wsGateway.js";
 import { connectToRefereeHub } from "./lazer/refereeHubClient.js";
 import { roomManager } from "./lazer/roomManager.js";
+import * as lazerHandlers from "./lazer/handlers.js";
 
 const launchedAfterUpdate = process.argv.includes("--updated");
 
@@ -512,7 +513,7 @@ class BanchoConnection {
         const message = error instanceof Error ? error.message : String(error);
         const retryable = /timed out|timeout|fetch failed|network|socket|connect/i.test(message);
         if (!retryable || attempt >= 2) {
-          this.broadcast({
+          broadcast({
             type: "lobby_system_message",
             channel: channel.replace(/^:/, ""),
             text: `Unable to load the room title from osu! API after ${attempt + 1} attempt${attempt ? "s" : ""}: ${message}. Falling back to IRC.`,
@@ -527,7 +528,7 @@ class BanchoConnection {
     try {
       this.sendMessage(channel, "!mp settings");
     } catch (error) {
-      this.broadcast({
+      broadcast({
         type: "lobby_system_message",
         channel: channel.replace(/^:/, ""),
         text: `Unable to request the room title through IRC: ${(error as Error).message}`,
@@ -1196,6 +1197,27 @@ function handleClientMessage(client: WebSocket, rawMessage: unknown): void {
     cancel_update: handleCancelUpdate,
     confirm_install: handleConfirmInstall,
     test_win_condition: handleTestWinCondition,
+    lazer_make_room: lazerHandlers.handleLazerMakeRoom,
+    lazer_join_room: lazerHandlers.handleLazerJoinRoom,
+    lazer_leave_room: lazerHandlers.handleLazerLeaveRoom,
+    lazer_close_room: lazerHandlers.handleLazerCloseRoom,
+    lazer_invite_player: lazerHandlers.handleLazerInvitePlayer,
+    lazer_kick_player: lazerHandlers.handleLazerKickPlayer,
+    lazer_ban_user: lazerHandlers.handleLazerBanUser,
+    lazer_add_referee: lazerHandlers.handleLazerAddReferee,
+    lazer_remove_referee: lazerHandlers.handleLazerRemoveReferee,
+    lazer_change_room_settings: lazerHandlers.handleLazerChangeRoomSettings,
+    lazer_edit_current_playlist_item: lazerHandlers.handleLazerEditCurrentPlaylistItem,
+    lazer_add_playlist_item: lazerHandlers.handleLazerAddPlaylistItem,
+    lazer_edit_playlist_item: lazerHandlers.handleLazerEditPlaylistItem,
+    lazer_remove_playlist_item: lazerHandlers.handleLazerRemovePlaylistItem,
+    lazer_roll: lazerHandlers.handleLazerRoll,
+    lazer_move_user: lazerHandlers.handleLazerMoveUser,
+    lazer_set_lock_state: lazerHandlers.handleLazerSetLockState,
+    lazer_start_match: lazerHandlers.handleLazerStartMatch,
+    lazer_stop_match_countdown: lazerHandlers.handleLazerStopMatchCountdown,
+    lazer_abort_match: lazerHandlers.handleLazerAbortMatch,
+    lazer_list_rooms: lazerHandlers.handleLazerListRooms,
   };
 
   handlers[message.type](client, message);
