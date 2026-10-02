@@ -7,7 +7,7 @@ import zlib from "node:zlib";
 
 function readPixmap(): [number, number, Buffer] {
   const base = path.dirname(fileURLToPath(import.meta.url));
-  const file = [path.join(base, "..", "icon.png"), path.join(base, "..", "..", "icon.png")].find((p) => fs.existsSync(p)) ?? path.join(base, "..", "icon.png");
+  const file = [path.join(base, "..", "icons", "icon.png"), path.join(base, "..", "..", "icons", "icon.png")].find((p) => fs.existsSync(p)) ?? path.join(base, "..", "icons", "icon.png");
   const png = fs.readFileSync(file);
   let offset = 8;
   let width = 0;

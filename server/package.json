@@ -49,10 +49,7 @@
     "assets": [
       "static/**/*",
       "node_modules/systray2/traybin/**/*",
-      "icon.png",
-      "icon.ico",
-      "icon.icns",
-      "icon.*"
+      "icons/*"
     ],
     "targets": [
       "node22-win-x64",
