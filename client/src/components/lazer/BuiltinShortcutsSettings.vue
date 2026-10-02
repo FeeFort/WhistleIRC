@@ -3,7 +3,7 @@ import InputNumber from "primevue/inputnumber";
 import ToggleSwitch from "primevue/toggleswitch";
 import Button from "primevue/button";
 import Dialog from "primevue/dialog";
-import { useShortcuts, BUILTIN_IDS } from "../composables/useShortcuts";
+import { useShortcuts, BUILTIN_IDS } from "../../composables/useShortcuts";
 
 defineProps({
   visible: { type: Boolean, default: false },

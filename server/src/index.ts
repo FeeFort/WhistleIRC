@@ -843,6 +843,38 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+function validateLazerRoomId(message: Record<string, unknown>): string | null {
+  return Number.isInteger(message.room_id) && (message.room_id as number) > 0 ? null : "room_id must be a positive integer.";
+}
+
+function validateLazerUserAction(message: Record<string, unknown>): string | null {
+  const roomError = validateLazerRoomId(message);
+  if (roomError) return roomError;
+  return Number.isInteger(message.user_id) && (message.user_id as number) > 0 ? null : "user_id must be a positive integer.";
+}
+
+function validateLazerOptionalMods(message: Record<string, unknown>): string | null {
+  for (const field of ["required_mods", "allowed_mods"]) {
+    const value = message[field];
+    if (value !== undefined && value !== null && !Array.isArray(value)) return `${field} must be an array or null.`;
+  }
+  return null;
+}
+
+function validateLazerOptionalPlaylistFields(message: Record<string, unknown>): string | null {
+  const rulesetError = message.ruleset_id !== undefined && message.ruleset_id !== null && (!Number.isInteger(message.ruleset_id) || (message.ruleset_id as number) < 0) ? "ruleset_id must be a non-negative integer or null." : null;
+  if (rulesetError) return rulesetError;
+  if (message.beatmap_id !== undefined && message.beatmap_id !== null && (!Number.isInteger(message.beatmap_id) || (message.beatmap_id as number) <= 0)) return "beatmap_id must be a positive integer or null.";
+  if (message.freestyle !== undefined && message.freestyle !== null && typeof message.freestyle !== "boolean") return "freestyle must be a boolean or null.";
+  return validateLazerOptionalMods(message);
+}
+
+function validateLazerPlaylistItem(message: Record<string, unknown>): string | null {
+  const roomError = validateLazerRoomId(message);
+  if (roomError) return roomError;
+  return validateLazerOptionalPlaylistFields(message);
+}
+
 function validateMessage(message: unknown): string | null {
   if (!isRecord(message)) {
     return "Message must be a JSON object.";
@@ -948,6 +980,75 @@ function validateMessage(message: unknown): string | null {
       if (!isNonEmptyString(message.slotId) || typeof message.source !== "string" || !isRecord(message.sampleContext)) return "slotId, source and sampleContext are required.";
       return null;
     },
+    lazer_make_room: () => {
+      if (!Number.isInteger(message.ruleset_id) || (message.ruleset_id as number) < 0) return "ruleset_id must be a non-negative integer.";
+      if (!Number.isInteger(message.beatmap_id) || (message.beatmap_id as number) <= 0) return "beatmap_id must be a positive integer.";
+      if (!isNonEmptyString(message.name)) return "name must be a non-empty string.";
+      if (message.max_participants !== undefined && (!Number.isInteger(message.max_participants) || (message.max_participants as number) <= 0)) return "max_participants must be a positive integer.";
+      return null;
+    },
+    lazer_join_room: () => validateLazerRoomId(message),
+    lazer_leave_room: () => validateLazerRoomId(message),
+    lazer_close_room: () => validateLazerRoomId(message),
+    lazer_invite_player: () => validateLazerUserAction(message),
+    lazer_kick_player: () => validateLazerUserAction(message),
+    lazer_ban_user: () => validateLazerUserAction(message),
+    lazer_add_referee: () => validateLazerUserAction(message),
+    lazer_remove_referee: () => validateLazerUserAction(message),
+    lazer_change_room_settings: () => {
+      const roomError = validateLazerRoomId(message);
+      if (roomError) return roomError;
+      if (message.name !== undefined && message.name !== null && typeof message.name !== "string") return "name must be a string or null.";
+      if (message.password !== undefined && message.password !== null && typeof message.password !== "string") return "password must be a string or null.";
+      if (message.match_type !== undefined && message.match_type !== null && !["head_to_head", "team_versus"].includes(String(message.match_type))) { return "match_type must be head_to_head, team_versus, or null."; }
+      if (message.max_participants !== undefined && message.max_participants !== null && (!Number.isInteger(message.max_participants) || (message.max_participants as number) < 0)) return "max_participants must be a positive integer or null.";
+      return null;
+    },
+    lazer_edit_current_playlist_item: () => validateLazerPlaylistItem(message),
+    lazer_add_playlist_item: () => {
+      if (!Number.isInteger(message.ruleset_id) || (message.ruleset_id as number) < 0) return "ruleset_id must be a non-negative integer.";
+      if (!Number.isInteger(message.beatmap_id) || (message.beatmap_id as number) <= 0) return "beatmap_id must be a positive integer.";
+      return validateLazerOptionalMods(message);
+    },
+    lazer_edit_playlist_item: () => {
+      const roomError = validateLazerRoomId(message);
+      if (roomError) return roomError;
+      if (!Number.isInteger(message.playlist_item_id) || (message.playlist_item_id as number) <= 0) return "playlist_item_id must be a positive integer.";
+      return validateLazerOptionalPlaylistFields(message);
+    },
+    lazer_remove_playlist_item: () => {
+      const roomError = validateLazerRoomId(message);
+      if (roomError) return roomError;
+      return Number.isInteger(message.playlist_item_id) && (message.playlist_item_id as number) > 0 ? null : "playlist_item_id must be a positive integer.";
+    },
+    lazer_roll: () => {
+      const roomError = validateLazerRoomId(message);
+      if (roomError) return roomError;
+      if (message.max !== undefined && (!Number.isInteger(message.max) || (message.max as number) <= 0)) return "max must be a positive integer.";
+      return null;
+    },
+    lazer_move_user: () => {
+      const roomError = validateLazerRoomId(message);
+      if (roomError) return roomError;
+      if (!Number.isInteger(message.user_id) || (message.user_id as number) <= 0) return "user_id must be a positive integer.";
+      if (message.slot !== undefined && message.slot !== null && (!Number.isInteger(message.slot) || (message.slot as number) < 0)) return "slot must be null or a non-negative integer.";
+      if (message.team !== undefined && message.team !== null && !["red", "blue"].includes(String(message.team))) return "team must be red, blue, or null.";
+      return null;
+    },
+    lazer_set_lock_state: () => {
+      const roomError = validateLazerRoomId(message);
+      if (roomError) return roomError;
+      return typeof message.locked === "boolean" ? null : "locked must be a boolean.";
+    },
+    lazer_start_match: () => {
+      const roomError = validateLazerRoomId(message);
+      if (roomError) return roomError;
+      if (message.countdown !== undefined && message.countdown !== null && (!Number.isInteger(message.countdown) || (message.countdown as number) < 0)) return "countdown must be null or a non-negative integer.";
+      return null;
+    },
+    lazer_stop_match_countdown: () => validateLazerRoomId(message),
+    lazer_abort_match: () => validateLazerRoomId(message),
+    lazer_list_rooms: () => null,
   };
 
   const validator = validators[message.type];

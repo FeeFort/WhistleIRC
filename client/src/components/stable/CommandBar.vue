@@ -4,8 +4,8 @@ import Button from "primevue/button";
 import Dialog from "primevue/dialog";
 import Message from "primevue/message";
 import { Play, Square, TimerOff, Settings2, Lock, LockOpen, DoorClosed, Timer, Zap, Plus, Pencil, SlidersHorizontal, AlertTriangle } from "@lucide/vue";
-import { useShortcuts, BUILTIN_IDS } from "../composables/useShortcuts";
-import ShortcutEditDialog from "./ShortcutEditDialog.vue";
+import { useShortcuts, BUILTIN_IDS } from "../../composables/useShortcuts";
+import ShortcutEditDialog from "../ShortcutEditDialog.vue";
 import BuiltinShortcutsSettings from "./BuiltinShortcutsSettings.vue";
 
 const props = defineProps({

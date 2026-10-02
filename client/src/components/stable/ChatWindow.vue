@@ -3,14 +3,14 @@ import { ref, computed, nextTick, watch, onMounted, onBeforeUnmount } from "vue"
 import Button from "primevue/button";
 import Textarea from "primevue/textarea";
 import { Menu, Send, Hash, Timer, ClipboardCheck, Flag, Gamepad2, Link, ArrowDown, ArrowDownToLine, Ban, ShieldCheck, Crosshair } from "@lucide/vue";
-import { useNickColor } from "../composables/useNickColor";
-import { useChatSettings } from "../composables/useChatSettings";
-import { escapeRegExp, highlightTextStyle, messageHasHighlight, normalizeTeamHighlights, teamTextStyle } from "../composables/useMessageHighlighting";
+import { useNickColor } from "../../composables/useNickColor";
+import { useChatSettings } from "../../composables/useChatSettings";
+import { escapeRegExp, highlightTextStyle, messageHasHighlight, normalizeTeamHighlights, teamTextStyle } from "../../composables/useMessageHighlighting";
 import BanchoBotCommandBar from "./BanchoBotCommandBar.vue";
 import CommandBar from "./CommandBar.vue";
-import { useDarkMode } from "../composables/useDarkMode";
+import { useDarkMode } from "../../composables/useDarkMode";
 import NowPlaying from "./NowPlaying.vue";
-import { parseMappoolMessage } from "../composables/useMappoolChat";
+import { parseMappoolMessage } from "../../composables/useMappoolChat";
 
 const { nickColor: baseNickColor } = useNickColor();
 const { primaryColor } = useDarkMode();

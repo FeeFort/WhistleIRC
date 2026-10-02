@@ -1,7 +1,7 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { Check, Clock3, Play } from "@lucide/vue";
-import { useChatSettings } from "../composables/useChatSettings";
+import { useChatSettings } from "../../composables/useChatSettings";
 
 const props = defineProps({
   map: { type: Object, default: null },

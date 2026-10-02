@@ -3,8 +3,8 @@ import { computed, ref } from "vue";
 import Button from "primevue/button";
 import Dialog from "primevue/dialog";
 import { Lock, LockOpen, Menu, RefreshCcw, UserRoundX } from "@lucide/vue";
-import { useNickColor } from "../composables/useNickColor";
-import { useChatSettings } from "../composables/useChatSettings";
+import { useNickColor } from "../../composables/useNickColor";
+import { useChatSettings } from "../../composables/useChatSettings";
 
 const props = defineProps({
   visible: { type: Boolean, default: false },

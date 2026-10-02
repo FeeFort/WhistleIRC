@@ -35,6 +35,50 @@ function testWinCondition(slotId, source, sampleContext) {
   return socket.value ? send(socket.value, { type: "test_win_condition", slotId, source, sampleContext }) : false;
 }
 
+function makeLazerRoom(payload) {
+  return socket.value ? send(socket.value, { type: "lazer_make_room", ...payload }) : false;
+}
+
+function inviteLazerPlayer(room_id, user_id) {
+  return socket.value ? send(socket.value, { type: "lazer_invite_player", room_id, user_id }) : false;
+}
+
+function joinLazerRoom(room_id) {
+  return socket.value ? send(socket.value, { type: "lazer_join_room", room_id }) : false;
+}
+
+function leaveLazerRoom(room_id) {
+  return socket.value ? send(socket.value, { type: "lazer_leave_room", room_id }) : false;
+}
+
+function closeLazerRoom(room_id) {
+  return socket.value ? send(socket.value, { type: "lazer_close_room", room_id }) : false;
+}
+
+function startLazerMatch(room_id, countdown) {
+  return socket.value ? send(socket.value, { type: "lazer_start_match", room_id, countdown }) : false;
+}
+
+function abortLazerMatch(room_id) {
+  return socket.value ? send(socket.value, { type: "lazer_abort_match", room_id }) : false;
+}
+
+function setLazerLockState(room_id, locked) {
+  return socket.value ? send(socket.value, { type: "lazer_set_lock_state", room_id, locked }) : false;
+}
+
+function changeLazerRoomSettings(room_id, settings) {
+  return socket.value ? send(socket.value, { type: "lazer_change_room_settings", room_id, ...settings }) : false;
+}
+
+function moveLazerUser(room_id, user_id, team) {
+  return socket.value ? send(socket.value, { type: "lazer_move_user", room_id, user_id, slot: null, team }) : false;
+}
+
+function kickLazerPlayer(room_id, user_id) {
+  return socket.value ? send(socket.value, { type: "lazer_kick_player", room_id, user_id }) : false;
+}
+
 function getRequestSocket() {
   const existingSocket = socket.value;
   if (existingSocket && [WebSocket.OPEN, WebSocket.CONNECTING].includes(existingSocket.readyState)) {
@@ -359,6 +403,17 @@ export function useServerConnection() {
     refreshLobbyTitle,
     setActiveWinCondition,
     testWinCondition,
+    makeLazerRoom,
+    joinLazerRoom,
+    leaveLazerRoom,
+    closeLazerRoom,
+    startLazerMatch,
+    abortLazerMatch,
+    setLazerLockState,
+    changeLazerRoomSettings,
+    moveLazerUser,
+    kickLazerPlayer,
+    lazerInvitePlayer: inviteLazerPlayer,
     checkUpdate: requestUpdateCheck,
     startUpdate: () => sendUpdateCommand("start_update"),
     cancelUpdate: () => sendUpdateCommand("cancel_update"),

@@ -1,8 +1,8 @@
 <script setup>
 import { computed } from "vue";
-import { Ban, Lock, LockOpen, Settings, Users } from "@lucide/vue";
-import { useNickColor } from "../composables/useNickColor";
-import { useChatSettings } from "../composables/useChatSettings";
+import { Ban, Lock, LockOpen, Settings, Users, Whistle } from "@lucide/vue";
+import { useNickColor } from "../../composables/useNickColor";
+import { useChatSettings } from "../../composables/useChatSettings";
 
 const props = defineProps({
   players: {
@@ -46,8 +46,8 @@ const MOD_CODES = Object.freeze({
   fadein: "FI",
 });
 
-const visiblePlayers = computed(() => props.players.filter((player) => !player.isReferee));
-const realPlayerCount = computed(() => visiblePlayers.value.filter((player) => !player.isSlot).length);
+const visiblePlayers = computed(() => props.players);
+const realPlayerCount = computed(() => visiblePlayers.value.filter((player) => !player.isSlot && !player.isReferee).length);
 
 function colorFor(player) {
   if (player.team === "red") return redTeamColor.value;
@@ -109,6 +109,7 @@ function playerMods(player) {
           <span v-else class="player-row__name" :style="playerNameStyle(player)">
             {{ player.name }}
           </span>
+          <Whistle v-if="player.isReferee" v-tooltip.top="'Referee'" class="player-row__referee" :size="14" aria-label="Referee" />
           <svg v-if="player.isHost" class="player-row__host" width="13" height="13" viewBox="0 0 24 24" fill="currentColor" role="img" aria-label="Host">
             <path stroke="none" d="M0 0h24v24H0z" fill="none" />
             <path
@@ -129,7 +130,7 @@ function playerMods(player) {
         <span v-if="!player.isSlot && player.noMap" v-tooltip.top="'No Map'" class="player-row__no-map">
           <Ban :size="14" />
         </span>
-        <span v-else-if="!player.isSlot" class="player-row__ready" :data-ready="player.isReady" />
+        <span v-else-if="!player.isSlot && !player.isReferee" class="player-row__ready" :data-ready="player.isReady" />
       </li>
 
       <li v-if="!visiblePlayers.length" class="player-list__empty">No players yet</li>
@@ -325,6 +326,11 @@ function playerMods(player) {
 .player-row__host {
   flex-shrink: 0;
   color: var(--p-yellow-400, #eab308);
+}
+
+.player-row__referee {
+  flex: 0 0 auto;
+  color: var(--app-primary-bright);
 }
 
 .player-row__ready {

@@ -118,7 +118,7 @@ export async function handleLazerChangeRoomSettings(client: WebSocket, message: 
     await invokeHub("ChangeRoomSettings", m.room_id, {
       name: m.name,
       password: m.password,
-      type: m.type,
+      type: m.match_type,
       max_participants: m.max_participants,
     });
     await ack(client, message.type);

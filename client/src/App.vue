@@ -9,16 +9,22 @@ import Toast from "primevue/toast";
 import ToggleSwitch from "primevue/toggleswitch";
 import { useToast } from "primevue/usetoast";
 import { ArrowLeft, Check, ChevronDown, CircleX, DoorOpen, Map as MapIcon, Play, RotateCcw, Settings2, Sparkles } from "@lucide/vue";
-import ChatWindow from "./components/ChatWindow.vue";
+import ChatWindow from "./components/stable/ChatWindow.vue";
+import LazerChatWindow from "./components/lazer/ChatWindow.vue";
+import LazerPlayerListCard from "./components/lazer/PlayerListCard.vue";
+import LazerPlayersDialog from "./components/lazer/PlayersDialog.vue";
+import LazerLobbyScoreCard from "./components/lazer/LobbyScoreCard.vue";
+import LazerMappoolCard from "./components/lazer/MappoolCard.vue";
 import AddChannelDialog from "./components/AddChannelDialog.vue";
 import CreateLobbyDialog from "./components/CreateLobbyDialog.vue";
 import LoginPage from "./components/LoginPage.vue";
-import LobbyScoreCard from "./components/LobbyScoreCard.vue";
+import LobbyScoreCard from "./components/stable/LobbyScoreCard.vue";
 import LobbyMessagesSettings from "./components/LobbyMessagesSettings.vue";
-import MappoolCard from "./components/MappoolCard.vue";
-import PlayerListCard from "./components/PlayerListCard.vue";
-import PlayersDialog from "./components/PlayersDialog.vue";
-import LobbySetupDialog from "./components/LobbySetupDialog.vue";
+import MappoolCard from "./components/stable/MappoolCard.vue";
+import PlayerListCard from "./components/stable/PlayerListCard.vue";
+import PlayersDialog from "./components/stable/PlayersDialog.vue";
+import LobbySetupDialog from "./components/stable/LobbySetupDialog.vue";
+import LazerLobbySetupDialog from "./components/lazer/LobbySetupDialog.vue";
 import AppSidebar from "./components/AppSidebar.vue";
 import SidebarSectionCard from "./components/SidebarSectionCard.vue";
 import SettingsModal from "./components/SettingsModal.vue";
@@ -73,6 +79,7 @@ const createLobbyDialogOpen = ref(false);
 const addChannelDialogOpen = ref(false);
 const playersDialogOpen = ref(false);
 const lobbySetupDialogOpen = ref(false);
+const lazerLobbySetupLoading = ref(false);
 const lobbySetupUntouched = computed(() => {
   const lobby = activeLobbyState.value;
   return !lobby || (lobby.teamMode === "HeadToHead" && lobby.scoreMode === "Score");
@@ -85,12 +92,15 @@ const unreadChats = reactive({ bancho: false });
 const directChats = ref([]);
 const joinedChannels = ref([]);
 const lobbyStates = reactive({});
+const lazerRooms = reactive({});
+const lazerLobbyStates = reactive({});
 const channelMessages = reactive({});
 const lobbyContexts = reactive({});
 const pendingPartChannels = new Set();
 const pendingLobbySeed = ref(null);
 const pendingLobbyCreatedViaApp = ref(false);
 const pendingJoinChannel = ref(null);
+const lazerPlayersDialogOpen = ref(false);
 let pendingJoinTimeout;
 const { primaryColor, setPrimaryColor } = useDarkMode();
 const {
@@ -124,6 +134,10 @@ const {
   setLobbySettings,
   refreshLobbyTitle,
   setActiveWinCondition,
+  makeLazerRoom,
+  joinLazerRoom,
+  leaveLazerRoom,
+  changeLazerRoomSettings,
   requestApi,
   checkUpdate,
   startUpdate,
@@ -158,6 +172,8 @@ function readPlayerProfileCache() {
   }
 }
 const playerProfilesByLobbyId = reactive(readPlayerProfileCache());
+const lazerUserProfiles = reactive({});
+const pendingLazerUserProfiles = new Set();
 
 function cacheLobbyPlayers(chatId, players) {
   if (!chatId || !Array.isArray(players)) return;
@@ -363,6 +379,63 @@ const chatSettingChanged = computed(() => ({
 watch(
   lastEvent,
   (event) => {
+    if (event?.type === "lazer_room_state" && event.room) {
+      registerLazerRoom(event.room);
+      return;
+    }
+
+    if (event?.type === "lazer_room_closed") {
+      const id = lazerChatId(Number(event.roomId));
+      if (lazerRooms[id]) lazerRooms[id].closed = true;
+      if (activeChat.value === id) activeChat.value = "bancho";
+      return;
+    }
+
+    if (event?.type === "ack" && event.received === "lazer_make_room" && event.result) {
+      const room = registerLazerRoom(event.result);
+      if (room) activeChat.value = room.id;
+      return;
+    }
+
+    if (event?.type === "ack" && event.received === "lazer_join_room" && event.result) {
+      const room = registerLazerRoom(event.result);
+      if (room) {
+        clearPendingJoin();
+        activeChat.value = room.id;
+        addChannelDialogOpen.value = false;
+        showJoinToast("success", "Connected", "Successfully joined the lazer room.");
+      }
+      return;
+    }
+
+    if (event?.type === "error" && event.request === "lazer_join_room" && pendingJoinChannel.value?.type === "lazer") {
+      failPendingJoin("You are not a referee in the specified room.");
+      return;
+    }
+
+    if (event?.type === "ack" && event.received === "lazer_change_room_settings" && lazerLobbySetupLoading.value) {
+      lazerLobbySetupLoading.value = false;
+      lobbySetupDialogOpen.value = false;
+      toast.add({
+        severity: "success",
+        summary: "Lobby updated",
+        detail: "Lazer lobby settings applied successfully.",
+        life: 3500,
+      });
+      return;
+    }
+
+    if (event?.type === "error" && lazerLobbySetupLoading.value) {
+      lazerLobbySetupLoading.value = false;
+      toast.add({
+        severity: "error",
+        summary: "Update failed",
+        detail: event.message || "Unable to apply lazer lobby settings.",
+        life: 5000,
+      });
+      return;
+    }
+
     if (event?.type === "lobby_state") {
       applyLobbyState(event);
       return;
@@ -735,6 +808,8 @@ function handleLogout() {
   Object.keys(lobbyStates).forEach((channelIdValue) => {
     delete lobbyStates[channelIdValue];
   });
+  Object.keys(lazerRooms).forEach((chatId) => delete lazerRooms[chatId]);
+  Object.keys(lazerLobbyStates).forEach((chatId) => delete lazerLobbyStates[chatId]);
   Object.keys(lobbyContexts).forEach((channelIdValue) => {
     delete lobbyContexts[channelIdValue];
   });
@@ -1019,14 +1094,71 @@ const winConditionResultsByChat = reactive({});
 
 const activeMessages = computed(() => (activeChat.value === "bancho" ? banchoMessages.value : channelMessages[activeChat.value] || []));
 const activeDirectChat = computed(() => directChats.value.find((item) => item.id === activeChat.value) || null);
+function lazerChatId(roomId) {
+  return `lazer:${roomId}`;
+}
+
+function loadLazerUserProfile(userId) {
+  const id = Number(userId);
+  if (!Number.isInteger(id) || id <= 0 || lazerUserProfiles[id] || pendingLazerUserProfiles.has(id)) return;
+  pendingLazerUserProfiles.add(id);
+  void requestApi(`/users/${id}`)
+    .then((profile) => {
+      if (!profile || typeof profile !== "object") return;
+      lazerUserProfiles[id] = {
+        userId: id,
+        username: String(profile.username || "").trim(),
+        avatarUrl: String(profile.avatar_url || "").trim(),
+        profileUrl: `https://osu.ppy.sh/users/${id}`,
+      };
+    })
+    .catch(() => {})
+    .finally(() => pendingLazerUserProfiles.delete(id));
+}
+
+function registerLazerRoom(room) {
+  if (!room || !Number.isInteger(Number(room.room_id))) return null;
+  for (const player of room.players || []) loadLazerUserProfile(player.user_id);
+  for (const referee of room.referees || []) loadLazerUserProfile(referee.user_id);
+  const id = lazerChatId(Number(room.room_id));
+  const previousState = lazerLobbyStates[id] || {};
+  lazerRooms[id] = {
+    ...room,
+    id,
+    label: room.name || `Lazer room #${room.room_id}`,
+    source: "lazer",
+    closed: false,
+  };
+  lazerLobbyStates[id] = {
+    ...previousState,
+    id: Number(room.room_id),
+    name: room.name || previousState.name || `Lazer room #${room.room_id}`,
+    teamAName: previousState.teamAName || "Team A",
+    teamBName: previousState.teamBName || "Team B",
+    teamAScore: previousState.teamAScore ?? 0,
+    teamBScore: previousState.teamBScore ?? 0,
+    qualificationMode: previousState.qualificationMode ?? false,
+    bestOf: previousState.bestOf ?? null,
+    nextPickTeam: previousState.nextPickTeam ?? null,
+    matchStatus: previousState.matchStatus || "—",
+  };
+  channelMessages[id] ||= [];
+  unreadChats[id] ??= false;
+  return lazerRooms[id];
+}
+
+const activeLazerRoom = computed(() => lazerRooms[activeChat.value] || null);
+const activeLazerLobbyState = computed(() => lazerLobbyStates[activeChat.value] || null);
 const activeChatKind = computed(() => {
   if (activeChat.value === "bancho") return "bancho";
   if (activeDirectChat.value) return "dm";
+  if (activeLazerRoom.value) return "lazer";
   return "lobby";
 });
 const activeChatTitle = computed(() => {
   if (activeChat.value === "bancho") return "BanchoBot";
   if (activeDirectChat.value) return activeDirectChat.value.label;
+  if (activeLazerRoom.value) return activeLazerRoom.value.label;
   const channel = joinedChannels.value.find((item) => item.id === activeChat.value);
   return channel?.lobby?.name || channel?.label || activeChat.value;
 });
@@ -1039,6 +1171,7 @@ watch(
 );
 const isBanchoChat = computed(() => activeChatKind.value === "bancho");
 const isDirectChat = computed(() => activeChatKind.value === "dm");
+const isLazerChat = computed(() => activeChatKind.value === "lazer");
 const activeChatShortcutMode = computed(() => {
   if (isBanchoChat.value) return "bancho";
   if (isDirectChat.value) return "none";
@@ -1087,6 +1220,20 @@ const activeLobbyTeamAScore = computed({
 const activeLobbyTeamBScore = computed({
   get: () => activeLobbyState.value?.teamBlueScore ?? 0,
   set: (value) => updateActiveLobbyScore("teamBlueScore", value),
+});
+const activeLazerTeamAScore = computed({
+  get: () => activeLazerLobbyState.value?.teamAScore ?? 0,
+  set: (value) => updateActiveLazerScore("teamAScore", value),
+});
+const activeLazerTeamBScore = computed({
+  get: () => activeLazerLobbyState.value?.teamBScore ?? 0,
+  set: (value) => updateActiveLazerScore("teamBScore", value),
+});
+const activeLazerQualificationMode = computed({
+  get: () => Boolean(activeLazerLobbyState.value?.qualificationMode),
+  set: (value) => {
+    if (activeLazerLobbyState.value) activeLazerLobbyState.value.qualificationMode = Boolean(value);
+  },
 });
 const activeLobbyPlayers = computed(() => {
   const lobby = activeLobbyState.value;
@@ -1145,6 +1292,61 @@ const activeLobbyReferees = computed(() => {
   return currentUser.value ? [currentUser.value] : [];
 });
 const activeRefereeUsers = computed(() => (isDirectChat.value ? [] : activeLobbyReferees.value));
+const activeLazerPlayers = computed(() => {
+  const room = activeLazerRoom.value;
+  if (!room) return [];
+  const refereeIds = [...new Set((room.referees || []).map((referee) => referee.user_id))];
+  const refereeIdSet = new Set(refereeIds);
+  const playersById = new Map((room.players || []).map((player) => [player.user_id, player]));
+  for (const userId of refereeIds) {
+    if (!playersById.has(userId)) {
+      playersById.set(userId, {
+        user_id: userId,
+        status: "idle",
+        style: { ruleset_id: null, beatmap_id: null },
+        mods: [],
+        team: null,
+      });
+    }
+  }
+  const orderedPlayers = [
+    ...refereeIds.map((userId) => playersById.get(userId)),
+    ...[...playersById.values()].filter((player) => !refereeIdSet.has(player.user_id)),
+  ];
+  const players = orderedPlayers.map((player, index) => ({
+    name: lazerUserProfiles[player.user_id]?.username || `User ${player.user_id}`,
+    userId: player.user_id,
+    slot: index + 1,
+    isReferee: refereeIdSet.has(player.user_id),
+    isHost: false,
+    isReady: player.status === "ready",
+    team: player.team,
+    mods: player.mods || [],
+    avatarUrl: lazerUserProfiles[player.user_id]?.avatarUrl || `https://a.ppy.sh/${player.user_id}`,
+    profileUrl: lazerUserProfiles[player.user_id]?.profileUrl || `https://osu.ppy.sh/users/${player.user_id}`,
+  }));
+  const maxParticipants = Number(room.max_participants);
+  const slots = room.state?.slots;
+  if (maxParticipants > 0 && Array.isArray(slots)) {
+    for (let index = 0; index < maxParticipants; index += 1) {
+      if (index < players.length) continue;
+      players.push({
+        name: `Slot ${index + 1}`,
+        slot: index + 1,
+        isSlot: true,
+        isLocked: false,
+        isHost: false,
+        isReady: false,
+        team: null,
+        mods: [],
+        avatarUrl: "",
+        profileUrl: "",
+      });
+    }
+  }
+  return players;
+});
+const activeLazerDisplayPlayers = computed(() => activeLazerPlayers.value);
 const lobbyClock = ref(Date.now());
 const activeLobbyTimerSeconds = computed(() => {
   const timer = activeLobbyState.value?.timer;
@@ -1355,6 +1557,29 @@ function updateActiveLobbySettings(settings) {
   channel.lobby.nextPickTeam = nextPickTeam;
   channel.lobby.matchStatus = getMatchStatus(channel.lobby, channel.lobby.teamRed || "Team A", channel.lobby.teamBlue || "Team B");
   setLobbySettings(channel.label, bestOf, nextPickTeam);
+}
+
+function updateActiveLazerScore(field, value) {
+  const lobby = activeLazerLobbyState.value;
+  if (!lobby || !["teamAScore", "teamBScore"].includes(field)) return;
+  lobby[field] = Math.max(0, Number.parseInt(value, 10) || 0);
+  lobby.matchStatus = getMatchStatus(
+    { bestOf: lobby.bestOf, nextPickTeam: lobby.nextPickTeam, teamRedScore: lobby.teamAScore, teamBlueScore: lobby.teamBScore },
+    lobby.teamAName,
+    lobby.teamBName,
+  );
+}
+
+function updateActiveLazerSettings(settings) {
+  const lobby = activeLazerLobbyState.value;
+  if (!lobby) return;
+  lobby.bestOf = Number.isInteger(settings.bestOf) && settings.bestOf > 0 ? settings.bestOf : null;
+  lobby.nextPickTeam = settings.nextPickTeam || null;
+  lobby.matchStatus = getMatchStatus(
+    { bestOf: lobby.bestOf, nextPickTeam: lobby.nextPickTeam, teamRedScore: lobby.teamAScore, teamBlueScore: lobby.teamBScore },
+    lobby.teamAName,
+    lobby.teamBName,
+  );
 }
 
 function applyRefereeConfirmation(channel, text) {
@@ -1739,6 +1964,26 @@ function markRoomClosed(chatId) {
 }
 
 function joinChannel(channel) {
+  if (channel.type === "lazer") {
+    const roomId = Number(channel.roomId);
+    if (!Number.isInteger(roomId) || roomId <= 0 || pendingJoinChannel.value) return;
+    const chatId = lazerChatId(roomId);
+    if (lazerRooms[chatId]) {
+      activeChat.value = chatId;
+      addChannelDialogOpen.value = false;
+      return;
+    }
+    pendingJoinChannel.value = { type: "lazer", id: chatId, label: channel.label };
+    showJoinToast("info", "Connecting", "Joining the lazer room...");
+    const sent = joinLazerRoom(roomId);
+    if (!sent) {
+      failPendingJoin("Unable to send the join request. Please reconnect and try again.");
+      return;
+    }
+    pendingJoinTimeout = window.setTimeout(() => failPendingJoin("The lazer room could not be joined."), 10000);
+    return;
+  }
+
   const label = channel.label || channel.id;
   const joinedChannelId = channelId(label);
   if (!joinedChannelId || pendingJoinChannel.value) return;
@@ -1799,6 +2044,17 @@ function closeActiveChat(chatId = activeChat.value) {
 
   if (directChats.value.some((chat) => chat.id === chatId)) {
     removeDirectChat(chatId);
+    return;
+  }
+
+  const lazerRoom = lazerRooms[chatId];
+  if (lazerRoom) {
+    leaveLazerRoom(lazerRoom.room_id);
+    delete lazerRooms[chatId];
+    delete lazerLobbyStates[chatId];
+    delete channelMessages[chatId];
+    delete unreadChats[chatId];
+    if (activeChat.value === chatId) activeChat.value = "bancho";
     return;
   }
 
@@ -1893,8 +2149,32 @@ function sendLobbySetup(command) {
 }
 
 function openLobbySetup() {
+  if (activeChatKind.value === "lazer") {
+    if (!activeLazerRoom.value || activeLazerRoom.value.closed) return;
+    lobbySetupDialogOpen.value = true;
+    return;
+  }
   if (!activeLobbyState.value || roomClosedByChat[activeChat.value]) return;
   lobbySetupDialogOpen.value = true;
+}
+
+function applyLazerLobbySetup(settings) {
+  if (!activeLazerRoom.value || activeLazerRoom.value.closed || lazerLobbySetupLoading.value) return;
+  lazerLobbySetupLoading.value = true;
+  const sent = changeLazerRoomSettings(activeLazerRoom.value.room_id, {
+    match_type: settings.match_type,
+    max_participants: settings.max_participants,
+  });
+  if (!sent) {
+    lazerLobbySetupLoading.value = false;
+    toast.add({
+      severity: "error",
+      summary: "Update failed",
+      detail: "Unable to send lazer lobby settings.",
+      life: 5000,
+    });
+    return;
+  }
 }
 
 function handleCommand(command) {
@@ -1914,6 +2194,11 @@ function handleCommand(command) {
 }
 
 function handleCreateLobby(payload) {
+  if (payload.mode === "lazer") {
+    makeLazerRoom(payload.lazer);
+    return;
+  }
+
   pendingLobbySeed.value = payload.lobby || null;
   pendingLobbyCreatedViaApp.value = Boolean(payload.lobby);
   handleCommand(payload.command);
@@ -2123,6 +2408,7 @@ function handleSendResult(result) {
     :unread-chats="unreadChats"
     :direct-chats="directChats"
     :joined-channels="joinedChannels"
+    :lazer-rooms="Object.values(lazerRooms)"
     @logout="handleLogout"
     @open-settings="openSettings"
     @select-chat="selectChat"
@@ -2622,7 +2908,28 @@ function handleSendResult(result) {
     </SettingsModal>
 
     <div class="app-layout">
+      <LazerChatWindow
+        v-if="activeChatKind === 'lazer'"
+        :title="activeChatTitle"
+        :chat-id="activeChat"
+        :room-id="activeLazerRoom?.room_id"
+        :connected="connected && !activeLazerRoom?.closed"
+        :messages="activeMessages"
+        :current-user="currentUser"
+        :referee-users="[]"
+        :room-size="activeLazerRoom?.max_participants || 0"
+        :room-closed="Boolean(activeLazerRoom?.closed)"
+        :format="activeLazerRoom?.state?.type || 'Lazer'"
+        :win-condition="'—'"
+        :mode="'osu! lazer'"
+        :auto-scroll-token="commandScrollToken"
+        @send="handleSend"
+        @send-command="handleCommand"
+        @download-chat-history="downloadChatHistory"
+        @toggle-sidebar="sidebarOpen = !sidebarOpen"
+      />
       <ChatWindow
+        v-else
         :title="activeChatTitle"
         :chat-id="activeChat"
         :connected="connected"
@@ -2653,7 +2960,38 @@ function handleSendResult(result) {
         @toggle-sidebar="sidebarOpen = !sidebarOpen"
       />
 
-      <div v-if="activeChatKind === 'lobby'" class="app-layout__side">
+      <div v-if="activeChatKind === 'lazer'" class="app-layout__side">
+        <SidebarSectionCard title="Lobby" :icon="DoorOpen">
+          <LazerLobbyScoreCard
+            v-model:qualification-mode="activeLazerQualificationMode"
+            v-model:team-a-score="activeLazerTeamAScore"
+            v-model:team-b-score="activeLazerTeamBScore"
+            :show-match-controls="!activeLazerQualificationMode"
+            :show-qualification-toggle="true"
+            :lobby-id="String(activeLazerRoom?.room_id || '')"
+            :team-a-name="activeLazerLobbyState?.teamAName || 'Team A'"
+            :team-b-name="activeLazerLobbyState?.teamBName || 'Team B'"
+            :best-of="activeLazerLobbyState?.bestOf"
+            :next-pick-team="activeLazerLobbyState?.nextPickTeam"
+            :can-edit="currentUser === refereeUser"
+            lazer-mode
+            :room-link="activeLazerRoom ? `https://osu.ppy.sh/multiplayer/rooms/${activeLazerRoom.room_id}` : ''"
+            :disabled="Boolean(activeLazerRoom?.closed)"
+            @update-settings="updateActiveLazerSettings"
+            @configure-lobby="openLobbySetup"
+          />
+        </SidebarSectionCard>
+        <LazerPlayerListCard :players="activeLazerDisplayPlayers" :current-user="currentUser" :disabled="Boolean(activeLazerRoom?.closed)" @open-players="lazerPlayersDialogOpen = true" />
+        <SidebarSectionCard title="Playlist" :icon="MapIcon" scrollable>
+          <LazerMappoolCard
+            :disabled="Boolean(activeLazerRoom?.closed)"
+            :lobby-id="activeChat"
+            :qualification-mode="activeLazerQualificationMode"
+            @send-command="handleCommand"
+          />
+        </SidebarSectionCard>
+      </div>
+      <div v-else-if="activeChatKind === 'lobby'" class="app-layout__side">
         <SidebarSectionCard title="Lobby" :icon="DoorOpen">
           <LobbyScoreCard
             v-model:qualification-mode="activeQualificationMode"
@@ -2699,7 +3037,24 @@ function handleSendResult(result) {
         @kick-player="kickLobbyPlayer"
         @set-host="setLobbyHost"
       />
+      <LazerPlayersDialog
+        v-if="activeChatKind === 'lazer'"
+        v-model:visible="lazerPlayersDialogOpen"
+        :players="activeLazerPlayers"
+        :room-id="activeLazerRoom?.room_id || null"
+        :disabled="Boolean(activeLazerRoom?.closed)"
+      />
+      <LazerLobbySetupDialog
+        v-if="activeChatKind === 'lazer'"
+        v-model:visible="lobbySetupDialogOpen"
+        :disabled="Boolean(activeLazerRoom?.closed)"
+        :loading="lazerLobbySetupLoading"
+        :initial-match-type="activeLazerRoom?.state?.type || 'team_versus'"
+        :initial-max-participants="activeLazerRoom?.max_participants ?? null"
+        @send="applyLazerLobbySetup"
+      />
       <LobbySetupDialog
+        v-else
         v-model:visible="lobbySetupDialogOpen"
         :disabled="Boolean(roomClosedByChat[activeChat])"
         :initial-game-mode="lobbySetupGameMode"

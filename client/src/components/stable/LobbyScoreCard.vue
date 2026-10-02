@@ -6,7 +6,7 @@ import InputNumber from "primevue/inputnumber";
 import SelectButton from "primevue/selectbutton";
 import ToggleSwitch from "primevue/toggleswitch";
 import { AlertTriangle, Check, Copy, Send, SlidersHorizontal } from "@lucide/vue";
-import { useChatSettings } from "../composables/useChatSettings";
+import { useChatSettings } from "../../composables/useChatSettings";
 
 const props = defineProps({
   lobbyId: { type: String, default: "" },

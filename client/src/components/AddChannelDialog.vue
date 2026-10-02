@@ -3,6 +3,7 @@ import { computed, ref, watch } from "vue";
 import Button from "primevue/button";
 import Dialog from "primevue/dialog";
 import InputText from "primevue/inputtext";
+import SelectButton from "primevue/selectbutton";
 import { Link2 } from "@lucide/vue";
 
 const props = defineProps({
@@ -12,12 +13,19 @@ const props = defineProps({
 const emit = defineEmits(["update:visible", "join"]);
 
 const channelInput = ref("");
+const channelType = ref("stable");
+const channelTypes = [
+  { label: "Stable", value: "stable" },
+  { label: "Lazer", value: "lazer" },
+];
 
-const acceptedFormats = [/^https:\/\/osu\.ppy\.sh\/mp\/(\d+)\/?$/i, /^https:\/\/osu\.ppy\.sh\/community\/matches\/(\d+)\/?$/i, /^#mp_(\d+)$/i];
+const stableFormats = [/^https:\/\/osu\.ppy\.sh\/mp\/(\d+)\/?$/i, /^https:\/\/osu\.ppy\.sh\/community\/matches\/(\d+)\/?$/i, /^#?mp_(\d+)$/i, /^(\d+)$/];
+const lazerFormats = [/^https:\/\/osu\.ppy\.sh\/multiplayer\/rooms\/(\d+)\/?$/i, /^(\d+)$/];
 
 const match = computed(() => {
   const value = channelInput.value.trim();
-  for (const pattern of acceptedFormats) {
+  const formats = channelType.value === "lazer" ? lazerFormats : stableFormats;
+  for (const pattern of formats) {
     const result = value.match(pattern);
     if (result) return result[1];
   }
@@ -33,8 +41,15 @@ function close() {
 
 function join() {
   if (!match.value || props.loading) return;
-  emit("join", {
-    id: `mp-${match.value}`,
+    emit("join", channelType.value === "lazer" ? {
+      type: "lazer",
+      id: `lazer:${match.value}`,
+      label: `Lazer room #${match.value}`,
+      roomId: Number(match.value),
+      source: channelInput.value.trim(),
+    } : {
+      type: "stable",
+      id: `mp-${match.value}`,
     label: `#mp_${match.value}`,
     matchId: match.value,
     source: channelInput.value.trim(),
@@ -49,7 +64,10 @@ function updateVisible(value) {
 watch(
   () => props.visible,
   (value) => {
-    if (value) channelInput.value = "";
+    if (value) {
+      channelInput.value = "";
+      channelType.value = "stable";
+    }
   },
 );
 </script>
@@ -73,16 +91,22 @@ watch(
         </div>
         <div>
           <strong>Join a multiplayer channel</strong>
-          <span>Paste an osu! multiplayer link or use an #mp_ channel.</span>
+        <span>Choose the room type and enter its link or ID.</span>
         </div>
       </div>
 
       <label class="add-channel-dialog__field">
-        <span>Multiplayer link</span>
-        <InputText v-model="channelInput" autofocus placeholder="https://osu.ppy.sh/mp/12345678" spellcheck="false" :disabled="loading" @keydown.enter="join" />
+        <span>Room type</span>
+        <SelectButton v-model="channelType" :options="channelTypes" optionLabel="label" optionValue="value" :allowEmpty="false" :disabled="loading" aria-label="Room type" />
       </label>
 
-      <p class="add-channel-dialog__help">Accepted: https://osu.ppy.sh/mp/mp-id, https://osu.ppy.sh/community/matches/mp-id, or #mp_mp-id.</p>
+      <label class="add-channel-dialog__field">
+        <span>{{ channelType === "lazer" ? "Lazer room link or ID" : "Multiplayer link or channel" }}</span>
+        <InputText v-model="channelInput" autofocus :placeholder="channelType === 'lazer' ? 'https://osu.ppy.sh/multiplayer/rooms/12345678 or 12345678' : 'https://osu.ppy.sh/mp/12345678 or #mp_12345678'" spellcheck="false" :disabled="loading" @keydown.enter="join" />
+      </label>
+
+      <p v-if="channelType === 'lazer'" class="add-channel-dialog__help">Accepted: https://osu.ppy.sh/multiplayer/rooms/room-id or a bare room ID.</p>
+      <p v-else class="add-channel-dialog__help">Accepted: https://osu.ppy.sh/mp/mp-id, https://osu.ppy.sh/community/matches/mp-id, #mp_mp-id, or a bare room ID.</p>
     </div>
 
     <template #footer>
@@ -150,6 +174,31 @@ watch(
 
 .add-channel-dialog__field :deep(.p-inputtext) {
   width: 100%;
+}
+
+.add-channel-dialog__field :deep(.p-selectbutton) {
+  display: flex;
+  width: 100%;
+}
+
+.add-channel-dialog__field :deep(.p-selectbutton .p-togglebutton) {
+  flex: 1 1 0;
+  border-color: var(--app-border) !important;
+  background: var(--app-control) !important;
+  color: var(--app-muted) !important;
+  font-size: 0.74rem;
+  justify-content: center;
+}
+
+.add-channel-dialog__field :deep(.p-selectbutton .p-togglebutton .p-togglebutton-content) {
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.add-channel-dialog__field :deep(.p-selectbutton .p-togglebutton.p-togglebutton-checked) {
+  border-color: rgba(var(--app-primary-rgb), 0.5) !important;
+  background: rgba(var(--app-primary-rgb), 0.16) !important;
+  color: var(--app-primary-bright) !important;
 }
 
 .add-channel-dialog__help {

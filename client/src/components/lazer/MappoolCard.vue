@@ -3,9 +3,9 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref } from "vue";
 import Button from "primevue/button";
 import { useToast } from "primevue/usetoast";
 import { Ban, ChevronDown, Crosshair, ShieldCheck, Settings } from "@lucide/vue";
-import { sortMappoolSlots, useMappool } from "../composables/useMappool";
-import { useServerConnection } from "../composables/useServerConnection";
-import MappoolsModal from "./MappoolsModal.vue";
+import { sortMappoolSlots, useMappool } from "../../composables/useMappool";
+import { useServerConnection } from "../../composables/useServerConnection";
+import MappoolsModal from "../MappoolsModal.vue";
 
 const props = defineProps({
   disabled: { type: Boolean, default: false },

@@ -31,11 +31,14 @@ const props = defineProps({
   unreadChats: { type: Object, default: () => ({}) },
   directChats: { type: Array, default: () => [] },
   joinedChannels: { type: Array, default: () => [] },
+  lazerRooms: { type: Array, default: () => [] },
 });
 
 const emit = defineEmits(["update:open", "logout", "open-settings", "select-chat", "open-add-channel", "close-chat"]);
 
 const { isDark, toggleDark } = useDarkMode();
+
+const showRoomTypes = computed(() => props.joinedChannels.length > 0 && props.lazerRooms.length > 0);
 
 const profileMenu = ref(null);
 const closeConfirmationVisible = ref(false);
@@ -130,7 +133,10 @@ const profileMenuItems = computed(() => [
                   >
                     <SidebarMenuButton :isActive="activeChat === channel.id" @click="emit('select-chat', channel.id)">
                       <MessageSquare :size="15" />
-                      <span class="app-sidebar__chat-label">{{ channel.lobby?.name || channel.label }}</span>
+                      <span class="app-sidebar__chat-label-group">
+                        <span class="app-sidebar__chat-label">{{ channel.lobby?.name || channel.label }}</span>
+                        <span v-if="showRoomTypes" class="app-sidebar__chat-type">Stable</span>
+                      </span>
                       <span v-if="unreadChats[channel.id]" class="app-sidebar__chat-unread" role="status" aria-label="New messages" />
                     </SidebarMenuButton>
                     <button
@@ -140,6 +146,19 @@ const profileMenuItems = computed(() => [
                       :aria-label="`Close ${channel.lobby?.name || channel.label} chat`"
                       @click.stop="requestCloseChat(channel)"
                     >
+                      <X :size="11" />
+                    </button>
+                  </SidebarMenuItem>
+                  <SidebarMenuItem v-for="room in lazerRooms" :key="room.id" class="app-sidebar__chat-item">
+                    <SidebarMenuButton :isActive="activeChat === room.id" @click="emit('select-chat', room.id)">
+                      <MessageSquare :size="15" />
+                      <span class="app-sidebar__chat-label-group">
+                        <span class="app-sidebar__chat-label">{{ room.label }}</span>
+                        <span v-if="showRoomTypes" class="app-sidebar__chat-type">Lazer</span>
+                      </span>
+                      <span v-if="unreadChats[room.id]" class="app-sidebar__chat-unread" role="status" aria-label="New messages" />
+                    </SidebarMenuButton>
+                    <button v-tooltip.top="'Close chat'" type="button" class="app-sidebar__chat-close" :aria-label="`Close ${room.label} chat`" @click.stop="requestCloseChat(room)">
                       <X :size="11" />
                     </button>
                   </SidebarMenuItem>
@@ -282,6 +301,23 @@ const profileMenuItems = computed(() => [
 .app-sidebar-layout .p-sidebar-menu-button .app-sidebar__chat-label {
   min-width: 0;
   flex: 1 1 auto;
+}
+
+.app-sidebar-layout .p-sidebar-menu-button .app-sidebar__chat-label-group {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 0.08rem;
+  line-height: 1.1;
+}
+
+.app-sidebar-layout .p-sidebar-menu-button .app-sidebar__chat-type {
+  color: var(--app-muted);
+  font-size: 0.61rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  line-height: 1;
 }
 
 .app-sidebar-layout .app-sidebar__chat-item {
