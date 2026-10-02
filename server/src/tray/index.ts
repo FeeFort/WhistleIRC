@@ -14,7 +14,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 function getIconBase64(): string {
   const iconName = process.platform === "win32" ? "icon.ico" : "icon.png";
-  const candidates = [path.join(__dirname, "..", iconName), path.join(__dirname, "..", "..", iconName)];
+  const candidates = [path.join(__dirname, "..", "icons", iconName), path.join(__dirname, "..", "..", "icons", iconName)];
   const iconPath = candidates.find((candidate) => fs.existsSync(candidate)) ?? candidates[0];
   const icon = fs.readFileSync(iconPath);
   console.log(`[Tray] Loading icon: ${iconPath} (${icon.length} bytes)`);
