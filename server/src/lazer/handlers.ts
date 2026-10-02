@@ -54,7 +54,7 @@ export async function handleLazerCloseRoom(client: WebSocket, message: ClientMes
   const m = message as Extract<ClientMessage, { type: "lazer_close_room" }>;
   try {
     await invokeHub("CloseRoom", m.room_id);
-    // hub doesn't send success message back, so removing ourselves
+    // Hub doesn't send success message back, so removing the room ourselves
     roomManager.removeRoom(m.room_id);
     await ack(client, message.type);
   } catch (error) {

@@ -5,6 +5,7 @@ export const config = {
   httpPort: Number(process.env.HTTP_PORT) || 3000,
   allowedApiEndpoints: [/^\/matches\/\d+$/, /^\/beatmaps\/\d+$/, /^\/beatmapsets\/\d+$/, /^\/users\/\d+$/, /^\/beatmaps\/\d+\/attributes$/] as RegExp[],
   spectatorServerUrl: "https://spectator.ppy.sh",
+  chatWebSocketUrl: "wss://notify.ppy.sh",
   ircHost: "irc.ppy.sh",
   ircPort: 6667,
   authError: "Login or password is incorrect.",

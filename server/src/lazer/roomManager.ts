@@ -76,8 +76,7 @@ class RoomManager {
 
     const room = this.rooms.get(roomId);
     if (!room) {
-      // Событие по комнате, о которой мы ещё не знаем (например, RefereeRemoved
-      // пришёл раньше, чем мы успели обработать RefereeAdded) — игнорируем безопасно.
+      // If we don't have the room tracked, we can't update it. Safely ignoring instead
       console.warn(`[roomManager] event ${eventType} for unknown room ${roomId}, ignoring`);
       return;
     }
@@ -159,7 +158,7 @@ class RoomManager {
       }
       // CountdownStarted/Stopped, MatchStarted/Aborted/Completed, RollCompleted, RefereeInvited
       // don't mutate room state directly, rather they're transported to frontend as is
-      // without RoomState changes (see index.ts).
+      // without RoomState changes (see index.ts)
       default:
         break;
     }

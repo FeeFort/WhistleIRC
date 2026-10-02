@@ -119,7 +119,7 @@ async function clearWindows(): Promise<void> {
   fs.rmSync(filePath, { force: true });
 }
 
-// --- entry functions, switch by process.platform ---
+// --- Entry functions, switch by process.platform ---
 
 async function saveRaw(json: string): Promise<void> {
   if (process.platform === "darwin") return saveMacOS(json);

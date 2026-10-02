@@ -862,9 +862,13 @@ function validateLazerOptionalMods(message: Record<string, unknown>): string | n
 }
 
 function validateLazerOptionalPlaylistFields(message: Record<string, unknown>): string | null {
-  const rulesetError = message.ruleset_id !== undefined && message.ruleset_id !== null && (!Number.isInteger(message.ruleset_id) || (message.ruleset_id as number) < 0) ? "ruleset_id must be a non-negative integer or null." : null;
+  const rulesetError =
+    message.ruleset_id !== undefined && message.ruleset_id !== null && (!Number.isInteger(message.ruleset_id) || (message.ruleset_id as number) < 0)
+      ? "ruleset_id must be a non-negative integer or null."
+      : null;
   if (rulesetError) return rulesetError;
-  if (message.beatmap_id !== undefined && message.beatmap_id !== null && (!Number.isInteger(message.beatmap_id) || (message.beatmap_id as number) <= 0)) return "beatmap_id must be a positive integer or null.";
+  if (message.beatmap_id !== undefined && message.beatmap_id !== null && (!Number.isInteger(message.beatmap_id) || (message.beatmap_id as number) <= 0))
+    return "beatmap_id must be a positive integer or null.";
   if (message.freestyle !== undefined && message.freestyle !== null && typeof message.freestyle !== "boolean") return "freestyle must be a boolean or null.";
   return validateLazerOptionalMods(message);
 }
@@ -1000,8 +1004,11 @@ function validateMessage(message: unknown): string | null {
       if (roomError) return roomError;
       if (message.name !== undefined && message.name !== null && typeof message.name !== "string") return "name must be a string or null.";
       if (message.password !== undefined && message.password !== null && typeof message.password !== "string") return "password must be a string or null.";
-      if (message.match_type !== undefined && message.match_type !== null && !["head_to_head", "team_versus"].includes(String(message.match_type))) { return "match_type must be head_to_head, team_versus, or null."; }
-      if (message.max_participants !== undefined && message.max_participants !== null && (!Number.isInteger(message.max_participants) || (message.max_participants as number) < 0)) return "max_participants must be a positive integer or null.";
+      if (message.match_type !== undefined && message.match_type !== null && !["head_to_head", "team_versus"].includes(String(message.match_type))) {
+        return "match_type must be head_to_head, team_versus, or null.";
+      }
+      if (message.max_participants !== undefined && message.max_participants !== null && (!Number.isInteger(message.max_participants) || (message.max_participants as number) < 0))
+        return "max_participants must be a positive integer or null.";
       return null;
     },
     lazer_edit_current_playlist_item: () => validateLazerPlaylistItem(message),
@@ -1043,7 +1050,8 @@ function validateMessage(message: unknown): string | null {
     lazer_start_match: () => {
       const roomError = validateLazerRoomId(message);
       if (roomError) return roomError;
-      if (message.countdown !== undefined && message.countdown !== null && (!Number.isInteger(message.countdown) || (message.countdown as number) < 0)) return "countdown must be null or a non-negative integer.";
+      if (message.countdown !== undefined && message.countdown !== null && (!Number.isInteger(message.countdown) || (message.countdown as number) < 0))
+        return "countdown must be null or a non-negative integer.";
       return null;
     },
     lazer_stop_match_countdown: () => validateLazerRoomId(message),

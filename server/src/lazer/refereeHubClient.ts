@@ -3,7 +3,7 @@ import { getAccessToken } from "../auth/auth.js";
 import { config } from "../config.js";
 import { HubEventHandler, ResyncHandler } from "../types.js";
 
-// full list of referee hub events that can be invoked by the server
+// Full list of referee hub events that can be invoked by the server
 const CLIENT_EVENTS = [
   "UserJoined",
   "UserLeft",
