@@ -101,6 +101,7 @@ const pendingLobbySeed = ref(null);
 const pendingLobbyCreatedViaApp = ref(false);
 const pendingJoinChannel = ref(null);
 const lazerPlayersDialogOpen = ref(false);
+const lazerRoomIdsBeingRestored = new Set();
 let pendingJoinTimeout;
 const { primaryColor, setPrimaryColor } = useDarkMode();
 const {
@@ -138,6 +139,7 @@ const {
   joinLazerRoom,
   leaveLazerRoom,
   changeLazerRoomSettings,
+  listLazerRooms,
   requestApi,
   checkUpdate,
   startUpdate,
@@ -397,8 +399,21 @@ watch(
       return;
     }
 
+    if (event?.type === "ack" && event.received === "lazer_list_rooms") {
+      const roomIds = Array.isArray(event.result?.room_ids) ? event.result.room_ids : [];
+      for (const roomId of roomIds) {
+        const id = Number(roomId);
+        if (!Number.isInteger(id) || id <= 0 || lazerRooms[lazerChatId(id)] || lazerRoomIdsBeingRestored.has(id)) continue;
+        lazerRoomIdsBeingRestored.add(id);
+        if (!joinLazerRoom(id)) lazerRoomIdsBeingRestored.delete(id);
+      }
+      return;
+    }
+
     if (event?.type === "ack" && event.received === "lazer_join_room" && event.result) {
       const room = registerLazerRoom(event.result);
+      const restoredRoomId = Number(event.result.room_id);
+      if (lazerRoomIdsBeingRestored.delete(restoredRoomId)) return;
       if (room) {
         clearPendingJoin();
         activeChat.value = room.id;
@@ -410,6 +425,11 @@ watch(
 
     if (event?.type === "error" && event.request === "lazer_join_room" && pendingJoinChannel.value?.type === "lazer") {
       failPendingJoin("You are not a referee in the specified room.");
+      return;
+    }
+
+    if (event?.type === "error" && event.request === "lazer_join_room") {
+      lazerRoomIdsBeingRestored.clear();
       return;
     }
 
@@ -864,6 +884,7 @@ async function connectWithToast(username, password, { checkUpdates = false } = {
 
   try {
     await loginToServer(username, password);
+    listLazerRooms();
     if (checkUpdates) await checkForUpdates();
     else {
       toast.removeGroup(loginToastGroup);

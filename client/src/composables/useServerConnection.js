@@ -79,6 +79,10 @@ function kickLazerPlayer(room_id, user_id) {
   return socket.value ? send(socket.value, { type: "lazer_kick_player", room_id, user_id }) : false;
 }
 
+function listLazerRooms() {
+  return socket.value ? send(socket.value, { type: "lazer_list_rooms" }) : false;
+}
+
 function getRequestSocket() {
   const existingSocket = socket.value;
   if (existingSocket && [WebSocket.OPEN, WebSocket.CONNECTING].includes(existingSocket.readyState)) {
@@ -413,6 +417,7 @@ export function useServerConnection() {
     changeLazerRoomSettings,
     moveLazerUser,
     kickLazerPlayer,
+    listLazerRooms,
     lazerInvitePlayer: inviteLazerPlayer,
     checkUpdate: requestUpdateCheck,
     startUpdate: () => sendUpdateCommand("start_update"),
