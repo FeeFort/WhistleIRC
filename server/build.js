@@ -150,14 +150,14 @@ async function buildAppImage(buildDir, rawBinaryPath, arch) {
 
   fs.writeFileSync(path.join(appDir, `${baseName}.desktop`), `[Desktop Entry]\nType=Application\nName=${appName}\nExec=AppRun\nIcon=${baseName}\nCategories=Network;\n`);
 
-  const iconPng = path.join(__dirname, "icon.png");
-  if (fs.existsSync(iconPng)) {
-    fs.copyFileSync(iconPng, path.join(appDir, `${baseName}.png`));
-    const hicolorIconDir = path.join(appDir, "usr", "share", "icons", "hicolor", "256x256", "apps");
+  const iconSvg = path.join(__dirname, "icons/icon.svg");
+  if (fs.existsSync(iconSvg)) {
+    fs.copyFileSync(iconSvg, path.join(appDir, `${baseName}.svg`));
+    const hicolorIconDir = path.join(appDir, "usr", "share", "icons", "hicolor", "scalable", "apps");
     fs.mkdirSync(hicolorIconDir, { recursive: true });
-    fs.copyFileSync(iconPng, path.join(hicolorIconDir, `${baseName}.png`));
+    fs.copyFileSync(iconSvg, path.join(hicolorIconDir, `${baseName}.svg`));
   } else {
-    console.warn(`\nWarning: ${iconPng} not found — AppImage will be built without an icon. ` + `Generate it once from icon.ico, e.g.: convert icon.ico -resize 256x256 icon.png`);
+    console.warn(`\nWarning: ${iconSvg} not found — AppImage will be built without an icon.`);
   }
 
   const outputPath = path.join(buildDir, `${baseName}-linux-${arch}.AppImage`);
@@ -178,7 +178,7 @@ async function buildMacZip(buildDir, rawBinaryPath, arch) {
   fs.copyFileSync(rawBinaryPath, path.join(appBundle, "Contents", "MacOS", binaryName));
   fs.chmodSync(path.join(appBundle, "Contents", "MacOS", binaryName), 0o755);
 
-  const iconIcns = path.join(__dirname, "icon.icns");
+  const iconIcns = path.join(__dirname, "icons/icon.icns");
   const hasIcon = fs.existsSync(iconIcns);
   if (hasIcon) {
     fs.copyFileSync(iconIcns, path.join(appBundle, "Contents", "Resources", "icon.icns"));
@@ -223,7 +223,7 @@ async function prepareWindowsRuntime(arch) {
     if (!runtimeName) throw new Error(`pkg-fetch did not produce a Windows ${arch} runtime`);
     const runtimePath = path.join(runtimeDir, runtimeName);
     await rcedit(runtimePath, {
-      icon: path.join(__dirname, "icon.ico"),
+      icon: path.join(__dirname, "icons/icon.ico"),
       "version-string": { CompanyName: "FeeFort", ProductName: appName, FileDescription: `${appName} osu! referee client` },
       "file-version": toFourPartVersion(appVersion),
       "product-version": toFourPartVersion(appVersion),
