@@ -631,7 +631,12 @@ function forwardCommand(command) {
 
     <div ref="listEl" class="chat-log" @scroll="onScroll" @wheel="onWheel">
       <div class="chat-log__inner">
-        <div v-for="(msg, index) in displayMessages" :key="msg.id" class="chat-line" :class="{ 'chat-line--system': msg.type === 'system', 'chat-line--pending': msg.pending }">
+        <div
+          v-for="(msg, index) in displayMessages"
+          :key="msg.id"
+          class="chat-line"
+          :class="{ 'chat-line--system': msg.type === 'system', 'chat-line--pending': msg.pending, 'chat-line--action': msg.isAction === true }"
+        >
           <template v-if="msg.type === 'system'">
             <span class="chat-line__system-rule" aria-hidden="true"></span>
             <span class="chat-line__system-text">{{ msg.text }}</span>
@@ -933,6 +938,10 @@ function forwardCommand(command) {
 
 .chat-line--pending {
   opacity: 0.5;
+}
+
+.chat-line--action {
+  font-style: italic;
 }
 
 .chat-line__time {

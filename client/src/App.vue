@@ -2227,6 +2227,24 @@ function closeActiveChat(chatId = activeChat.value) {
 
 function handleSend(text) {
   if (activeChatKind.value === "lazer") {
+    const command = text.trim();
+    if (/^\/savelog$/i.test(command)) {
+      downloadChatHistory();
+      return;
+    }
+
+    let messageText = text;
+    let isAction = false;
+    const meMatch = command.match(/^\/me(?:\s+(.+))?$/i);
+    if (meMatch) {
+      messageText = meMatch[1]?.trim() || "";
+      if (!messageText) return;
+      isAction = true;
+    } else if (/^\/np$/i.test(command)) {
+      messageText = "is listening to [https://github.com/FeeFort/WhistleIRC WhistleIRC]";
+      isAction = true;
+    }
+
     const roomId = Number(activeLazerRoom.value?.room_id);
     if (!Number.isInteger(roomId) || roomId <= 0 || activeLazerRoom.value?.closed) return;
     const chatId = lazerChatId(roomId);
@@ -2234,13 +2252,14 @@ function handleSend(text) {
     const pendingMessage = {
       id: `pending-${Date.now()}-${Math.random()}`,
       author: currentUser.value,
-      text,
+      text: messageText,
       time: new Date().toISOString(),
+      isAction,
       pending: true,
     };
     list.push(pendingMessage);
     pendingLazerMessages.push({ chatId, messageId: pendingMessage.id });
-    if (!sendLazerChatMessage(roomId, text)) {
+    if (!sendLazerChatMessage(roomId, messageText, isAction)) {
       const index = list.indexOf(pendingMessage);
       if (index !== -1) list.splice(index, 1);
       const pendingIndex = pendingLazerMessages.findIndex((item) => item.messageId === pendingMessage.id);
