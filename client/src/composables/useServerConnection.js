@@ -43,6 +43,10 @@ function inviteLazerPlayer(room_id, user_id) {
   return socket.value ? send(socket.value, { type: "lazer_invite_player", room_id, user_id }) : false;
 }
 
+function sendLazerChatMessage(room_id, message, is_action = false) {
+  return socket.value ? send(socket.value, { type: "lazer_send_chat_message", room_id, message, is_action }) : false;
+}
+
 function joinLazerRoom(room_id) {
   return socket.value ? send(socket.value, { type: "lazer_join_room", room_id }) : false;
 }
@@ -419,6 +423,7 @@ export function useServerConnection() {
     kickLazerPlayer,
     listLazerRooms,
     lazerInvitePlayer: inviteLazerPlayer,
+    sendLazerChatMessage,
     checkUpdate: requestUpdateCheck,
     startUpdate: () => sendUpdateCommand("start_update"),
     cancelUpdate: () => sendUpdateCommand("cancel_update"),

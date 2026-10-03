@@ -76,6 +76,9 @@ function formatTimer(seconds) {
 }
 
 const timerLabel = computed(() => (props.timerActive ? formatTimer(props.timerSeconds) : "No timer active"));
+const displayMessages = computed(() =>
+  [...props.messages].sort((left, right) => Number(Boolean(left.pending)) - Number(Boolean(right.pending))),
+);
 
 const statusLabel = computed(() => (props.connected ? "Connected" : "Disconnected"));
 
@@ -595,7 +598,7 @@ function forwardCommand(command) {
 
     <div ref="listEl" class="chat-log" @scroll="onScroll" @wheel="onWheel">
       <div class="chat-log__inner">
-        <div v-for="(msg, index) in messages" :key="msg.id" class="chat-line" :class="{ 'chat-line--system': msg.type === 'system' }">
+        <div v-for="(msg, index) in displayMessages" :key="msg.id" class="chat-line" :class="{ 'chat-line--system': msg.type === 'system', 'chat-line--pending': msg.pending }">
           <template v-if="msg.type === 'system'">
             <span class="chat-line__system-rule" aria-hidden="true"></span>
             <span class="chat-line__system-text">{{ msg.text }}</span>
@@ -893,6 +896,10 @@ function forwardCommand(command) {
   align-items: baseline;
   gap: 0.6rem;
   padding: 0.18rem 0;
+}
+
+.chat-line--pending {
+  opacity: 0.5;
 }
 
 .chat-line__time {

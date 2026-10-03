@@ -96,6 +96,7 @@ const lobbyStates = reactive({});
 const lazerRooms = reactive({});
 const lazerLobbyStates = reactive({});
 const channelMessages = reactive({});
+const pendingLazerMessages = [];
 const lobbyContexts = reactive({});
 const pendingPartChannels = new Set();
 const pendingLobbySeed = ref(null);
@@ -138,6 +139,7 @@ const {
   setActiveWinCondition,
   makeLazerRoom,
   joinLazerRoom,
+  sendLazerChatMessage,
   leaveLazerRoom,
   changeLazerRoomSettings,
   listLazerRooms,
@@ -382,6 +384,39 @@ const chatSettingChanged = computed(() => ({
 watch(
   lastEvent,
   (event) => {
+    if (event?.type === "lazer_chat_history") {
+      appendLazerChatHistory(event.roomId, event.messages, event.users);
+      return;
+    }
+
+    if (event?.type === "ack" && event.received === "lazer_send_chat_message") {
+      const pending = pendingLazerMessages.shift();
+      if (pending) {
+        const message = (channelMessages[pending.chatId] || []).find((item) => item.id === pending.messageId);
+        if (message) {
+          message.pending = false;
+          message.awaitingEcho = true;
+        }
+      }
+      return;
+    }
+
+    if (event?.type === "error" && event.request === "lazer_send_chat_message") {
+      const pending = pendingLazerMessages.shift();
+      if (pending) {
+        const list = channelMessages[pending.chatId] || [];
+        const index = list.findIndex((item) => item.id === pending.messageId);
+        if (index !== -1) list.splice(index, 1);
+      }
+      toast.add({ severity: "error", summary: "Message failed", detail: event.message || "The server rejected the message.", life: 5000 });
+      return;
+    }
+
+    if (event?.type === "lazer_chat_message") {
+      appendLazerChatMessage(event.roomId, event.message, event.users, true);
+      return;
+    }
+
     if (event?.type === "lazer_room_state" && event.room) {
       registerLazerRoom(event.room);
       return;
@@ -1128,6 +1163,51 @@ function lazerChatId(roomId) {
   return `lazer:${roomId}`;
 }
 
+function normalizeLazerChatMessage(message, users = []) {
+  if (!message || typeof message !== "object") return null;
+  const source = message;
+  const senderId = Number(source.sender_id ?? source.user_id ?? source.sender?.id);
+  const usersById = new Map((Array.isArray(users) ? users : []).map((user) => [Number(user.user_id ?? user.id), user]));
+  const sender = source.sender || (Number.isInteger(senderId) ? usersById.get(senderId) : null);
+  const author = String(source.username || source.sender_username || sender?.username || source.sender_name || `User ${senderId || ""}`).trim();
+  const text = String(source.content ?? source.message ?? source.text ?? "");
+  if (!text) return null;
+  return {
+    id: source.message_id ?? source.id ?? `lazer-${Date.now()}-${Math.random()}`,
+    senderId: Number.isInteger(senderId) ? senderId : null,
+    author,
+    text,
+    time: source.created_at || source.timestamp || source.time || new Date().toISOString(),
+    isAction: Boolean(source.is_action),
+  };
+}
+
+function appendLazerChatHistory(roomId, messages, users = []) {
+  const chatId = lazerChatId(Number(roomId));
+  const normalized = (Array.isArray(messages) ? messages : []).map((message) => normalizeLazerChatMessage(message, users)).filter(Boolean);
+  channelMessages[chatId] = normalized;
+  unreadChats[chatId] ??= false;
+}
+
+function appendLazerChatMessage(roomId, message, users = [], notify = true) {
+  const normalized = normalizeLazerChatMessage(message, users);
+  if (!normalized) return;
+  const chatId = lazerChatId(Number(roomId));
+  const list = (channelMessages[chatId] ||= []);
+  const pending = list.find(
+    (item) =>
+      (item.pending || item.awaitingEcho) &&
+      normalizeIrcNick(item.author) === normalizeIrcNick(normalized.author) &&
+      item.text === normalized.text,
+  );
+  if (pending) {
+    Object.assign(pending, normalized, { pending: false, awaitingEcho: false });
+    return;
+  }
+  if (list.some((item) => String(item.id) === String(normalized.id))) return;
+  appendChatMessage(chatId, normalized, { notify: notify && normalized.author !== currentUser.value });
+}
+
 function loadLazerUserProfile(userId) {
   const id = Number(userId);
   if (!Number.isInteger(id) || id <= 0 || lazerUserProfiles[id] || pendingLazerUserProfiles.has(id)) return;
@@ -1178,6 +1258,17 @@ function registerLazerRoom(room) {
 }
 
 const activeLazerRoom = computed(() => lazerRooms[activeChat.value] || null);
+const activeLazerRefereeUsers = computed(() => {
+  const referees = activeLazerRoom.value?.referees || [];
+  return referees
+    .map((referee) => {
+      const profile = lazerUserProfiles[referee.user_id];
+      if (profile?.username) return profile.username;
+      if (Number(osuProfile.value?.id) === Number(referee.user_id)) return currentUser.value;
+      return "";
+    })
+    .filter(Boolean);
+});
 const activeLazerLobbyState = computed(() => lazerLobbyStates[activeChat.value] || null);
 const activeChatKind = computed(() => {
   if (activeChat.value === "bancho") return "bancho";
@@ -2135,6 +2226,29 @@ function closeActiveChat(chatId = activeChat.value) {
 }
 
 function handleSend(text) {
+  if (activeChatKind.value === "lazer") {
+    const roomId = Number(activeLazerRoom.value?.room_id);
+    if (!Number.isInteger(roomId) || roomId <= 0 || activeLazerRoom.value?.closed) return;
+    const chatId = lazerChatId(roomId);
+    const list = (channelMessages[chatId] ||= []);
+    const pendingMessage = {
+      id: `pending-${Date.now()}-${Math.random()}`,
+      author: currentUser.value,
+      text,
+      time: new Date().toISOString(),
+      pending: true,
+    };
+    list.push(pendingMessage);
+    pendingLazerMessages.push({ chatId, messageId: pendingMessage.id });
+    if (!sendLazerChatMessage(roomId, text)) {
+      const index = list.indexOf(pendingMessage);
+      if (index !== -1) list.splice(index, 1);
+      const pendingIndex = pendingLazerMessages.findIndex((item) => item.messageId === pendingMessage.id);
+      if (pendingIndex !== -1) pendingLazerMessages.splice(pendingIndex, 1);
+      toast.add({ severity: "error", summary: "Message failed", detail: "The chat connection is not available.", life: 4000 });
+    }
+    return;
+  }
   const channel = activeChat.value === "bancho" ? "BanchoBot" : activeDirectChat.value?.label || joinedChannels.value.find((item) => item.id === activeChat.value)?.label;
   if (!channel) return;
   const resolvedText = activeLobbyState.value ? formatLobbyTemplate(text, getLobbyTemplateValues(activeLobbyState.value)) : text;
@@ -2983,7 +3097,7 @@ function handleSendResult(result) {
         :connected="connected && !activeLazerRoom?.closed"
         :messages="activeMessages"
         :current-user="currentUser"
-        :referee-users="[]"
+        :referee-users="activeLazerRefereeUsers"
         :room-size="activeLazerRoom?.max_participants || 0"
         :room-closed="Boolean(activeLazerRoom?.closed)"
         :format="activeLazerRoom?.state?.type || 'Lazer'"
