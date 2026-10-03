@@ -226,7 +226,8 @@ export type ClientMessage =
   | ({ type: "lazer_set_lock_state"; room_id: number } & SetLockStateRequest)
   | ({ type: "lazer_start_match"; room_id: number } & StartGameplayRequest)
   | { type: "lazer_stop_match_countdown"; room_id: number }
-  | { type: "lazer_abort_match"; room_id: number };
+  | { type: "lazer_abort_match"; room_id: number }
+  | { type: "lazer_send_chat_message"; room_id: number; message: string; is_action?: boolean };
 
 export interface PersistedSession {
   clientId: string;
@@ -236,6 +237,17 @@ export interface PersistedSession {
 }
 
 export type AllowedMethods = "GET" | "POST";
+
+export type ChatNotification = {
+  event: string;
+  data: unknown;
+};
+
+export type ChatSocketOptions = {
+  accessToken: string | (() => Promise<string>);
+  onNotification: (notification: ChatNotification) => void;
+  onError?: (error: Error) => void;
+};
 
 //Updater
 

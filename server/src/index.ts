@@ -18,8 +18,20 @@ import { addClient, removeClient, sendJson, broadcast, clientCount } from "./wsG
 import { connectToRefereeHub } from "./lazer/refereeHubClient.js";
 import { roomManager } from "./lazer/roomManager.js";
 import * as lazerHandlers from "./lazer/handlers.js";
+import { ChatSocket } from "./lazer/chatSocket.js";
 
 const launchedAfterUpdate = process.argv.includes("--updated");
+let chatSocket: ChatSocket | null = null;
+
+function startChatSocket(): void {
+  chatSocket?.close();
+  chatSocket = new ChatSocket({
+    accessToken: getAccessToken,
+    onNotification: (notification) => broadcast({ type: "chat_notification", notification }),
+    onError: (error) => console.error(`[${formatLogTime()}] osu! chat socket: ${error.message}`),
+  });
+  void chatSocket.connect().catch((error) => console.error(`[${formatLogTime()}] osu! chat socket: ${(error as Error).message}`));
+}
 
 // TODO: add actual normal comments to this mess
 if (process.argv[2] === "--apply-update") {
@@ -1057,6 +1069,11 @@ function validateMessage(message: unknown): string | null {
     lazer_stop_match_countdown: () => validateLazerRoomId(message),
     lazer_abort_match: () => validateLazerRoomId(message),
     lazer_list_rooms: () => null,
+    lazer_send_chat_message: () => {
+      const roomError = validateLazerRoomId(message);
+      if (roomError) return roomError;
+      return isNonEmptyString(message.message) ? null : "message must be a non-empty string.";
+    },
   };
 
   const validator = validators[message.type];
@@ -1150,6 +1167,7 @@ async function handleOsuLogin(client: WebSocket, message: ClientMessage): Promis
   try {
     const user = await loginOsu({ clientId: clientId.trim(), clientSecret: clientSecret, redirectUri: redirectUri.trim() }, code.trim());
     await startLazerSession();
+    startChatSocket();
     sendJson(client, { type: "osu_user", user });
   } catch (error) {
     console.error(`[${formatLogTime()}] osu! OAuth request failed: ${(error as Error).message}`);
@@ -1159,6 +1177,8 @@ async function handleOsuLogin(client: WebSocket, message: ClientMessage): Promis
 
 async function handleOsuLogout(client: WebSocket): Promise<void> {
   try {
+    chatSocket?.close();
+    chatSocket = null;
     const status = await logoutOsu();
     sendJson(client, { type: "ack", received: "osu_logout", status });
   } catch (error) {
@@ -1364,6 +1384,7 @@ webSocketServer.on("connection", (client) => {
 await restoreSession();
 if (getState().status === "authenticated") {
   await startLazerSession();
+  startChatSocket();
 }
 
 httpServer.listen(config.httpPort, config.httpHost, () => {
