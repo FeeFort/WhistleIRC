@@ -243,6 +243,8 @@ export type ChatNotification = {
   data: unknown;
 };
 
+export type ChatMessage = Record<string, unknown>;
+
 export type ChatSocketOptions = {
   accessToken: string | (() => Promise<string>);
   onNotification: (notification: ChatNotification) => void;

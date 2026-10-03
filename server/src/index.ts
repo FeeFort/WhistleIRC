@@ -27,7 +27,23 @@ function startChatSocket(): void {
   chatSocket?.close();
   chatSocket = new ChatSocket({
     accessToken: getAccessToken,
-    onNotification: (notification) => broadcast({ type: "chat_notification", notification }),
+    onNotification: (notification) => {
+      const data = notification.data as Record<string, unknown> | undefined;
+      if (notification.event === "chat.channel.join") {
+        const channel = (data?.channel ?? data) as Record<string, unknown> | undefined;
+        const channelId = Number(channel?.channel_id);
+        if (Number.isInteger(channelId) && channelId > 0) roomManager.markChatChannelJoined(channelId);
+        return;
+      }
+      if (notification.event === "chat.message.new") {
+        const messages = Array.isArray(data?.messages) ? data.messages : [];
+        for (const message of messages) {
+          const channelId = Number((message as Record<string, unknown>)?.channel_id);
+          const room = Number.isInteger(channelId) ? roomManager.getRoomByChatChannel(channelId) : undefined;
+          if (room) broadcast({ type: "lazer_chat_message", roomId: room.room_id, message, users: data?.users ?? [] });
+        }
+      }
+    },
     onError: (error) => console.error(`[${formatLogTime()}] osu! chat socket: ${error.message}`),
   });
   void chatSocket.connect().catch((error) => console.error(`[${formatLogTime()}] osu! chat socket: ${(error as Error).message}`));
@@ -1072,7 +1088,8 @@ function validateMessage(message: unknown): string | null {
     lazer_send_chat_message: () => {
       const roomError = validateLazerRoomId(message);
       if (roomError) return roomError;
-      return isNonEmptyString(message.message) ? null : "message must be a non-empty string.";
+      if (!isNonEmptyString(message.message)) return "message must be a non-empty string.";
+      return message.is_action === undefined || typeof message.is_action === "boolean" ? null : "is_action must be a boolean.";
     },
   };
 
@@ -1347,6 +1364,7 @@ function handleClientMessage(client: WebSocket, rawMessage: unknown): void {
     lazer_stop_match_countdown: lazerHandlers.handleLazerStopMatchCountdown,
     lazer_abort_match: lazerHandlers.handleLazerAbortMatch,
     lazer_list_rooms: lazerHandlers.handleLazerListRooms,
+    lazer_send_chat_message: lazerHandlers.handleLazerSendChatMessage,
   };
 
   handlers[message.type](client, message);

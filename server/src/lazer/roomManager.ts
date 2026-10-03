@@ -27,6 +27,8 @@ class RoomManager {
   private rooms = new Map<number, RoomState>();
   private onRoomChanged: ((room: RoomState) => void) | null = null;
   private onRoomRemoved: ((roomId: number) => void) | null = null;
+  private joinedChatChannels = new Set<number>();
+  private chatWaiters = new Map<number, Array<() => void>>();
 
   setListeners(onChanged: (room: RoomState) => void, onRemoved: (roomId: number) => void): void {
     this.onRoomChanged = onChanged;
@@ -44,6 +46,31 @@ class RoomManager {
 
   getAllRooms(): RoomState[] {
     return [...this.rooms.values()];
+  }
+
+  getRoomByChatChannel(channelId: number): RoomState | undefined {
+    return this.getAllRooms().find((room) => room.chat_channel_id === channelId);
+  }
+
+  markChatChannelJoined(channelId: number): void {
+    this.joinedChatChannels.add(channelId);
+    for (const resolve of this.chatWaiters.get(channelId) ?? []) resolve();
+    this.chatWaiters.delete(channelId);
+  }
+
+  async waitForChatChannel(channelId: number, timeoutMs = 10_000): Promise<void> {
+    if (this.joinedChatChannels.has(channelId)) return;
+    await new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        const waiters = this.chatWaiters.get(channelId) ?? [];
+        this.chatWaiters.set(channelId, waiters.filter((waiter) => waiter !== done));
+        reject(new Error(`Chat channel ${channelId} was not joined in time.`));
+      }, timeoutMs);
+      const done = () => { clearTimeout(timer); resolve(); };
+      const waiters = this.chatWaiters.get(channelId) ?? [];
+      waiters.push(done);
+      this.chatWaiters.set(channelId, waiters);
+    });
   }
 
   private findPlayer(room: RoomState, userId: number): LazerPlayer | undefined {

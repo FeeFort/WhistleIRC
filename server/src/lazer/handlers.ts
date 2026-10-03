@@ -2,6 +2,7 @@ import { WebSocket } from "ws";
 import { sendJson } from "../wsGateway.js";
 import { invokeHub } from "./refereeHubClient.js";
 import { roomManager } from "./roomManager.js";
+import { fetchChatMessages, sendChatMessage } from "./chatApi.js";
 import type { ClientMessage, RoomJoinedResponse, ListRoomsResponse } from "../types.js";
 
 async function ack(client: WebSocket, type: string, result?: unknown): Promise<void> {
@@ -22,6 +23,7 @@ export async function handleLazerMakeRoom(client: WebSocket, message: ClientMess
       max_participants: m.max_participants,
     });
     roomManager.trackRoom(room);
+    await roomManager.waitForChatChannel(room.chat_channel_id);
     await ack(client, message.type, room);
   } catch (error) {
     await fail(client, message.type, error);
@@ -33,6 +35,9 @@ export async function handleLazerJoinRoom(client: WebSocket, message: ClientMess
   try {
     const room = await invokeHub<RoomJoinedResponse>("JoinRoom", m.room_id);
     roomManager.trackRoom(room);
+    await roomManager.waitForChatChannel(room.chat_channel_id);
+    const history = await fetchChatMessages(room.chat_channel_id);
+    sendJson(client, { type: "lazer_chat_history", roomId: room.room_id, messages: history });
     await ack(client, message.type, room);
   } catch (error) {
     await fail(client, message.type, error);
@@ -251,6 +256,18 @@ export async function handleLazerListRooms(client: WebSocket, message: ClientMes
     await roomManager.resync();
     const rooms = roomManager.getAllRooms();
     await ack(client, message.type, { room_ids: rooms.map((r) => r.room_id) } satisfies ListRoomsResponse);
+  } catch (error) {
+    await fail(client, message.type, error);
+  }
+}
+
+export async function handleLazerSendChatMessage(client: WebSocket, message: ClientMessage): Promise<void> {
+  const m = message as Extract<ClientMessage, { type: "lazer_send_chat_message" }>;
+  try {
+    const room = roomManager.getRoom(m.room_id);
+    if (!room) throw new Error(`Room ${m.room_id} is not tracked.`);
+    await sendChatMessage(room.chat_channel_id, m.message, m.is_action === true);
+    await ack(client, message.type);
   } catch (error) {
     await fail(client, message.type, error);
   }

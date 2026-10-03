@@ -18,6 +18,7 @@ export class ChatSocket {
       headers: { Authorization: `Bearer ${token}` },
     });
     this.socket = socket;
+    socket.on("open", () => socket.send(JSON.stringify({ event: "chat.start" })));
     socket.on("message", (raw) => this.handleMessage(raw.toString()));
     socket.on("error", (error) => this.options.onError?.(error instanceof Error ? error : new Error(String(error))));
     socket.on("close", () => {
