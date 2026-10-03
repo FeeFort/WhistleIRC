@@ -635,12 +635,23 @@ function forwardCommand(command) {
           v-for="(msg, index) in displayMessages"
           :key="msg.id"
           class="chat-line"
-          :class="{ 'chat-line--system': msg.type === 'system', 'chat-line--pending': msg.pending, 'chat-line--action': msg.isAction === true }"
+          :class="{
+            'chat-line--system': msg.type === 'system' && msg.isRoll !== true,
+            'chat-line--pending': msg.pending,
+            'chat-line--roll': msg.isRoll === true,
+          }"
         >
           <template v-if="msg.type === 'system'">
-            <span class="chat-line__system-rule" aria-hidden="true"></span>
-            <span class="chat-line__system-text">{{ msg.text }}</span>
-            <span class="chat-line__system-rule" aria-hidden="true"></span>
+            <template v-if="msg.isRoll === true">
+              <span class="chat-line__time">{{ displayTime(msg.time, index) }}</span>
+              <span class="chat-line__nick chat-line__nick--badge chat-line__nick--roll">{{ msg.author }}</span>
+              <span class="chat-line__text">{{ msg.text }}</span>
+            </template>
+            <template v-else>
+              <span class="chat-line__system-rule" aria-hidden="true"></span>
+              <span class="chat-line__system-text">{{ msg.text }}</span>
+              <span class="chat-line__system-rule" aria-hidden="true"></span>
+            </template>
           </template>
           <template v-else>
             <span class="chat-line__time">{{ displayTime(msg.time, index) }}</span>
@@ -652,7 +663,7 @@ function forwardCommand(command) {
               :style="nickStyle(msg.author, msg.team)"
               >{{ msg.author }}</span
             >
-            <span class="chat-line__text" :style="messageTextStyle(msg.text)">
+            <span class="chat-line__text" :class="{ 'chat-line__text--action': msg.isAction === true }" :style="messageTextStyle(msg.text)">
               <template v-for="(segment, segmentIndex) in renderChatMessageSegments(msg)" :key="`${msg.id}-${segmentIndex}`">
                 <a v-if="segment.type === 'link'" class="chat-line__link" :href="segment.value" target="_blank" rel="noopener noreferrer">
                   <Link :size="12" aria-hidden="true" />
@@ -940,7 +951,12 @@ function forwardCommand(command) {
   opacity: 0.5;
 }
 
-.chat-line--action {
+.chat-line__nick--roll {
+  background: #9c0101;
+  color: var(--app-bg);
+}
+
+.chat-line__text--action {
   font-style: italic;
 }
 

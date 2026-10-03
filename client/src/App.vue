@@ -140,6 +140,7 @@ const {
   makeLazerRoom,
   joinLazerRoom,
   sendLazerChatMessage,
+  rollLazer,
   leaveLazerRoom,
   changeLazerRoomSettings,
   listLazerRooms,
@@ -414,6 +415,32 @@ watch(
 
     if (event?.type === "lazer_chat_message") {
       appendLazerChatMessage(event.roomId, event.message, event.users, true);
+      return;
+    }
+
+    if (event?.type === "lazer_roll_completed") {
+      const roomId = Number(event.roomId);
+      const chatId = lazerChatId(roomId);
+      const userId = Number(event.userId);
+      const player = (lazerRooms[chatId]?.players || []).find((candidate) => Number(candidate.user_id) === userId);
+      const author = lazerUserProfiles[userId]?.username || (Number(osuProfile.value?.id) === userId ? currentUser.value : player?.username) || `User ${userId}`;
+      const result = Number(event.result);
+      const max = Number(event.max) || 100;
+      if (Number.isFinite(result)) {
+        appendChatMessage(chatId, {
+          id: `roll-${roomId}-${userId}-${Date.now()}`,
+          type: "system",
+          author: "system",
+          text: `${author} rolled ${result} points out of ${max}.`,
+          time: new Date().toISOString(),
+          isRoll: true,
+        });
+      }
+      return;
+    }
+
+    if (event?.type === "error" && event.request === "lazer_roll") {
+      toast.add({ severity: "error", summary: "Roll failed", detail: event.message || "The server rejected the roll.", life: 5000 });
       return;
     }
 
@@ -2230,6 +2257,15 @@ function handleSend(text) {
     const command = text.trim();
     if (/^\/savelog$/i.test(command)) {
       downloadChatHistory();
+      return;
+    }
+
+    if (/^\/roll$/i.test(command)) {
+      const roomId = Number(activeLazerRoom.value?.room_id);
+      if (!Number.isInteger(roomId) || roomId <= 0 || activeLazerRoom.value?.closed) return;
+      if (!rollLazer(roomId, 100)) {
+        toast.add({ severity: "error", summary: "Roll failed", detail: "The server connection is not available.", life: 4000 });
+      }
       return;
     }
 
