@@ -4,7 +4,7 @@ import Button from "primevue/button";
 import Dialog from "primevue/dialog";
 import InputText from "primevue/inputtext";
 import { useToast } from "primevue/usetoast";
-import { Lock, LockOpen, RefreshCcw, UserRoundX, Whistle } from "@lucide/vue";
+import { LockOpen, Menu, RefreshCcw, UserRoundX, Whistle } from "@lucide/vue";
 import { useNickColor } from "../../composables/useNickColor";
 import { useChatSettings } from "../../composables/useChatSettings";
 import { useServerConnection } from "../../composables/useServerConnection";
@@ -16,15 +16,19 @@ const props = defineProps({
   disabled: { type: Boolean, default: false },
 });
 
-const emit = defineEmits(["update:visible"]);
+const emit = defineEmits(["update:visible", "move-player"]);
+const draggedPlayer = ref(null);
+const dragTargetSlot = ref(null);
 const userId = ref("");
 const submittingInvite = ref(false);
 const submittingTeamUserId = ref(null);
+const pendingSlotMove = ref(null);
 const { nickColor } = useNickColor();
 const { redTeamColor, blueTeamColor } = useChatSettings();
 const toast = useToast();
 const { lastEvent, lazerInvitePlayer, moveLazerUser, kickLazerPlayer } = useServerConnection();
 const parsedUserId = computed(() => Number.parseInt(userId.value.trim(), 10));
+const hasLimitedSlots = computed(() => props.players.some((player) => player.isSlot));
 const inviteValid = computed(
   () => Number.isInteger(parsedUserId.value) && parsedUserId.value > 0 && Number.isInteger(props.roomId) && props.roomId > 0,
 );
@@ -44,10 +48,41 @@ function toggleTeam(player) {
   if (props.disabled || !Number.isInteger(props.roomId) || props.roomId <= 0 || player.isSlot || !player.team || submittingTeamUserId.value !== null) return;
   const team = player.team === "red" ? "blue" : "red";
   submittingTeamUserId.value = player.userId;
-  if (!moveLazerUser(props.roomId, player.userId, team)) {
+  if (!moveLazerUser(props.roomId, player.userId, { team })) {
     submittingTeamUserId.value = null;
     toast.add({ severity: "error", summary: "Team change failed", detail: "The server connection is not available.", life: 4000 });
   }
+}
+function startDrag(player, event) {
+  if (!hasLimitedSlots.value || props.disabled || player.isSlot || submittingTeamUserId.value !== null) return;
+  draggedPlayer.value = player;
+  event.dataTransfer.effectAllowed = "move";
+  event.dataTransfer.setData("text/plain", String(player.userId));
+}
+function endDrag() {
+  draggedPlayer.value = null;
+  dragTargetSlot.value = null;
+}
+function dragOverSlot(slot, event) {
+  if (!hasLimitedSlots.value || !slot.isSlot || !draggedPlayer.value || submittingTeamUserId.value !== null) return;
+  event.preventDefault();
+  dragTargetSlot.value = slot.slot;
+}
+function dragLeaveSlot(slot, event) {
+  if (dragTargetSlot.value === slot.slot && !event.currentTarget.contains(event.relatedTarget)) dragTargetSlot.value = null;
+}
+function dropOnSlot(slot, event) {
+  event.preventDefault();
+  const player = draggedPlayer.value;
+  if (!hasLimitedSlots.value || !player || !slot.isSlot || props.disabled || submittingTeamUserId.value !== null) return;
+  submittingTeamUserId.value = player.userId;
+  pendingSlotMove.value = { userId: player.userId, slot: slot.slot };
+  if (!moveLazerUser(props.roomId, player.userId, { slot: slot.slot - 1, team: player.team })) {
+    submittingTeamUserId.value = null;
+    pendingSlotMove.value = null;
+    toast.add({ severity: "error", summary: "Move failed", detail: "The server connection is not available.", life: 4000 });
+  }
+  endDrag();
 }
 function kickPlayer(player) {
   if (props.disabled || !Number.isInteger(props.roomId) || props.roomId <= 0 || player.isSlot || submittingTeamUserId.value !== null) return;
@@ -65,7 +100,7 @@ function initials(name) {
 }
 
 function playerNameStyle(player) {
-  if (player.isSlot) return { color: "var(--app-muted)" };
+  if (player.isSlot) return { color: "#8b93a6" };
   if (player.team === "red") return { color: redTeamColor.value };
   if (player.team === "blue") return { color: blueTeamColor.value };
   return { color: nickColor(player.name, "") };
@@ -90,6 +125,7 @@ watch(
       userId.value = "";
       submittingInvite.value = false;
       submittingTeamUserId.value = null;
+      pendingSlotMove.value = null;
     }
   },
 );
@@ -116,6 +152,12 @@ watch(lastEvent, (event) => {
     return;
 
   submittingTeamUserId.value = null;
+  if (event.type === "ack" && event.received === "lazer_move_user" && pendingSlotMove.value) {
+    emit("move-player", pendingSlotMove.value);
+    pendingSlotMove.value = null;
+    return;
+  }
+  pendingSlotMove.value = null;
   if (event.type !== "ack") {
     const isKick = event.received === "lazer_kick_player" || event.request === "lazer_kick_player";
     toast.add({
@@ -149,12 +191,22 @@ watch(lastEvent, (event) => {
         v-for="player in players"
         :key="player.isSlot ? 'slot-' + player.slot : player.name"
         class="players-dialog__row"
-        :class="{ 'players-dialog__row--slot': player.isSlot }"
+        :draggable="hasLimitedSlots && !player.isSlot && !disabled && submittingTeamUserId === null"
+        :class="{
+          'players-dialog__row--slot': player.isSlot,
+          'players-dialog__row--drop-target': player.isSlot && dragTargetSlot === player.slot,
+          'players-dialog__row--dragging': !player.isSlot && draggedPlayer?.userId === player.userId,
+        }"
+        @dragstart="hasLimitedSlots && !player.isSlot && startDrag(player, $event)"
+        @dragend="endDrag"
+        @dragover="dragOverSlot(player, $event)"
+        @dragleave="dragLeaveSlot(player, $event)"
+        @drop="dropOnSlot(player, $event)"
       >
-        <span v-if="player.isSlot" class="players-dialog__avatar players-dialog__avatar--slot" :class="{ 'players-dialog__avatar--locked': player.isLocked }">
-          <Lock v-if="player.isLocked" :size="13" />
-          <LockOpen v-else :size="13" />
+        <span v-if="hasLimitedSlots" class="players-dialog__drag" :class="{ 'players-dialog__drag--empty': player.isSlot && players.some((item) => !item.isSlot) }" aria-hidden="true">
+          <Menu v-if="hasLimitedSlots && !player.isSlot" :size="15" />
         </span>
+        <span v-if="player.isSlot" class="players-dialog__avatar players-dialog__avatar--slot" aria-hidden="true"><LockOpen :size="13" /></span>
         <span v-else-if="player.avatarUrl" class="players-dialog__avatar" :style="avatarStyle(player)" />
         <span v-else class="players-dialog__avatar players-dialog__avatar--placeholder" :style="avatarStyle(player)">{{ initials(player.name) }}</span>
           <span class="players-dialog__identity">
@@ -167,7 +219,6 @@ watch(lastEvent, (event) => {
             />
           </svg>
         </span>
-        <span v-if="player.isSlot" class="players-dialog__state" :class="{ 'players-dialog__state--locked': player.isLocked }">{{ player.isLocked ? "Locked" : "Open" }}</span>
         <Button
           v-if="!player.isSlot && !player.isReferee"
           v-tooltip.top="'Switch team'"
@@ -273,7 +324,22 @@ watch(lastEvent, (event) => {
   background: var(--app-surface-hover);
 }
 .players-dialog__row--slot {
-  color: var(--app-muted);
+  color: var(--app-text);
+  opacity: 1;
+}
+.players-dialog__row--drop-target {
+  border-color: var(--app-primary-bright);
+  background: rgba(var(--app-primary-rgb), 0.1);
+  box-shadow: 0 0 0 1px rgba(var(--app-primary-rgb), 0.16);
+}
+.players-dialog__row--dragging {
+  opacity: 0.45;
+}
+.players-dialog__row[draggable="true"] {
+  cursor: grab;
+}
+.players-dialog__row[draggable="true"]:active {
+  cursor: grabbing;
 }
 .players-dialog__avatar {
   display: inline-flex;
@@ -292,11 +358,25 @@ watch(lastEvent, (event) => {
   font-weight: 700;
 }
 .players-dialog__avatar--slot {
-  color: #737985;
-  background: var(--app-surface-hover);
+  border: 0;
+  color: #8b93a6;
+  background: #171d2b;
 }
-.players-dialog__avatar--locked {
-  color: #4d535f;
+.players-dialog__drag {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1rem;
+  height: 1.7rem;
+  flex: 0 0 1rem;
+  color: #8b93a6;
+  pointer-events: none;
+}
+.players-dialog__drag--empty {
+  visibility: hidden;
+}
+.players-dialog__list:not(:has(.players-dialog__row:not(.players-dialog__row--slot))) .players-dialog__drag {
+  display: none;
 }
 .players-dialog__identity {
   display: flex;
@@ -312,7 +392,7 @@ watch(lastEvent, (event) => {
   white-space: nowrap;
 }
 .players-dialog__name--slot {
-  color: var(--app-muted);
+  color: #8b93a6;
 }
 .players-dialog__host {
   flex: 0 0 auto;
@@ -321,15 +401,6 @@ watch(lastEvent, (event) => {
 .players-dialog__referee {
   flex: 0 0 auto;
   color: var(--app-primary-bright);
-}
-.players-dialog__state {
-  flex: 0 0 4.5rem;
-  color: var(--app-muted);
-  font-size: 0.7rem;
-  text-align: right;
-}
-.players-dialog__state--locked {
-  opacity: 0.55;
 }
 .players-dialog__team-button {
   width: 1.8rem;

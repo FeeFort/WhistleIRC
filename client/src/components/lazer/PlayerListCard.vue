@@ -1,6 +1,6 @@
 <script setup>
 import { computed } from "vue";
-import { Ban, Lock, LockOpen, Settings, Users, Whistle } from "@lucide/vue";
+import { Ban, LockOpen, Settings, Users, Whistle } from "@lucide/vue";
 import { useNickColor } from "../../composables/useNickColor";
 import { useChatSettings } from "../../composables/useChatSettings";
 
@@ -60,7 +60,7 @@ function initials(name) {
 }
 
 function playerNameStyle(player) {
-  if (player.isSlot) return { color: "var(--app-muted)" };
+  if (player.isSlot) return { color: "#8b93a6" };
   if (player.team === "red") return { color: redTeamColor.value };
   if (player.team === "blue") return { color: blueTeamColor.value };
   return { color: nickColor(player.name, props.currentUser) };
@@ -90,15 +90,7 @@ function playerMods(player) {
 
     <ul class="player-list__items" :class="{ 'player-list__items--scrollable': visiblePlayers.length > 5 }">
       <li v-for="player in visiblePlayers" :key="player.name" class="player-row">
-        <span
-          v-if="player.isSlot"
-          v-tooltip.top="player.isLocked ? 'Locked slot' : 'Open slot'"
-          class="player-row__avatar player-row__avatar--slot"
-          :class="{ 'player-row__avatar--locked': player.isLocked }"
-        >
-          <Lock v-if="player.isLocked" :size="13" />
-          <LockOpen v-else :size="13" />
-        </span>
+        <span v-if="player.isSlot" class="player-row__avatar player-row__avatar--slot" aria-hidden="true"><LockOpen :size="13" /></span>
         <span v-else-if="player.avatarUrl" class="player-row__avatar" :style="{ backgroundImage: `url(${player.avatarUrl})` }" />
         <span v-else class="player-row__avatar player-row__avatar--placeholder" :style="{ background: colorFor(player) }">{{ initials(player.name) }}</span>
 
@@ -117,10 +109,6 @@ function playerMods(player) {
             />
           </svg>
         </span>
-        <span v-if="player.isSlot" class="player-row__slot-state" :class="{ 'player-row__slot-state--locked': player.isLocked }">
-          {{ player.isLocked ? "Locked" : "Open" }}
-        </span>
-
         <span v-if="playerMods(player).length" class="player-row__mods">
           <span v-for="mod in playerMods(player)" :key="mod" class="player-row__mod">
             {{ modCode(mod) }}
@@ -266,12 +254,10 @@ function playerMods(player) {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #737985;
-  background: var(--app-surface-hover);
-}
-
-.player-row__avatar--slot.player-row__avatar--locked {
-  color: #4d535f;
+  color: #8b93a6;
+  background: #171d2b;
+  border: 0;
+  opacity: 1;
 }
 
 .player-row__name {
@@ -287,17 +273,6 @@ function playerMods(player) {
   flex: 1 1 auto;
   min-width: 0;
   gap: 0.3rem;
-}
-
-.player-row__slot-state {
-  flex-shrink: 0;
-  color: #737985;
-  font-size: 0.68rem;
-  font-weight: 600;
-}
-
-.player-row__slot-state--locked {
-  color: #4d535f;
 }
 
 .player-row__name--link {

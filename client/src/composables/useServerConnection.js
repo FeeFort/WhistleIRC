@@ -71,8 +71,8 @@ function changeLazerRoomSettings(room_id, settings) {
   return socket.value ? send(socket.value, { type: "lazer_change_room_settings", room_id, ...settings }) : false;
 }
 
-function moveLazerUser(room_id, user_id, team) {
-  return socket.value ? send(socket.value, { type: "lazer_move_user", room_id, user_id, slot: null, team }) : false;
+function moveLazerUser(room_id, user_id, { slot = null, team = null } = {}) {
+  return socket.value ? send(socket.value, { type: "lazer_move_user", room_id, user_id, slot, team }) : false;
 }
 
 function kickLazerPlayer(room_id, user_id) {

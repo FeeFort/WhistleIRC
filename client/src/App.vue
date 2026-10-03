@@ -80,6 +80,7 @@ const addChannelDialogOpen = ref(false);
 const playersDialogOpen = ref(false);
 const lobbySetupDialogOpen = ref(false);
 const lazerLobbySetupLoading = ref(false);
+const pendingLazerLobbySettings = ref(null);
 const lobbySetupUntouched = computed(() => {
   const lobby = activeLobbyState.value;
   return !lobby || (lobby.teamMode === "HeadToHead" && lobby.scoreMode === "Score");
@@ -434,6 +435,13 @@ watch(
     }
 
     if (event?.type === "ack" && event.received === "lazer_change_room_settings" && lazerLobbySetupLoading.value) {
+      const pendingSettings = pendingLazerLobbySettings.value;
+      const pendingRoom = pendingSettings && lazerRooms[lazerChatId(pendingSettings.roomId)];
+      if (pendingRoom && Number(pendingRoom.room_id) === pendingSettings.roomId) {
+        pendingRoom.max_participants = pendingSettings.maxParticipants;
+        if (pendingSettings.matchType) pendingRoom.state = { ...pendingRoom.state, type: pendingSettings.matchType };
+      }
+      pendingLazerLobbySettings.value = null;
       lazerLobbySetupLoading.value = false;
       lobbySetupDialogOpen.value = false;
       toast.add({
@@ -446,6 +454,7 @@ watch(
     }
 
     if (event?.type === "error" && lazerLobbySetupLoading.value) {
+      pendingLazerLobbySettings.value = null;
       lazerLobbySetupLoading.value = false;
       toast.add({
         severity: "error",
@@ -1316,13 +1325,12 @@ const activeRefereeUsers = computed(() => (isDirectChat.value ? [] : activeLobby
 const activeLazerPlayers = computed(() => {
   const room = activeLazerRoom.value;
   if (!room) return [];
-  const refereeIds = [...new Set((room.referees || []).map((referee) => referee.user_id))];
-  const refereeIdSet = new Set(refereeIds);
+  const refereeIds = new Set((room.referees || []).map((referee) => String(referee.user_id)));
   const playersById = new Map((room.players || []).map((player) => [player.user_id, player]));
-  for (const userId of refereeIds) {
-    if (!playersById.has(userId)) {
-      playersById.set(userId, {
-        user_id: userId,
+  for (const referee of room.referees || []) {
+    if (!playersById.has(referee.user_id)) {
+      playersById.set(referee.user_id, {
+        user_id: referee.user_id,
         status: "idle",
         style: { ruleset_id: null, beatmap_id: null },
         mods: [],
@@ -1330,32 +1338,50 @@ const activeLazerPlayers = computed(() => {
       });
     }
   }
-  const orderedPlayers = [
-    ...refereeIds.map((userId) => playersById.get(userId)),
-    ...[...playersById.values()].filter((player) => !refereeIdSet.has(player.user_id)),
-  ];
-  const players = orderedPlayers.map((player, index) => ({
+  const slots = Array.isArray(room.state?.slots) ? room.state.slots : [];
+  const maxParticipants = Number(room.max_participants);
+  const hasLimitedSlots = Number.isFinite(maxParticipants) && maxParticipants > 0;
+  if (!hasLimitedSlots) {
+    return [...playersById.values()].map((player) => ({
+      name: lazerUserProfiles[player.user_id]?.username || `User ${player.user_id}`,
+      userId: player.user_id,
+      slot: null,
+      isReferee: refereeIds.has(String(player.user_id)),
+      isHost: false,
+      isReady: player.status === "ready",
+      team: player.team,
+      mods: player.mods || [],
+      avatarUrl: lazerUserProfiles[player.user_id]?.avatarUrl || `https://a.ppy.sh/${player.user_id}`,
+      profileUrl: lazerUserProfiles[player.user_id]?.profileUrl || `https://osu.ppy.sh/users/${player.user_id}`,
+    }));
+  }
+
+  const players = [];
+  const displayedUserIds = new Set();
+  const playerView = (player, slot) => ({
     name: lazerUserProfiles[player.user_id]?.username || `User ${player.user_id}`,
     userId: player.user_id,
-    slot: index + 1,
-    isReferee: refereeIdSet.has(player.user_id),
+    slot,
+    isReferee: refereeIds.has(String(player.user_id)),
     isHost: false,
     isReady: player.status === "ready",
     team: player.team,
     mods: player.mods || [],
     avatarUrl: lazerUserProfiles[player.user_id]?.avatarUrl || `https://a.ppy.sh/${player.user_id}`,
     profileUrl: lazerUserProfiles[player.user_id]?.profileUrl || `https://osu.ppy.sh/users/${player.user_id}`,
-  }));
-  const maxParticipants = Number(room.max_participants);
-  const slots = room.state?.slots;
-  if (maxParticipants > 0 && Array.isArray(slots)) {
-    for (let index = 0; index < maxParticipants; index += 1) {
-      if (index < players.length) continue;
+  });
+
+  for (let index = 0; index < maxParticipants; index += 1) {
+    const userId = slots[index];
+    const player = [...playersById.values()].find((candidate) => String(candidate.user_id) === String(userId));
+    if (player) {
+      players.push(playerView(player, index + 1));
+      displayedUserIds.add(String(player.user_id));
+    } else {
       players.push({
         name: `Slot ${index + 1}`,
         slot: index + 1,
         isSlot: true,
-        isLocked: false,
         isHost: false,
         isReady: false,
         team: null,
@@ -1365,9 +1391,24 @@ const activeLazerPlayers = computed(() => {
       });
     }
   }
+
+  for (const player of playersById.values()) {
+    if (!displayedUserIds.has(String(player.user_id))) players.push(playerView(player, null));
+  }
   return players;
 });
-const activeLazerDisplayPlayers = computed(() => activeLazerPlayers.value);
+
+function moveLazerPlayer({ userId, slot }) {
+  const room = activeLazerRoom.value;
+  const targetSlot = Number(slot);
+  if (!room || !Array.isArray(room.state?.slots) || !Number.isInteger(targetSlot) || targetSlot < 1 || targetSlot > room.state.slots.length) return;
+  const nextSlots = [...room.state.slots];
+  const previousSlot = nextSlots.findIndex((slotUserId) => String(slotUserId) === String(userId));
+  if (previousSlot !== -1) nextSlots[previousSlot] = null;
+  nextSlots[targetSlot - 1] = userId;
+  room.state = { ...room.state, slots: nextSlots };
+}
+const activeLazerDisplayPlayers = computed(() => activeLazerPlayers.value.filter((player) => !player.isSlot || (Number(activeLazerRoom.value?.max_participants) > 0 && Number.isFinite(Number(activeLazerRoom.value?.max_participants)))));
 const lobbyClock = ref(Date.now());
 const activeLobbyTimerSeconds = computed(() => {
   const timer = activeLobbyState.value?.timer;
@@ -2181,12 +2222,17 @@ function openLobbySetup() {
 
 function applyLazerLobbySetup(settings) {
   if (!activeLazerRoom.value || activeLazerRoom.value.closed || lazerLobbySetupLoading.value) return;
+  const roomId = Number(activeLazerRoom.value.room_id);
+  const maxParticipants = Number(settings.max_participants);
+  const matchType = settings.match_type;
+  pendingLazerLobbySettings.value = { roomId, maxParticipants, matchType };
   lazerLobbySetupLoading.value = true;
-  const sent = changeLazerRoomSettings(activeLazerRoom.value.room_id, {
-    match_type: settings.match_type,
-    max_participants: settings.max_participants,
+  const sent = changeLazerRoomSettings(roomId, {
+    match_type: matchType,
+    max_participants: maxParticipants,
   });
   if (!sent) {
+    pendingLazerLobbySettings.value = null;
     lazerLobbySetupLoading.value = false;
     toast.add({
       severity: "error",
@@ -3064,6 +3110,7 @@ function handleSendResult(result) {
         :players="activeLazerPlayers"
         :room-id="activeLazerRoom?.room_id || null"
         :disabled="Boolean(activeLazerRoom?.closed)"
+        @move-player="moveLazerPlayer"
       />
       <LazerLobbySetupDialog
         v-if="activeChatKind === 'lazer'"
