@@ -241,6 +241,7 @@ function messageTextStyle(text) {
 }
 
 const URL_PATTERN = /https?:\/\/[^\s<]+/gi;
+const CUSTOM_LINK_START_PATTERN = /\[(https?:\/\/[^\s\]]+)\s+/gi;
 const TRAILING_URL_PUNCTUATION = /[.,!?;:]+$/;
 
 function isValidUrl(value) {
@@ -252,8 +253,7 @@ function isValidUrl(value) {
   }
 }
 
-function messageSegments(text) {
-  const value = String(text || "");
+function plainMessageSegments(value) {
   const segments = [];
   let lastIndex = 0;
 
@@ -277,6 +277,39 @@ function messageSegments(text) {
     segments.push({ type: "text", value: value.slice(lastIndex) });
   }
 
+  return segments.length ? segments : [{ type: "text", value }];
+}
+
+function messageSegments(text) {
+  const value = String(text || "");
+  const segments = [];
+  let lastIndex = 0;
+  let match;
+
+  CUSTOM_LINK_START_PATTERN.lastIndex = 0;
+  while ((match = CUSTOM_LINK_START_PATTERN.exec(value))) {
+    const start = match.index ?? 0;
+    let depth = 1;
+    let closingIndex = -1;
+    for (let index = CUSTOM_LINK_START_PATTERN.lastIndex; index < value.length; index += 1) {
+      if (value[index] === "[") depth += 1;
+      if (value[index] === "]") {
+        depth -= 1;
+        if (depth === 0) {
+          closingIndex = index;
+          break;
+        }
+      }
+    }
+    if (closingIndex === -1) break;
+
+    segments.push(...plainMessageSegments(value.slice(lastIndex, start)));
+    segments.push({ type: "link", value: match[1], label: value.slice(CUSTOM_LINK_START_PATTERN.lastIndex, closingIndex).trim() });
+    lastIndex = closingIndex + 1;
+    CUSTOM_LINK_START_PATTERN.lastIndex = lastIndex;
+  }
+
+  segments.push(...plainMessageSegments(value.slice(lastIndex)));
   return segments.length ? segments : [{ type: "text", value }];
 }
 
@@ -618,7 +651,7 @@ function forwardCommand(command) {
               <template v-for="(segment, segmentIndex) in renderChatMessageSegments(msg)" :key="`${msg.id}-${segmentIndex}`">
                 <a v-if="segment.type === 'link'" class="chat-line__link" :href="segment.value" target="_blank" rel="noopener noreferrer">
                   <Link :size="12" aria-hidden="true" />
-                  <span>{{ segment.value }}</span>
+                  <span>{{ segment.label || segment.value }}</span>
                 </a>
                 <span v-else-if="segment.type === 'team'" :style="teamTextStyle(segment.color)">{{ segment.value }}</span>
                 <button
