@@ -241,8 +241,7 @@ async function startLazerSession(): Promise<void> {
 
   await connectToRefereeHub(
     (event) => {
-      roomManager.handleHubEvent(event.eventType, event.payload);
-      broadcast(event);
+      if (roomManager.handleHubEvent(event.eventType, event.payload)) broadcast(event);
     },
     () => roomManager.resync(),
   );

@@ -98,22 +98,22 @@ class RoomManager {
     return player;
   }
 
-  handleHubEvent(eventType: HubEventType, payload: HubEventPayloads[HubEventType]): void {
+  handleHubEvent(eventType: HubEventType, payload: HubEventPayloads[HubEventType]): boolean {
     const roomId = payload.room_id;
     if (typeof roomId !== "number") {
       console.warn(`[roomManager] event ${eventType} has no room_id, ignoring`, payload);
-      return;
+      return false;
     }
 
     const pendingJoin = this.pendingJoins.get(roomId);
     if (pendingJoin) {
       pendingJoin.events.push({ eventType, payload });
-      return;
+      return true;
     }
 
     if (!this.rooms.has(roomId) && this.pendingCreations.size) {
       for (const creation of this.pendingCreations) creation.events.push({ eventType, payload });
-      return;
+      return true;
     }
 
     if (eventType === "RefereeAdded") {
@@ -121,14 +121,14 @@ class RoomManager {
       this.joinRoom(event.room_id).catch((error) => {
         console.error(`[roomManager] failed to join room ${event.room_id} after RefereeAdded: ${(error as Error).message}`);
       });
-      return;
+      return true;
     }
 
     const room = this.rooms.get(roomId);
     if (!room) {
       // If we don't have the room tracked, we can't update it. Safely ignoring instead
       console.warn(`[roomManager] event ${eventType} for unknown room ${roomId}, ignoring`);
-      return;
+      return false;
     }
 
     const previousState = JSON.stringify(room);
@@ -213,10 +213,11 @@ class RoomManager {
       }
       // Events without state changes are forwarded by index.ts
       default:
-        return;
+        return true;
     }
 
     if (JSON.stringify(room) !== previousState) this.onRoomChanged?.(room);
+    return true;
   }
 
   removeRoom(roomId: number): void {

@@ -185,6 +185,26 @@ await test("room synchronization", async (t) => {
     roomManager.removeRoom(12);
   });
 
+  await t.test("unknown rooms are rejected while pending joins and tracked rooms are accepted", async () => {
+    const warnings = t.mock.method(console, "warn", () => {});
+    assert.equal(roomManager.handleHubEvent("RollCompleted", { room_id: 99, user_id: 1, max: 100, result: 2 }), false);
+    assert.equal(roomManager.handleHubEvent("UserJoined", { room_id: 99, user_id: 1 }), false);
+    assert.equal(roomManager.getRoom(99), undefined);
+    let resolveJoin;
+    invoke = () =>
+      new Promise((resolve) => {
+        resolveJoin = resolve;
+      });
+    const joining = roomManager.joinRoom(13);
+    assert.equal(roomManager.handleHubEvent("UserJoined", { room_id: 13, user_id: 42 }), true);
+    resolveJoin(snapshot(13));
+    await joining;
+    assert.equal(roomManager.getRoom(13).players[0].user_id, 42);
+    assert.equal(roomManager.handleHubEvent("MatchCompleted", { room_id: 13, playlist_item_id: 1 }), true);
+    roomManager.removeRoom(13);
+    warnings.mock.restore();
+  });
+
   await t.test("SignalR boundary drops invalid events before forwarding", () => {
     const warnings = t.mock.method(console, "warn", () => {});
     listeners.get("UserJoined")(null);
