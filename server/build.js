@@ -19,8 +19,7 @@ const debug = process.argv.includes("--debug") || process.argv.includes("-d");
 
 const skipClient = process.argv.includes("--skip-client");
 const HOST_PLATFORMS = { linux: "linux", darwin: "macos", win32: "windows" };
-const platform =
-  process.argv.find((arg) => arg.startsWith("--platform="))?.split("=")[1] ?? HOST_PLATFORMS[process.platform];
+const platform = process.argv.find((arg) => arg.startsWith("--platform="))?.split("=")[1] ?? HOST_PLATFORMS[process.platform];
 if (!["linux", "macos", "windows"].includes(platform)) {
   console.error(`Unknown platform "${platform}". Use --platform=linux|macos|windows.`);
   process.exit(1);
@@ -311,7 +310,7 @@ async function main() {
       progressStage(`macOS ${arch} packaged`);
     }
   }
-  
+
   if (platform === "linux") {
     for (const arch of ["x64", "arm64"]) {
       showProgress(`Building Linux ${arch}`);
