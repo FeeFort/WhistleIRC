@@ -283,37 +283,43 @@ async function main() {
   });
   progressStage("Server bundled");
 
-  for (const arch of ["x64", "arm64"]) {
-    showProgress(`Preparing Windows ${arch} template`);
-    const runtimePath = await withProgressPaused(() => prepareWindowsRuntime(arch));
-    showProgress(`Building Windows ${arch}`);
-    const previousPkgNodePath = process.env.PKG_NODE_PATH;
-    process.env.PKG_NODE_PATH = runtimePath;
-    try {
-      await run(`npx pkg . --targets node22-win-${arch} --no-bytecode --public-packages "${publicPackages}" --public --compress GZip`);
-    } finally {
-      if (previousPkgNodePath === undefined) delete process.env.PKG_NODE_PATH;
-      else process.env.PKG_NODE_PATH = previousPkgNodePath;
-      fs.rmSync(path.dirname(runtimePath), { recursive: true, force: true });
+  if (platform === "windows") {
+    for (const arch of ["x64", "arm64"]) {
+      showProgress(`Preparing Windows ${arch} template`);
+      const runtimePath = await withProgressPaused(() => prepareWindowsRuntime(arch));
+      showProgress(`Building Windows ${arch}`);
+      const previousPkgNodePath = process.env.PKG_NODE_PATH;
+      process.env.PKG_NODE_PATH = runtimePath;
+      try {
+        await run(`npx pkg . --targets node22-win-${arch} --no-bytecode --public-packages "${publicPackages}" --public --compress Brotli`);
+      } finally {
+        if (previousPkgNodePath === undefined) delete process.env.PKG_NODE_PATH;
+        else process.env.PKG_NODE_PATH = previousPkgNodePath;
+        fs.rmSync(path.dirname(runtimePath), { recursive: true, force: true });
+      }
+      renamePkgOutput([`${baseName}.exe`, `${baseName}-win-${arch}.exe`], path.join(buildDir, `${baseName}-win-${arch}.exe`));
+      progressStage(`Windows ${arch} built`);
     }
-    renamePkgOutput([`${baseName}.exe`, `${baseName}-win-${arch}.exe`], path.join(buildDir, `${baseName}-win-${arch}.exe`));
-    progressStage(`Windows ${arch} built`);
   }
 
-  for (const arch of ["x64", "arm64"]) {
-    showProgress(`Building macOS ${arch}`);
-    const rawBinary = path.join(buildDir, `.raw-${arch}`);
-    await run(`npx pkg . --targets node22-macos-${arch} --output "${rawBinary}" --no-bytecode --public-packages "${publicPackages}" --public --compress GZip`);
-    await buildMacZip(buildDir, rawBinary, arch);
-    progressStage(`macOS ${arch} packaged`);
+  if (platform === "macos") {
+    for (const arch of ["x64", "arm64"]) {
+      showProgress(`Building macOS ${arch}`);
+      const rawBinary = path.join(buildDir, `.raw-${arch}`);
+      await run(`npx pkg . --targets node22-macos-${arch} --output "${rawBinary}" --no-bytecode --public-packages "${publicPackages}" --public --compress Brotli`);
+      await buildMacZip(buildDir, rawBinary, arch);
+      progressStage(`macOS ${arch} packaged`);
+    }
   }
-
-  for (const arch of ["x64", "arm64"]) {
-    showProgress(`Building Linux ${arch}`);
-    const rawBinary = path.join(buildDir, `.raw-${arch}`);
-    await run(`npx pkg . --targets node22-linux-${arch} --output "${rawBinary}" --no-bytecode --public-packages "${publicPackages}" --public --compress GZip`);
-    await buildAppImage(buildDir, rawBinary, arch);
-    progressStage(`Linux ${arch} packaged`);
+  
+  if (platform === "linux") {
+    for (const arch of ["x64", "arm64"]) {
+      showProgress(`Building Linux ${arch}`);
+      const rawBinary = path.join(buildDir, `.raw-${arch}`);
+      await run(`npx pkg . --targets node22-linux-${arch} --output "${rawBinary}" --no-bytecode --public-packages "${publicPackages}" --public --compress Brotli`);
+      await buildAppImage(buildDir, rawBinary, arch);
+      progressStage(`Linux ${arch} packaged`);
+    }
   }
 
   progressStage("Build finished");
