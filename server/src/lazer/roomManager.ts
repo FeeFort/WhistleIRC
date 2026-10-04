@@ -3,6 +3,7 @@ import type {
   RoomJoinedResponse,
   HubEventType,
   HubEventPayloads,
+  PendingRoomJoin,
   RoomSettingsChangedEvent,
   MatchStateChangedEvent,
   PlaylistItemAddedEvent,
@@ -26,6 +27,8 @@ import { invokeHub } from "./refereeHubClient.js";
 
 class RoomManager {
   private rooms = new Map<number, RoomState>();
+  private pendingJoins = new Map<number, PendingRoomJoin>();
+  private resyncPromise: Promise<void> | null = null;
   private onRoomChanged: ((room: RoomState) => void) | null = null;
   private onRoomRemoved: ((roomId: number) => void) | null = null;
   private joinedChatChannels = new Set<number>();
@@ -100,6 +103,13 @@ class RoomManager {
       return;
     }
 
+    const pendingJoin = this.pendingJoins.get(roomId);
+    if (pendingJoin) {
+      // RefereeAdded is already covered by the pending JoinRoom snapshot.
+      if (eventType !== "RefereeAdded") pendingJoin.events.push({ eventType, payload });
+      return;
+    }
+
     if (eventType === "RefereeAdded") {
       const event = payload as unknown as RefereeAddedEvent;
       this.joinRoom(event.room_id).catch((error) => {
@@ -133,7 +143,10 @@ class RoomManager {
       }
       case "PlaylistItemAdded": {
         const e = payload as unknown as PlaylistItemAddedEvent;
-        room.playlist.push(e.playlist_item);
+        // A refreshed snapshot may already contain an event buffered during JoinRoom.
+        const index = room.playlist.findIndex((item) => item.id === e.playlist_item.id);
+        if (index === -1) room.playlist.push(e.playlist_item);
+        else room.playlist[index] = e.playlist_item;
         break;
       }
       case "PlaylistItemChanged": {
@@ -201,32 +214,65 @@ class RoomManager {
   }
 
   removeRoom(roomId: number): void {
+    const pending = this.pendingJoins.get(roomId);
+    if (pending) pending.cancelled = true;
     if (this.rooms.delete(roomId)) {
       this.onRoomRemoved?.(roomId);
     }
   }
 
-  private async joinRoom(roomId: number): Promise<void> {
-    const response = await invokeHub<RoomJoinedResponse>("JoinRoom", roomId);
-    this.trackRoom(response);
-  }
+  private joinRoom(roomId: number): Promise<void> {
+    const existing = this.pendingJoins.get(roomId);
+    if (existing) return existing.promise;
 
-  async resync(): Promise<void> {
-    const response = await invokeHub<ListRoomsResponse>("ListRooms");
-    const liveRoomIds = new Set(response.room_ids);
-
-    for (const roomId of this.rooms.keys()) {
-      if (!liveRoomIds.has(roomId)) this.removeRoom(roomId);
-    }
-    for (const roomId of liveRoomIds) {
-      if (!this.rooms.has(roomId)) {
-        try {
-          await this.joinRoom(roomId);
-        } catch (error) {
-          console.error(`[roomManager] failed to rejoin room ${roomId}: ${(error as Error).message}`);
+    const pending: PendingRoomJoin = { cancelled: false, events: [], promise: Promise.resolve() };
+    this.pendingJoins.set(roomId, pending);
+    pending.promise = (async () => {
+      try {
+        const response = await invokeHub<RoomJoinedResponse>("JoinRoom", roomId);
+        if (!pending.cancelled) this.rooms.set(roomId, response);
+      } finally {
+        this.pendingJoins.delete(roomId);
+        // Replay only into a room we have a snapshot for. On failure, keep the
+        // previous snapshot and apply live updates rather than discarding them.
+        if (!pending.cancelled && this.rooms.has(roomId)) {
+          for (const event of pending.events) this.handleHubEvent(event.eventType, event.payload);
+          this.onRoomChanged?.(this.rooms.get(roomId)!);
         }
       }
-    }
+    })();
+    return pending.promise;
+  }
+
+  resync(): Promise<void> {
+    if (this.resyncPromise) return this.resyncPromise;
+
+    this.resyncPromise = (async () => {
+      try {
+        const response = await invokeHub<ListRoomsResponse>("ListRooms");
+        const liveRoomIds = new Set(response.room_ids);
+
+        for (const roomId of this.rooms.keys()) {
+          if (!liveRoomIds.has(roomId)) this.removeRoom(roomId);
+        }
+
+        const errors: Error[] = [];
+        for (const roomId of liveRoomIds) {
+          try {
+            // JoinRoom returns a full snapshot and restores hub subscriptions.
+            await this.joinRoom(roomId);
+          } catch (error) {
+            const failure = new Error(`Failed to refresh room ${roomId}: ${(error as Error).message}`, { cause: error });
+            console.error(`[roomManager] ${failure.message}`);
+            errors.push(failure);
+          }
+        }
+        if (errors.length) throw new AggregateError(errors, "Some rooms could not be synchronized.");
+      } finally {
+        this.resyncPromise = null;
+      }
+    })();
+    return this.resyncPromise;
   }
 }
 

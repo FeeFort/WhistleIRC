@@ -432,7 +432,7 @@ export interface WinConditionOutcome {
 // SignalR API types
 
 export type HubEventHandler = (event: LazerHubEvent) => void;
-export type ResyncHandler = (rooms: unknown) => void;
+export type ResyncHandler = () => Promise<void>;
 
 export interface RoomState {
   roomId: number;
@@ -709,3 +709,9 @@ export type LazerHubEvent = {
     payload: HubEventPayloads[K];
   };
 }[HubEventType];
+
+export interface PendingRoomJoin {
+  cancelled: boolean;
+  events: Array<{ eventType: HubEventType; payload: HubEventPayloads[HubEventType] }>;
+  promise: Promise<void>;
+}

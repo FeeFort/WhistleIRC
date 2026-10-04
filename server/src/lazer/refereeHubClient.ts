@@ -58,8 +58,7 @@ export async function connectToRefereeHub(onEvent: HubEventHandler, onResync: Re
   hub.onreconnected(async () => {
     console.log("[refereeHub] Reconnected — syncing rooms list");
     try {
-      const rooms = await hub.invoke("ListRooms");
-      onResync(rooms);
+      await onResync();
     } catch (error) {
       console.error(`[refereeHub] Sync after reconnect failed: ${(error as Error).message}`);
     }
