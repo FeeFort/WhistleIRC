@@ -431,7 +431,7 @@ export interface WinConditionOutcome {
 
 // SignalR API types
 
-export type HubEventHandler = (eventType: string, payload: unknown) => void;
+export type HubEventHandler = (event: LazerHubEvent) => void;
 export type ResyncHandler = (rooms: unknown) => void;
 
 export interface RoomState {
@@ -672,3 +672,40 @@ export interface UserBannedEvent {
   banned_user_id: number;
   banning_user_id: number;
 }
+
+// Payloads and WebSocket envelope for incoming referee hub events.
+export interface HubEventPayloads {
+  UserJoined: UserJoinedEvent;
+  UserLeft: UserLeftEvent;
+  UserKicked: UserKickedEvent;
+  UserBanned: UserBannedEvent;
+  RefereeAdded: RefereeAddedEvent;
+  RefereeRemoved: RefereeRemovedEvent;
+  RefereeInvited: RefereeInvitedEvent;
+  RoomSettingsChanged: RoomSettingsChangedEvent;
+  MatchStateChanged: MatchStateChangedEvent;
+  PlaylistItemAdded: PlaylistItemAddedEvent;
+  PlaylistItemChanged: PlaylistItemChangedEvent;
+  PlaylistItemRemoved: PlaylistItemRemovedEvent;
+  RollCompleted: RollCompletedEvent;
+  UserStatusChanged: UserStatusChangedEvent;
+  UserModsChanged: UserModsChangedEvent;
+  UserStyleChanged: UserStyleChangedEvent;
+  UserTeamChanged: UserTeamChangedEvent;
+  CountdownStarted: CountdownStartedEvent;
+  CountdownStopped: CountdownStoppedEvent;
+  MatchStarted: MatchStartedEvent;
+  MatchAborted: MatchAbortedEvent;
+  MatchCompleted: MatchCompletedEvent;
+}
+
+export type HubEventType = keyof HubEventPayloads;
+
+export type LazerHubEvent = {
+  [K in HubEventType]: {
+    type: "lazer_event";
+    eventType: K;
+    roomId: number;
+    payload: HubEventPayloads[K];
+  };
+}[HubEventType];

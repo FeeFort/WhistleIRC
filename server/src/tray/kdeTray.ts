@@ -77,7 +77,7 @@ export async function createKdeTray(options: KdeTrayOptions): Promise<KdeTrayIns
       openInBrowser(`http://localhost:${options.port}`);
     }
     ContextMenu(): void {
-    // Plasma opens the exported DBusMenu separately
+      // Plasma opens the exported DBusMenu separately
     }
     get Category() {
       return "ApplicationStatus";

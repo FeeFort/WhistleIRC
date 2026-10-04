@@ -1,5 +1,8 @@
 import type {
+  RoomJoinedResponse as RoomState,
   RoomJoinedResponse,
+  HubEventType,
+  HubEventPayloads,
   RoomSettingsChangedEvent,
   MatchStateChangedEvent,
   PlaylistItemAddedEvent,
@@ -20,8 +23,6 @@ import type {
   ListRoomsResponse,
 } from "../types.js";
 import { invokeHub } from "./refereeHubClient.js";
-
-type RoomState = RoomJoinedResponse;
 
 class RoomManager {
   private rooms = new Map<number, RoomState>();
@@ -63,10 +64,16 @@ class RoomManager {
     await new Promise<void>((resolve, reject) => {
       const timer = setTimeout(() => {
         const waiters = this.chatWaiters.get(channelId) ?? [];
-        this.chatWaiters.set(channelId, waiters.filter((waiter) => waiter !== done));
+        this.chatWaiters.set(
+          channelId,
+          waiters.filter((waiter) => waiter !== done),
+        );
         reject(new Error(`Chat channel ${channelId} was not joined in time.`));
       }, timeoutMs);
-      const done = () => { clearTimeout(timer); resolve(); };
+      const done = () => {
+        clearTimeout(timer);
+        resolve();
+      };
       const waiters = this.chatWaiters.get(channelId) ?? [];
       waiters.push(done);
       this.chatWaiters.set(channelId, waiters);
@@ -86,7 +93,7 @@ class RoomManager {
     return player;
   }
 
-  handleHubEvent(eventType: string, payload: Record<string, unknown>): void {
+  handleHubEvent(eventType: HubEventType, payload: HubEventPayloads[HubEventType]): void {
     const roomId = payload.room_id;
     if (typeof roomId !== "number") {
       console.warn(`[roomManager] event ${eventType} has no room_id, ignoring`, payload);
@@ -107,6 +114,8 @@ class RoomManager {
       console.warn(`[roomManager] event ${eventType} for unknown room ${roomId}, ignoring`);
       return;
     }
+
+    const previousState = JSON.stringify(room);
 
     switch (eventType) {
       case "RoomSettingsChanged": {
@@ -183,14 +192,12 @@ class RoomManager {
         room.referees = room.referees.filter((r) => r.user_id !== e.user_id);
         break;
       }
-      // CountdownStarted/Stopped, MatchStarted/Aborted/Completed, RollCompleted, RefereeInvited
-      // don't mutate room state directly, rather they're transported to frontend as is
-      // without RoomState changes (see index.ts)
+      // Events without state changes are forwarded by index.ts
       default:
-        break;
+        return;
     }
 
-    this.onRoomChanged?.(room);
+    if (JSON.stringify(room) !== previousState) this.onRoomChanged?.(room);
   }
 
   removeRoom(roomId: number): void {

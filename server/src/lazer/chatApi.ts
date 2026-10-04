@@ -20,7 +20,7 @@ export async function fetchChatMessages(channelId: number): Promise<ChatMessage[
 
   while (true) {
     const endpoint = `chat/channels/${channelId}/messages?limit=${CHAT_HISTORY_PAGE_SIZE}${until === undefined ? "" : `&until=${until}`}`;
-    const page = await fetchApi(await getAccessToken(), endpoint) as ChatMessage[];
+    const page = (await fetchApi(await getAccessToken(), endpoint)) as ChatMessage[];
     if (!Array.isArray(page)) throw new Error("Chat API returned an invalid message history.");
     if (page.length === 0) break;
 

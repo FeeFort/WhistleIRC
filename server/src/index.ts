@@ -7,7 +7,7 @@ import { parseBanchoBotMessage, parseLobbyCommand } from "./banchoBotParser.js";
 import { login as loginOsu, logout as logoutOsu, getAccessToken, restoreSession, getState } from "./auth/auth.js";
 import { fetchApi } from "./osu-api/osuApiClient.js";
 import { config } from "./config.js";
-import { ClientMessage, ConnectionState, IrcCredentials, IrcLine, LobbyState, ParsedBanchoBotMessage, Player, PlayerScore, RollCompletedEvent, Team, WinConditionContext } from "./types.js";
+import { ClientMessage, ConnectionState, IrcCredentials, IrcLine, LobbyState, ParsedBanchoBotMessage, Player, PlayerScore, Team, WinConditionContext } from "./types.js";
 import { fileURLToPath } from "node:url";
 import { UpdateError, UpdateManager } from "./updater/updateManager.js";
 import { applyPendingUpdate } from "./updater/applyUpdate.js";
@@ -240,18 +240,9 @@ async function startLazerSession(): Promise<void> {
   );
 
   await connectToRefereeHub(
-    (eventType, payload) => {
-      roomManager.handleHubEvent(eventType, payload as Record<string, unknown>);
-      if (eventType === "RollCompleted") {
-        const event = payload as RollCompletedEvent;
-        broadcast({
-          type: "lazer_roll_completed",
-          roomId: event.room_id,
-          userId: event.user_id,
-          max: event.max,
-          result: event.result,
-        });
-      }
+    (event) => {
+      roomManager.handleHubEvent(event.eventType, event.payload);
+      broadcast(event);
     },
     () => roomManager.resync(),
   );

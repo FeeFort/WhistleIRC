@@ -1,7 +1,7 @@
 import * as signalR from "@microsoft/signalr";
 import { getAccessToken } from "../auth/auth.js";
 import { config } from "../config.js";
-import { HubEventHandler, ResyncHandler } from "../types.js";
+import { HubEventHandler, ResyncHandler, HubEventType, LazerHubEvent } from "../types.js";
 
 // Full list of referee hub events that can be invoked by the server
 const CLIENT_EVENTS = [
@@ -27,7 +27,7 @@ const CLIENT_EVENTS = [
   "MatchStarted",
   "MatchAborted",
   "MatchCompleted",
-] as const;
+] as const satisfies readonly HubEventType[];
 
 let connection: signalR.HubConnection | null = null;
 
@@ -41,7 +41,14 @@ export async function connectToRefereeHub(onEvent: HubEventHandler, onResync: Re
     .build();
 
   for (const eventName of CLIENT_EVENTS) {
-    hub.on(eventName, (payload: unknown) => onEvent(eventName, payload));
+    hub.on(eventName, (payload: unknown) => {
+      onEvent({
+        type: "lazer_event",
+        eventType: eventName,
+        roomId: (payload as LazerHubEvent["payload"]).room_id,
+        payload,
+      } as LazerHubEvent);
+    });
   }
 
   hub.onreconnecting((error) => {
