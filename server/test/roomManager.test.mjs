@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { HubConnectionBuilder, HubConnectionState } from "@microsoft/signalr";
-import { connectToRefereeHub } from "../src/lazer/refereeHubClient.ts";
+import { connectToRefereeHub, isHubPayload } from "../src/lazer/refereeHubClient.ts";
 import { roomManager } from "../src/lazer/roomManager.ts";
 
 const snapshot = (roomId, name = "Fresh") => ({
@@ -19,9 +19,13 @@ const snapshot = (roomId, name = "Fresh") => ({
 await test("room synchronization", async (t) => {
   let invoke;
   let reconnect;
+  const listeners = new Map();
+  const forwarded = [];
   const hub = {
     state: HubConnectionState.Connected,
-    on() {},
+    on(name, callback) {
+      listeners.set(name, callback);
+    },
     onreconnecting() {},
     onclose() {},
     onreconnected(callback) {
@@ -34,7 +38,7 @@ await test("room synchronization", async (t) => {
   };
   t.mock.method(HubConnectionBuilder.prototype, "build", () => hub);
   await connectToRefereeHub(
-    () => {},
+    (event) => forwarded.push(event),
     () => roomManager.resync(),
   );
   const updates = [];
@@ -120,9 +124,88 @@ await test("room synchronization", async (t) => {
     resolveJoin(snapshot(1));
     await new Promise((resolve) => setImmediate(resolve));
     resolveJoin(snapshot(4));
-    await syncing;
+    await assert.rejects(syncing, AggregateError);
     assert.equal(roomManager.getRoom(1), undefined);
     assert.equal(roomManager.getRoom(4).name, "Fresh");
+  });
+
+  await t.test("user joins share one request, preserve ordered updates and release failures", async () => {
+    let resolveJoin;
+    let calls = 0;
+    invoke = () => {
+      calls++;
+      return new Promise((resolve) => {
+        resolveJoin = resolve;
+      });
+    };
+    const first = roomManager.joinRoom(10);
+    const second = roomManager.joinRoom(10);
+    assert.equal(calls, 1);
+    roomManager.handleHubEvent("UserJoined", { room_id: 10, user_id: 42 });
+    roomManager.handleHubEvent("UserLeft", { room_id: 10, user_id: 42 });
+    roomManager.handleHubEvent("UserJoined", { room_id: 10, user_id: 43 });
+    roomManager.handleHubEvent("UserTeamChanged", { room_id: 10, user_id: 43, team: "red" });
+    roomManager.handleHubEvent("RefereeRemoved", { room_id: 10, user_id: 44 });
+    const fresh = snapshot(10);
+    fresh.referees = [{ user_id: 44 }];
+    resolveJoin(fresh);
+    assert.equal(await first, await second);
+    assert.deepEqual(
+      fresh.players.map((p) => p.user_id),
+      [43],
+    );
+    assert.equal(fresh.players[0].team, "red");
+    assert.deepEqual(fresh.referees, []);
+    invoke = async () => {
+      throw new Error("Denied");
+    };
+    await assert.rejects(roomManager.joinRoom(11), /Denied/);
+    invoke = async () => snapshot(11);
+    await roomManager.joinRoom(11);
+    roomManager.removeRoom(10);
+    roomManager.removeRoom(11);
+  });
+
+  await t.test("creation captures early events only for the returned room", async () => {
+    let resolveMake;
+    invoke = () =>
+      new Promise((resolve) => {
+        resolveMake = resolve;
+      });
+    const creating = roomManager.joinRoom(null, { name: "New", ruleset_id: 0, beatmap_id: 1 });
+    roomManager.handleHubEvent("UserStatusChanged", { room_id: 12, user_id: 42, status: "ready" });
+    roomManager.handleHubEvent("UserJoined", { room_id: 99, user_id: 99 });
+    roomManager.handleHubEvent("RefereeAdded", { room_id: 12, user_id: 44 });
+    roomManager.handleHubEvent("RefereeRemoved", { room_id: 12, user_id: 44 });
+    resolveMake(snapshot(12));
+    const room = await creating;
+    assert.equal(room.players[0].status, "ready");
+    assert.deepEqual(room.referees, []);
+    assert.equal(roomManager.getRoom(99), undefined);
+    roomManager.removeRoom(12);
+  });
+
+  await t.test("SignalR boundary drops invalid events before forwarding", () => {
+    const warnings = t.mock.method(console, "warn", () => {});
+    listeners.get("UserJoined")(null);
+    listeners.get("UserJoined")({ room_id: 1, user_id: "bad" });
+    assert.equal(forwarded.length, 0);
+    listeners.get("UserJoined")({ room_id: 1, user_id: 2, extra: true });
+    assert.deepEqual(forwarded[0], { type: "lazer_event", eventType: "UserJoined", roomId: 1, payload: { room_id: 1, user_id: 2, extra: true } });
+    warnings.mock.restore();
+  });
+
+  await t.test("invalid event structures are rejected, including nested values", () => {
+    for (const value of [null, [], {}, { room_id: "1", user_id: 2 }, { room_id: 1, user_id: NaN }]) {
+      assert.equal(isHubPayload("UserJoined", value), false);
+    }
+    assert.equal(isHubPayload("UserJoined", { room_id: 1, user_id: 2 }), true);
+    assert.equal(isHubPayload("UserStatusChanged", { room_id: 1, user_id: 2, status: "unknown" }), false);
+    assert.equal(isHubPayload("UserModsChanged", { room_id: 1, user_id: 2, mods: [{ acronym: "HD", settings: [] }] }), false);
+    assert.equal(isHubPayload("UserModsChanged", { room_id: 1, user_id: 2, mods: [{ acronym: "HD" }] }), true);
+    assert.equal(isHubPayload("MatchStateChanged", { room_id: 1, state: { type: "head_to_head", locked: false, slots: [null, "2"] } }), false);
+    assert.equal(isHubPayload("PlaylistItemAdded", { room_id: 1, playlist_item: { id: 2 } }), false);
+    assert.equal(isHubPayload("RollCompleted", { room_id: 1, user_id: 2, max: 100, result: 101 }), false);
   });
 
   await t.test("ListRooms failure preserves tracked rooms and reaches reconnect error handling", async () => {

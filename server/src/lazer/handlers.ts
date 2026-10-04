@@ -3,7 +3,7 @@ import { sendJson } from "../wsGateway.js";
 import { invokeHub } from "./refereeHubClient.js";
 import { roomManager } from "./roomManager.js";
 import { fetchChatMessages, sendChatMessage } from "./chatApi.js";
-import type { ClientMessage, RoomJoinedResponse, ListRoomsResponse } from "../types.js";
+import type { ClientMessage, ListRoomsResponse } from "../types.js";
 
 async function ack(client: WebSocket, type: string, result?: unknown): Promise<void> {
   sendJson(client, { type: "ack", received: type, ...(result !== undefined ? { result } : {}) });
@@ -16,13 +16,12 @@ async function fail(client: WebSocket, type: string, error: unknown): Promise<vo
 export async function handleLazerMakeRoom(client: WebSocket, message: ClientMessage): Promise<void> {
   const m = message as Extract<ClientMessage, { type: "lazer_make_room" }>;
   try {
-    const room = await invokeHub<RoomJoinedResponse>("MakeRoom", {
+    const room = await roomManager.joinRoom(null, {
       ruleset_id: m.ruleset_id,
       beatmap_id: m.beatmap_id,
       name: m.name,
       max_participants: m.max_participants,
     });
-    roomManager.trackRoom(room);
     await roomManager.waitForChatChannel(room.chat_channel_id);
     await ack(client, message.type, room);
   } catch (error) {
@@ -33,8 +32,7 @@ export async function handleLazerMakeRoom(client: WebSocket, message: ClientMess
 export async function handleLazerJoinRoom(client: WebSocket, message: ClientMessage): Promise<void> {
   const m = message as Extract<ClientMessage, { type: "lazer_join_room" }>;
   try {
-    const room = await invokeHub<RoomJoinedResponse>("JoinRoom", m.room_id);
-    roomManager.trackRoom(room);
+    const room = await roomManager.joinRoom(m.room_id);
     await roomManager.waitForChatChannel(room.chat_channel_id);
     const history = await fetchChatMessages(room.chat_channel_id);
     sendJson(client, { type: "lazer_chat_history", roomId: room.room_id, messages: history });

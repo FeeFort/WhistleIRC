@@ -4,6 +4,7 @@ import type {
   HubEventType,
   HubEventPayloads,
   PendingRoomJoin,
+  MakeRoomRequest,
   RoomSettingsChangedEvent,
   MatchStateChangedEvent,
   PlaylistItemAddedEvent,
@@ -28,6 +29,7 @@ import { invokeHub } from "./refereeHubClient.js";
 class RoomManager {
   private rooms = new Map<number, RoomState>();
   private pendingJoins = new Map<number, PendingRoomJoin>();
+  private pendingCreations = new Set<PendingRoomJoin>();
   private resyncPromise: Promise<void> | null = null;
   private onRoomChanged: ((room: RoomState) => void) | null = null;
   private onRoomRemoved: ((roomId: number) => void) | null = null;
@@ -105,8 +107,12 @@ class RoomManager {
 
     const pendingJoin = this.pendingJoins.get(roomId);
     if (pendingJoin) {
-      // RefereeAdded is already covered by the pending JoinRoom snapshot.
-      if (eventType !== "RefereeAdded") pendingJoin.events.push({ eventType, payload });
+      pendingJoin.events.push({ eventType, payload });
+      return;
+    }
+
+    if (!this.rooms.has(roomId) && this.pendingCreations.size) {
+      for (const creation of this.pendingCreations) creation.events.push({ eventType, payload });
       return;
     }
 
@@ -221,27 +227,44 @@ class RoomManager {
     }
   }
 
-  private joinRoom(roomId: number): Promise<void> {
-    const existing = this.pendingJoins.get(roomId);
-    if (existing) return existing.promise;
+  async joinRoom(roomId: number | null, request?: MakeRoomRequest): Promise<RoomState> {
+    const existing = roomId === null ? undefined : this.pendingJoins.get(roomId);
+    if (existing) {
+      await existing.promise;
+      const room = roomId === null ? undefined : this.rooms.get(roomId);
+      if (!room) throw new Error(`Room ${roomId} was not joined.`);
+      return room;
+    }
 
     const pending: PendingRoomJoin = { cancelled: false, events: [], promise: Promise.resolve() };
-    this.pendingJoins.set(roomId, pending);
+    if (roomId === null) this.pendingCreations.add(pending);
+    else this.pendingJoins.set(roomId, pending);
     pending.promise = (async () => {
       try {
-        const response = await invokeHub<RoomJoinedResponse>("JoinRoom", roomId);
+        const response = roomId === null ? await invokeHub<RoomJoinedResponse>("MakeRoom", request) : await invokeHub<RoomJoinedResponse>("JoinRoom", roomId);
+        roomId = response.room_id;
         if (!pending.cancelled) this.rooms.set(roomId, response);
       } finally {
-        this.pendingJoins.delete(roomId);
-        // Replay only into a room we have a snapshot for. On failure, keep the
-        // previous snapshot and apply live updates rather than discarding them.
-        if (!pending.cancelled && this.rooms.has(roomId)) {
-          for (const event of pending.events) this.handleHubEvent(event.eventType, event.payload);
+        this.pendingCreations.delete(pending);
+        if (roomId !== null) this.pendingJoins.delete(roomId);
+        if (!pending.cancelled && roomId !== null && this.rooms.has(roomId)) {
+          for (const event of pending.events) {
+            if (event.payload.room_id === roomId) {
+              if (event.eventType === "RefereeAdded") {
+                const userId = (event.payload as RefereeAddedEvent).user_id;
+                const room = this.rooms.get(roomId)!;
+                if (!room.referees.some((referee) => referee.user_id === userId)) room.referees.push({ user_id: userId });
+              } else this.handleHubEvent(event.eventType, event.payload);
+            }
+          }
           this.onRoomChanged?.(this.rooms.get(roomId)!);
         }
       }
     })();
-    return pending.promise;
+    await pending.promise;
+    const room = roomId === null ? undefined : this.rooms.get(roomId);
+    if (!room) throw new Error(`Room ${roomId} was not joined.`);
+    return room;
   }
 
   resync(): Promise<void> {
