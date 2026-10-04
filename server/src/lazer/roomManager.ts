@@ -28,6 +28,7 @@ import type {
 import { invokeHub } from "./refereeHubClient.js";
 
 class RoomManager {
+  private generation = 0;
   private rooms = new Map<number, RoomState>();
   private pendingJoins = new Map<number, PendingRoomJoin>();
   private pendingCreations = new Set<PendingRoomJoin>();
@@ -36,12 +37,27 @@ class RoomManager {
   private onStatus: LazerStatusHandler | null = null;
   private onRoomRemoved: ((roomId: number) => void) | null = null;
   private joinedChatChannels = new Set<number>();
-  private chatWaiters = new Map<number, Array<() => void>>();
+  private chatWaiters = new Map<number, Array<(error?: Error) => void>>();
 
   setListeners(onChanged: (room: RoomState) => void, onRemoved: (roomId: number) => void, onStatus?: LazerStatusHandler): void {
     this.onRoomChanged = onChanged;
     this.onRoomRemoved = onRemoved;
     this.onStatus = onStatus ?? null;
+  }
+
+  reset(): void {
+    ++this.generation;
+    for (const pending of [...this.pendingJoins.values(), ...this.pendingCreations]) pending.cancelled = true;
+    this.pendingJoins.clear();
+    this.pendingCreations.clear();
+    this.resyncPromise = null;
+    for (const roomId of [...this.rooms.keys()]) this.removeRoom(roomId);
+    this.joinedChatChannels.clear();
+    for (const waiters of this.chatWaiters.values()) {
+      for (const done of waiters) done(new Error("osu! session ended."));
+    }
+    this.chatWaiters.clear();
+    this.onStatus?.({ type: "lazer_sync_state", state: "idle" });
   }
 
   trackRoom(room: RoomState): void {
@@ -78,9 +94,10 @@ class RoomManager {
         );
         reject(new Error(`Chat channel ${channelId} was not joined in time.`));
       }, timeoutMs);
-      const done = () => {
+      const done = (error?: Error) => {
         clearTimeout(timer);
-        resolve();
+        if (error) reject(error);
+        else resolve();
       };
       const waiters = this.chatWaiters.get(channelId) ?? [];
       waiters.push(done);
@@ -121,7 +138,9 @@ class RoomManager {
 
     if (eventType === "RefereeAdded") {
       const event = payload as unknown as RefereeAddedEvent;
+      const generation = this.generation;
       this.joinRoom(event.room_id).catch((error) => {
+        if (generation !== this.generation) return;
         this.onStatus?.({ type: "lazer_room_error", roomId: event.room_id, operation: "join", message: error instanceof Error ? error.message : String(error) });
         console.error(`[roomManager] failed to join room ${event.room_id} after RefereeAdded: ${(error as Error).message}`);
       });
@@ -233,9 +252,11 @@ class RoomManager {
   }
 
   async joinRoom(roomId: number | null, request?: MakeRoomRequest): Promise<RoomState> {
+    const generation = this.generation;
     const existing = roomId === null ? undefined : this.pendingJoins.get(roomId);
     if (existing) {
       await existing.promise;
+      if (generation !== this.generation) throw new Error("osu! session ended.");
       const room = roomId === null ? undefined : this.rooms.get(roomId);
       if (!room) throw new Error(`Room ${roomId} was not joined.`);
       return room;
@@ -251,7 +272,7 @@ class RoomManager {
         if (!pending.cancelled) this.rooms.set(roomId, response);
       } finally {
         this.pendingCreations.delete(pending);
-        if (roomId !== null) this.pendingJoins.delete(roomId);
+        if (roomId !== null && this.pendingJoins.get(roomId) === pending) this.pendingJoins.delete(roomId);
         if (!pending.cancelled && roomId !== null && this.rooms.has(roomId)) {
           for (const event of pending.events) {
             if (event.payload.room_id === roomId) {
@@ -267,6 +288,7 @@ class RoomManager {
       }
     })();
     await pending.promise;
+    if (pending.cancelled || generation !== this.generation) throw new Error("osu! session ended.");
     const room = roomId === null ? undefined : this.rooms.get(roomId);
     if (!room) throw new Error(`Room ${roomId} was not joined.`);
     return room;
@@ -275,12 +297,14 @@ class RoomManager {
   resync(): Promise<void> {
     if (this.resyncPromise) return this.resyncPromise;
 
+    const generation = this.generation;
     this.onStatus?.({ type: "lazer_sync_state", state: "syncing" });
     this.resyncPromise = (async () => {
       const failedRoomIds: number[] = [];
       let listed = false;
       try {
         const response = await invokeHub<ListRoomsResponse>("ListRooms");
+        if (generation !== this.generation) throw new Error("osu! session ended.");
         const liveRoomIds = new Set(response.room_ids);
         listed = true;
 
@@ -294,6 +318,7 @@ class RoomManager {
             // JoinRoom returns a full snapshot and restores hub subscriptions.
             await this.joinRoom(roomId);
           } catch (error) {
+            if (generation !== this.generation) throw error;
             const failure = new Error(`Failed to refresh room ${roomId}: ${(error as Error).message}`, { cause: error });
             console.error(`[roomManager] ${failure.message}`);
             errors.push(failure);
@@ -303,11 +328,12 @@ class RoomManager {
         if (errors.length) throw new AggregateError(errors, "Some rooms could not be synchronized.");
         this.onStatus?.({ type: "lazer_sync_state", state: "synced" });
       } catch (error) {
-        this.onStatus?.({ type: "lazer_sync_state", state: "failed", scope: listed ? "partial" : "all", failedRoomIds, message: error instanceof Error ? error.message : String(error) });
+        if (generation === this.generation)
+          this.onStatus?.({ type: "lazer_sync_state", state: "failed", scope: listed ? "partial" : "all", failedRoomIds, message: error instanceof Error ? error.message : String(error) });
         // TODO: Retry using the shared API exponential backoff policy once implemented.
         throw error;
       } finally {
-        this.resyncPromise = null;
+        if (generation === this.generation) this.resyncPromise = null;
       }
     })();
     return this.resyncPromise;

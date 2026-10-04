@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { HubConnectionBuilder, HubConnectionState } from "@microsoft/signalr";
-import { connectToRefereeHub, isHubPayload } from "../src/lazer/refereeHubClient.ts";
+import { connectToRefereeHub, disconnectFromRefereeHub, invokeHub, isHubPayload } from "../src/lazer/refereeHubClient.ts";
 import { roomManager } from "../src/lazer/roomManager.ts";
 
 const snapshot = (roomId, name = "Fresh") => ({
@@ -39,6 +39,7 @@ await test("room synchronization", async (t) => {
       reconnect = callback;
     },
     async start() {},
+    async stop() {},
     invoke(...args) {
       return invoke(...args);
     },
@@ -281,5 +282,38 @@ await test("room synchronization", async (t) => {
     assert.equal(roomManager.getAllRooms().length, 1);
     assert.match(errors[0], /Sync after reconnect failed: List failed/);
     log.mock.restore();
+  });
+  await t.test("session reset rejects old room snapshots and chat waits", async () => {
+    let resolveJoin;
+    invoke = () =>
+      new Promise((resolve) => {
+        resolveJoin = resolve;
+      });
+    const joining = roomManager.joinRoom(88);
+    const waiting = roomManager.waitForChatChannel(999);
+    const rejectedWait = assert.rejects(waiting, /session ended/);
+    roomManager.reset();
+    resolveJoin(snapshot(88));
+    await assert.rejects(joining, /session ended/);
+    await rejectedWait;
+    assert.deepEqual(roomManager.getAllRooms(), []);
+    assert.equal(statuses.at(-1).state, "idle");
+  });
+
+  await t.test("disconnect rejects late invocation results and suppresses old hub events", async () => {
+    let resolveInvoke;
+    invoke = () =>
+      new Promise((resolve) => {
+        resolveInvoke = resolve;
+      });
+    const invoking = invokeHub("Roll", 1);
+    const before = forwarded.length;
+    await disconnectFromRefereeHub();
+    resolveInvoke({ result: 1 });
+    await assert.rejects(invoking, /session was replaced/);
+    listeners.get("UserJoined")({ room_id: 1, user_id: 2 });
+    assert.equal(forwarded.length, before);
+    await assert.rejects(invokeHub("ListRooms"), /not connected/);
+    assert.equal(statuses.at(-1).state, "disconnected");
   });
 });

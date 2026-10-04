@@ -14,12 +14,15 @@ export class ChatSocket {
   async connect(): Promise<void> {
     this.closed = false;
     const token = typeof this.options.accessToken === "function" ? await this.options.accessToken() : this.options.accessToken;
+    if (this.closed) return;
     const socket = new WebSocket(config.chatWebSocketUrl, {
       headers: { Authorization: `Bearer ${token}` },
     });
     this.socket = socket;
     socket.on("open", () => socket.send(JSON.stringify({ event: "chat.start" })));
-    socket.on("message", (raw) => this.handleMessage(raw.toString()));
+    socket.on("message", (raw) => {
+      if (!this.closed && this.socket === socket) this.handleMessage(raw.toString());
+    });
     socket.on("error", (error) => this.options.onError?.(error instanceof Error ? error : new Error(String(error))));
     socket.on("close", () => {
       if (this.socket === socket) this.socket = null;

@@ -15,7 +15,7 @@ import { openInBrowser } from "./browser.js";
 import { createTray } from "./tray/index.js";
 import { evaluateWinCondition } from "./match-result/winConditionRunner.js";
 import { addClient, removeClient, sendJson, broadcast, clientCount } from "./wsGateway.js";
-import { connectToRefereeHub } from "./lazer/refereeHubClient.js";
+import { connectToRefereeHub, disconnectFromRefereeHub } from "./lazer/refereeHubClient.js";
 import { roomManager } from "./lazer/roomManager.js";
 import * as lazerHandlers from "./lazer/handlers.js";
 import type { LazerConnectionStateEvent, LazerSyncStateEvent } from "./types.js";
@@ -236,6 +236,15 @@ function sameLobbyValue(left: unknown, right: unknown): boolean {
 
 let lazerConnectionState: LazerConnectionStateEvent = { type: "lazer_connection_state", state: "disconnected" };
 let lazerSyncState: LazerSyncStateEvent = { type: "lazer_sync_state", state: "idle" };
+
+let osuSessionTransition: Promise<void> = Promise.resolve();
+
+async function stopLazerSession(): Promise<void> {
+  chatSocket?.close();
+  chatSocket = null;
+  roomManager.reset();
+  await disconnectFromRefereeHub();
+}
 
 async function startLazerSession(): Promise<void> {
   roomManager.setListeners(
@@ -1210,8 +1219,15 @@ function handleLogout(client: WebSocket): void {
 }
 
 async function handleOsuLogin(client: WebSocket, message: ClientMessage): Promise<void> {
+  const previous = osuSessionTransition;
+  let release!: () => void;
+  osuSessionTransition = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await previous;
   const { clientId, clientSecret, code, redirectUri } = message as Extract<ClientMessage, { type: "osu_login" }>;
   try {
+    await stopLazerSession();
     const user = await loginOsu({ clientId: clientId.trim(), clientSecret: clientSecret, redirectUri: redirectUri.trim() }, code.trim());
     await startLazerSession();
     startChatSocket();
@@ -1219,18 +1235,27 @@ async function handleOsuLogin(client: WebSocket, message: ClientMessage): Promis
   } catch (error) {
     console.error(`[${formatLogTime()}] osu! OAuth request failed: ${(error as Error).message}`);
     sendJson(client, { type: "error", request: "osu_login", message: (error as Error).message || "Unable to reach the osu! API." });
+  } finally {
+    release();
   }
 }
 
 async function handleOsuLogout(client: WebSocket): Promise<void> {
+  const previous = osuSessionTransition;
+  let release!: () => void;
+  osuSessionTransition = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await previous;
   try {
-    chatSocket?.close();
-    chatSocket = null;
+    await stopLazerSession();
     const status = await logoutOsu();
     sendJson(client, { type: "ack", received: "osu_logout", status });
   } catch (error) {
     console.error(`[${formatLogTime()}] osu! logout failed: ${(error as Error).message}`);
     sendJson(client, { type: "error", request: "osu_logout", message: "Unable to log out from the osu! API." });
+  } finally {
+    release();
   }
 }
 
@@ -1444,7 +1469,9 @@ httpServer.listen(config.httpPort, config.httpHost, () => {
   openInBrowser(browserUrl);
 
   // Serve the frontend before restoring authentication or contacting osu!.
-  void (async () => {
+  const previous = osuSessionTransition;
+  osuSessionTransition = (async () => {
+    await previous;
     try {
       await restoreSession();
       if (shuttingDown || getState().status !== "authenticated") return;

@@ -107,8 +107,23 @@ export function isHubPayload(eventType: HubEventType, value: unknown): value is 
 }
 
 let connection: signalR.HubConnection | null = null;
+let connectionGeneration = 0;
+let statusHandler: LazerStatusHandler | undefined;
+
+export async function disconnectFromRefereeHub(): Promise<void> {
+  ++connectionGeneration;
+  const previous = connection;
+  connection = null;
+  const notify = statusHandler;
+  statusHandler = undefined;
+  notify?.({ type: "lazer_connection_state", state: "disconnected" });
+  await previous?.stop();
+}
 
 export async function connectToRefereeHub(onEvent: HubEventHandler, onResync: ResyncHandler, onStatus?: LazerStatusHandler): Promise<signalR.HubConnection> {
+  await disconnectFromRefereeHub();
+  const generation = connectionGeneration;
+  statusHandler = onStatus;
   const hub = new signalR.HubConnectionBuilder()
     .withUrl(new URL("/referee", config.spectatorServerUrl).toString(), {
       accessTokenFactory: () => getAccessToken(),
@@ -117,8 +132,10 @@ export async function connectToRefereeHub(onEvent: HubEventHandler, onResync: Re
     .configureLogging(signalR.LogLevel.Warning)
     .build();
 
+  connection = hub;
   for (const eventName of CLIENT_EVENTS) {
     hub.on(eventName, (payload: unknown) => {
+      if (generation !== connectionGeneration) return;
       if (!isHubPayload(eventName, payload)) {
         console.warn(`[refereeHub] Invalid ${eventName} payload, ignoring`);
         return;
@@ -133,11 +150,13 @@ export async function connectToRefereeHub(onEvent: HubEventHandler, onResync: Re
   }
 
   hub.onreconnecting((error) => {
+    if (generation !== connectionGeneration) return;
     onStatus?.({ type: "lazer_connection_state", state: "reconnecting", ...(error ? { reason: error.message } : {}) });
     console.warn(`[refereeHub] Reconnecting: ${error?.message ?? "unknown reason"}`);
   });
 
   hub.onreconnected(async () => {
+    if (generation !== connectionGeneration) return;
     onStatus?.({ type: "lazer_connection_state", state: "connected" });
     console.log("[refereeHub] Reconnected — syncing rooms list");
     try {
@@ -148,6 +167,7 @@ export async function connectToRefereeHub(onEvent: HubEventHandler, onResync: Re
   });
 
   hub.onclose((error) => {
+    if (generation !== connectionGeneration) return;
     onStatus?.({ type: "lazer_connection_state", state: "disconnected", ...(error ? { reason: error.message } : {}) });
     console.error(`[refereeHub] Connection closed: ${error?.message ?? "no error"}`);
   });
@@ -156,10 +176,10 @@ export async function connectToRefereeHub(onEvent: HubEventHandler, onResync: Re
   try {
     await hub.start();
   } catch (error) {
-    onStatus?.({ type: "lazer_connection_state", state: "disconnected", reason: error instanceof Error ? error.message : String(error) });
+    if (generation === connectionGeneration) onStatus?.({ type: "lazer_connection_state", state: "disconnected", reason: error instanceof Error ? error.message : String(error) });
     throw error;
   }
-  connection = hub;
+  if (generation !== connectionGeneration) throw new Error("SignalR session was replaced.");
   onStatus?.({ type: "lazer_connection_state", state: "connected" });
   return hub;
 }
@@ -168,7 +188,10 @@ export async function invokeHub<T = unknown>(methodName: string, ...args: unknow
   if (!connection || connection.state !== signalR.HubConnectionState.Connected) {
     throw new Error(`Cannot invoke ${methodName}: referee hub is not connected.`);
   }
-  return connection.invoke<T>(methodName, ...args);
+  const generation = connectionGeneration;
+  const result = await connection.invoke<T>(methodName, ...args);
+  if (generation !== connectionGeneration) throw new Error("SignalR session was replaced.");
+  return result;
 }
 
 export function isHubConnected(): boolean {
