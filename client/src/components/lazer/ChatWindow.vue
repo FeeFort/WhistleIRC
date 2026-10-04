@@ -2,7 +2,7 @@
 import { ref, computed, nextTick, watch, onMounted, onBeforeUnmount } from "vue";
 import Button from "primevue/button";
 import Textarea from "primevue/textarea";
-import { Menu, Send, Hash, Timer, ClipboardCheck, Flag, Gamepad2, Link, ArrowDown, ArrowDownToLine, Ban, ShieldCheck, Crosshair } from "@lucide/vue";
+import { Menu, Send, Hash, Timer, ClipboardCheck, Gamepad2, Link, ArrowDown, ArrowDownToLine, Ban, ShieldCheck, Crosshair } from "@lucide/vue";
 import { useNickColor } from "../../composables/useNickColor";
 import { useChatSettings } from "../../composables/useChatSettings";
 import { escapeRegExp, highlightTextStyle, messageHasHighlight, normalizeTeamHighlights, teamTextStyle } from "../../composables/useMessageHighlighting";
@@ -51,11 +51,10 @@ const props = defineProps({
   },
   autoScrollToken: { type: Number, default: 0 },
   // room facts, shown as a small subtitle line under the title
-  roomSize: { type: Number, default: 16 },
+  roomSize: { type: [Number, String], default: 16 },
   timerActive: { type: Boolean, default: false },
   timerSeconds: { type: Number, default: 0 },
   format: { type: String, default: "HeadToHead" },
-  winCondition: { type: String, default: "Score" },
   mode: { type: String, default: "osu!" },
   roomId: { type: Number, default: null },
   roomClosed: { type: Boolean, default: false },
@@ -607,8 +606,6 @@ function forwardCommand(command) {
             <span class="chat-subtitle__item"><Timer :size="12" />{{ timerLabel }}</span>
             <span class="chat-subtitle__dot">·</span>
             <span class="chat-subtitle__item"><ClipboardCheck :size="12" />{{ format }}</span>
-            <span class="chat-subtitle__dot">·</span>
-            <span class="chat-subtitle__item"><Flag :size="12" />{{ winCondition }}</span>
             <span class="chat-subtitle__dot">·</span>
             <span class="chat-subtitle__item"><Gamepad2 :size="12" />{{ mode }}</span>
           </div>

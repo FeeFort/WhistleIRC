@@ -453,8 +453,7 @@ watch(
 
     if (event?.type === "lazer_room_closed") {
       const id = lazerChatId(Number(event.roomId));
-      if (lazerRooms[id]) lazerRooms[id].closed = true;
-      if (activeChat.value === id) activeChat.value = "bancho";
+      markLazerRoomClosed(id);
       return;
     }
 
@@ -1303,6 +1302,24 @@ const activeLazerRefereeUsers = computed(() => {
     .filter(Boolean);
 });
 const activeLazerLobbyState = computed(() => lazerLobbyStates[activeChat.value] || null);
+const activeLazerRoomSize = computed(() => {
+  const maxParticipants = Number(activeLazerRoom.value?.max_participants);
+  return Number.isFinite(maxParticipants) && maxParticipants > 0 ? maxParticipants : "Infinite";
+});
+const activeLazerMatchType = computed(() => {
+  const type = activeLazerRoom.value?.state?.type;
+  return type === "head_to_head" ? "HeadToHead" : type === "team_versus" ? "TeamVS" : "—";
+});
+const activeLazerRuleset = computed(() => {
+  const room = activeLazerRoom.value;
+  const playlist = Array.isArray(room?.playlist) ? room.playlist : [];
+  const currentPlaylistItemId = Number(room?.current_playlist_item_id ?? room?.playlist_item_id ?? room?.state?.playlist_item_id);
+  const currentItem =
+    (Number.isInteger(currentPlaylistItemId) && playlist.find((item) => Number(item.id) === currentPlaylistItemId)) ||
+    [...playlist].sort((left, right) => Number(left.order) - Number(right.order)).find((item) => !item.was_played) ||
+    playlist[0];
+  return ({ 0: "osu!", 1: "osu!taiko", 2: "osu!catch", 3: "osu!mania" }[Number(currentItem?.ruleset_id)] || "osu!");
+});
 const activeChatKind = computed(() => {
   if (activeChat.value === "bancho") return "bancho";
   if (activeDirectChat.value) return "dm";
@@ -2156,6 +2173,19 @@ function markRoomClosed(chatId) {
   });
 }
 
+function markLazerRoomClosed(chatId) {
+  const room = lazerRooms[chatId];
+  if (!room || room.closed) return;
+
+  room.closed = true;
+  clearLazerCountdown(room.room_id);
+  appendChatMessage(chatId, {
+    id: nextId++,
+    type: "system",
+    text: "Room closed",
+  });
+}
+
 function joinChannel(channel) {
   if (channel.type === "lazer") {
     const roomId = Number(channel.roomId);
@@ -2693,6 +2723,36 @@ function handleSendResult(result) {
 
   outgoingMessages.forEach((message) => {
     handleSend(formatLobbyTemplate(message.content, values));
+  });
+}
+
+function handleLazerSendResult(result) {
+  const roomId = Number(activeLazerRoom.value?.room_id);
+  const lobby = activeLazerLobbyState.value;
+  if (!Number.isInteger(roomId) || roomId <= 0 || !lobby || activeLazerRoom.value?.closed) return;
+
+  const values = getLobbyTemplateValues(
+    {
+      teamRed: lobby.teamAName,
+      teamBlue: lobby.teamBName,
+      teamRedScore: lobby.teamAScore,
+      teamBlueScore: lobby.teamBScore,
+      bestOf: lobby.bestOf,
+      nextPickTeam: lobby.nextPickTeam,
+      lastPlay: {},
+      currentBeatmap: null,
+    },
+    result,
+  );
+
+  const outgoingMessages = activePreset.value?.messages.filter((message) => message.enabled && message.content.trim()) || [
+    {
+      content: "{{teamRedName}} {{matchTeamRedScore}} - {{matchTeamBlueScore}} {{teamBlueName}}",
+    },
+  ];
+
+  outgoingMessages.forEach((message) => {
+    queueLazerChatMessage(roomId, formatLobbyTemplate(message.content, values));
   });
 }
 </script>
@@ -3251,13 +3311,12 @@ function handleSendResult(result) {
         :messages="activeMessages"
         :current-user="currentUser"
         :referee-users="activeLazerRefereeUsers"
-        :room-size="activeLazerRoom?.max_participants || 0"
+        :room-size="activeLazerRoomSize"
         :room-closed="Boolean(activeLazerRoom?.closed)"
         :timer-active="activeLazerTimer"
         :timer-seconds="activeLazerTimerSeconds"
-        :format="activeLazerRoom?.state?.type || 'Lazer'"
-        :win-condition="'—'"
-        :mode="'osu! lazer'"
+        :format="activeLazerMatchType"
+        :mode="activeLazerRuleset"
         :auto-scroll-token="commandScrollToken"
         @send="handleSend"
         @send-command="handleCommand"
@@ -3315,6 +3374,7 @@ function handleSendResult(result) {
             lazer-mode
             :room-link="activeLazerRoom ? `https://osu.ppy.sh/multiplayer/rooms/${activeLazerRoom.room_id}` : ''"
             :disabled="Boolean(activeLazerRoom?.closed)"
+            @send-result="handleLazerSendResult"
             @update-settings="updateActiveLazerSettings"
             @configure-lobby="openLobbySetup"
           />
