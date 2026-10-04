@@ -7,6 +7,7 @@
   "main": "src/index.js",
   "bin": "dist/bundle.js",
   "scripts": {
+    "test": "node test/run.mjs",
     "start": "tsx src/index.js",
     "bundle": "esbuild src/index.js --bundle --platform=node --outfile=dist/bundle.js",
     "build": "node build.js",
