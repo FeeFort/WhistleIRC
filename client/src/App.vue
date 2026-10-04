@@ -95,8 +95,10 @@ const joinedChannels = ref([]);
 const lobbyStates = reactive({});
 const lazerRooms = reactive({});
 const lazerLobbyStates = reactive({});
+const lazerCountdowns = reactive({});
 const channelMessages = reactive({});
 const pendingLazerMessages = [];
+const lazerCountdownTimeouts = new Map();
 const lobbyContexts = reactive({});
 const pendingPartChannels = new Set();
 const pendingLobbySeed = ref(null);
@@ -1164,6 +1166,10 @@ onBeforeUnmount(() => {
   window.removeEventListener("beforeunload", handlePageExit);
   document.removeEventListener("click", closeNotificationSoundMenu);
   document.removeEventListener("keydown", onNotificationSoundKeydown);
+  for (const timeouts of lazerCountdownTimeouts.values()) {
+    timeouts.forEach((timeoutId) => window.clearTimeout(timeoutId));
+  }
+  lazerCountdownTimeouts.clear();
 });
 
 function openSettings() {
@@ -1528,6 +1534,13 @@ function moveLazerPlayer({ userId, slot }) {
 }
 const activeLazerDisplayPlayers = computed(() => activeLazerPlayers.value.filter((player) => !player.isSlot || (Number(activeLazerRoom.value?.max_participants) > 0 && Number.isFinite(Number(activeLazerRoom.value?.max_participants)))));
 const lobbyClock = ref(Date.now());
+const activeLazerTimerSeconds = computed(() => {
+  const roomId = Number(activeLazerRoom.value?.room_id);
+  const countdown = lazerCountdowns[roomId];
+  if (!countdown?.endsAt) return 0;
+  return Math.max(0, Math.ceil((countdown.endsAt - lobbyClock.value) / 1000));
+});
+const activeLazerTimer = computed(() => activeLazerTimerSeconds.value > 0);
 const activeLobbyTimerSeconds = computed(() => {
   const timer = activeLobbyState.value?.timer;
   if (!timer?.active || !timer.endsAt) return 0;
@@ -2296,25 +2309,7 @@ function handleSend(text) {
 
     const roomId = Number(activeLazerRoom.value?.room_id);
     if (!Number.isInteger(roomId) || roomId <= 0 || activeLazerRoom.value?.closed) return;
-    const chatId = lazerChatId(roomId);
-    const list = (channelMessages[chatId] ||= []);
-    const pendingMessage = {
-      id: `pending-${Date.now()}-${Math.random()}`,
-      author: currentUser.value,
-      text: messageText,
-      time: new Date().toISOString(),
-      isAction,
-      pending: true,
-    };
-    list.push(pendingMessage);
-    pendingLazerMessages.push({ chatId, messageId: pendingMessage.id });
-    if (!sendLazerChatMessage(roomId, messageText, isAction)) {
-      const index = list.indexOf(pendingMessage);
-      if (index !== -1) list.splice(index, 1);
-      const pendingIndex = pendingLazerMessages.findIndex((item) => item.messageId === pendingMessage.id);
-      if (pendingIndex !== -1) pendingLazerMessages.splice(pendingIndex, 1);
-      toast.add({ severity: "error", summary: "Message failed", detail: "The chat connection is not available.", life: 4000 });
-    }
+    queueLazerChatMessage(roomId, messageText, isAction);
     return;
   }
   const channel = activeChat.value === "bancho" ? "BanchoBot" : activeDirectChat.value?.label || joinedChannels.value.find((item) => item.id === activeChat.value)?.label;
@@ -2329,6 +2324,96 @@ function handleSend(text) {
     time: new Date().toISOString(),
     team: lobbyPlayer?.team || null,
   });
+}
+
+function queueLazerChatMessage(roomId, text, isAction = false) {
+  const id = Number(roomId);
+  const messageText = String(text || "").trim();
+  if (!Number.isInteger(id) || id <= 0 || !messageText) return false;
+
+  const chatId = lazerChatId(id);
+  const list = (channelMessages[chatId] ||= []);
+  const pendingMessage = {
+    id: `pending-${Date.now()}-${Math.random()}`,
+    author: currentUser.value,
+    text: messageText,
+    time: new Date().toISOString(),
+    isAction,
+    pending: true,
+  };
+  list.push(pendingMessage);
+  pendingLazerMessages.push({ chatId, messageId: pendingMessage.id });
+  if (sendLazerChatMessage(id, messageText, isAction)) return true;
+
+  const index = list.indexOf(pendingMessage);
+  if (index !== -1) list.splice(index, 1);
+  const pendingIndex = pendingLazerMessages.findIndex((item) => item.messageId === pendingMessage.id);
+  if (pendingIndex !== -1) pendingLazerMessages.splice(pendingIndex, 1);
+  toast.add({ severity: "error", summary: "Message failed", detail: "The chat connection is not available.", life: 4000 });
+  return false;
+}
+
+function formatLazerCountdownDuration(seconds) {
+  const remaining = Math.max(0, Math.floor(Number(seconds) || 0));
+  const minutes = Math.floor(remaining / 60);
+  const remainder = remaining % 60;
+  const parts = [];
+  if (minutes > 0) parts.push(`${minutes} minute${minutes === 1 ? "" : "s"}`);
+  if (remainder > 0) parts.push(`${remainder} second${remainder === 1 ? "" : "s"}`);
+  return parts.join(" and ") || "0 seconds";
+}
+
+function clearLazerCountdown(roomId) {
+  const id = Number(roomId);
+  const timeouts = lazerCountdownTimeouts.get(id) || [];
+  timeouts.forEach((timeoutId) => window.clearTimeout(timeoutId));
+  lazerCountdownTimeouts.delete(id);
+  delete lazerCountdowns[id];
+}
+
+function startLazerCountdown(roomId, duration) {
+  const id = Number(roomId);
+  const totalSeconds = Math.floor(Number(duration));
+  if (!Number.isInteger(id) || id <= 0 || !Number.isFinite(totalSeconds) || totalSeconds < 1) return;
+
+  clearLazerCountdown(id);
+  const endsAt = Date.now() + totalSeconds * 1000;
+  const scheduledTimeouts = [];
+  lazerCountdowns[id] = { endsAt };
+  lazerCountdownTimeouts.set(id, scheduledTimeouts);
+  queueLazerChatMessage(id, `Countdown ends in ${formatLazerCountdownDuration(totalSeconds)}`);
+
+  const announcements = new Set();
+  for (let seconds = 60; seconds < totalSeconds; seconds += 60) announcements.add(seconds);
+  [30, 10, 5, 4, 3, 2, 1].forEach((seconds) => {
+    if (seconds < totalSeconds) announcements.add(seconds);
+  });
+
+  [...announcements]
+    .sort((left, right) => right - left)
+    .forEach((secondsRemaining) => {
+      scheduledTimeouts.push(
+        window.setTimeout(() => {
+          if (lazerCountdowns[id]?.endsAt !== endsAt) return;
+          queueLazerChatMessage(id, `Countdown ends in ${formatLazerCountdownDuration(secondsRemaining)}`);
+        }, (totalSeconds - secondsRemaining) * 1000),
+      );
+    });
+
+  scheduledTimeouts.push(
+    window.setTimeout(() => {
+      if (lazerCountdowns[id]?.endsAt !== endsAt) return;
+      clearLazerCountdown(id);
+      queueLazerChatMessage(id, "Countdown finished");
+    }, totalSeconds * 1000),
+  );
+}
+
+function abortLazerCountdown(roomId) {
+  const id = Number(roomId);
+  if (!lazerCountdowns[id]) return;
+  clearLazerCountdown(id);
+  queueLazerChatMessage(id, "Countdown aborted");
 }
 
 function updateActiveLobbyPlayers(update) {
@@ -3168,12 +3253,16 @@ function handleSendResult(result) {
         :referee-users="activeLazerRefereeUsers"
         :room-size="activeLazerRoom?.max_participants || 0"
         :room-closed="Boolean(activeLazerRoom?.closed)"
+        :timer-active="activeLazerTimer"
+        :timer-seconds="activeLazerTimerSeconds"
         :format="activeLazerRoom?.state?.type || 'Lazer'"
         :win-condition="'—'"
         :mode="'osu! lazer'"
         :auto-scroll-token="commandScrollToken"
         @send="handleSend"
         @send-command="handleCommand"
+        @start-timer="startLazerCountdown(activeLazerRoom?.room_id, $event)"
+        @abort-timer="abortLazerCountdown(activeLazerRoom?.room_id)"
         @download-chat-history="downloadChatHistory"
         @toggle-sidebar="sidebarOpen = !sidebarOpen"
       />

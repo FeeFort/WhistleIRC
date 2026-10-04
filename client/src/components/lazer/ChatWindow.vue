@@ -82,7 +82,7 @@ const displayMessages = computed(() =>
 
 const statusLabel = computed(() => (props.connected ? "Connected" : "Disconnected"));
 
-const emit = defineEmits(["send", "toggle-sidebar", "send-command", "download-chat-history", "mappool-action"]);
+const emit = defineEmits(["send", "toggle-sidebar", "send-command", "start-timer", "abort-timer", "download-chat-history", "mappool-action"]);
 
 const draft = ref("");
 const sentMessageHistory = new Map();
@@ -699,7 +699,7 @@ function forwardCommand(command) {
       </Transition>
     </div>
 
-    <CommandBar docked :disabled="roomClosed" :room-id="roomId" @send-command="forwardCommand" />
+    <CommandBar docked :disabled="roomClosed" :room-id="roomId" @send-command="forwardCommand" @start-timer="emit('start-timer', $event)" @abort-timer="emit('abort-timer')" />
 
     <div class="chat-input">
       <Textarea ref="chatInput" v-model="draft" placeholder="Write a message" rows="1" autoResize class="chat-input__field" :disabled="roomClosed" @input="handleDraftInput" @keydown="onKeydown" />

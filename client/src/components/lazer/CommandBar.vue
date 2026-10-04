@@ -3,10 +3,11 @@ import { computed, ref } from "vue";
 import Button from "primevue/button";
 import Dialog from "primevue/dialog";
 import Message from "primevue/message";
-import { Play, Square, Lock, LockOpen, DoorClosed, Zap, Plus, Pencil, AlertTriangle } from "@lucide/vue";
-import { useShortcuts } from "../../composables/useShortcuts";
+import { Play, Square, Timer, TimerOff, Lock, LockOpen, DoorClosed, Zap, Plus, Pencil, SlidersHorizontal, AlertTriangle } from "@lucide/vue";
+import { useShortcuts, BUILTIN_IDS } from "../../composables/useShortcuts";
 import { useServerConnection } from "../../composables/useServerConnection";
 import ShortcutEditDialog from "../ShortcutEditDialog.vue";
+import BuiltinShortcutsSettings from "./BuiltinShortcutsSettings.vue";
 
 const props = defineProps({
   docked: { type: Boolean, default: false },
@@ -14,14 +15,17 @@ const props = defineProps({
   roomId: { type: Number, default: null },
 });
 
-const emit = defineEmits(["send-command"]);
+const emit = defineEmits(["send-command", "start-timer", "abort-timer"]);
 const { startLazerMatch, abortLazerMatch, setLazerLockState, closeLazerRoom } = useServerConnection();
 
-const { customShortcuts, addCustomShortcut, updateCustomShortcut, removeCustomShortcut, reorderCustomShortcut, resolveIcon, normalizeShortcutColor } =
+const { startDelaySeconds, timerSeconds, builtinWarnings, customShortcuts, addCustomShortcut, updateCustomShortcut, removeCustomShortcut, reorderCustomShortcut, resolveIcon, normalizeShortcutColor } =
   useShortcuts();
 
 const commandConfirmationVisible = ref(false);
 const pendingCommand = ref("");
+const pendingAction = ref(null);
+const pendingTitle = ref("");
+const pendingDescription = ref("");
 
 const commandGroups = computed(() => [
   {
@@ -29,16 +33,50 @@ const commandGroups = computed(() => [
     commands: [
       {
         id: "lazer-start",
+        warningId: BUILTIN_IDS.START,
         label: "Start",
-        action: () => startLazerMatch(props.roomId, null),
+        warningTitle: startDelaySeconds.value > 0 ? `Start match in ${startDelaySeconds.value}s?` : "Start match?",
+        warningDescription:
+          startDelaySeconds.value > 0
+            ? `A ${startDelaySeconds.value}-second countdown will begin in the lobby.`
+            : "The match will start in the lobby.",
+        action: () => startLazerMatch(props.roomId, startDelaySeconds.value),
         icon: Play,
         tone: "green",
       },
       {
         id: "lazer-abort",
+        warningId: BUILTIN_IDS.ABORT,
         label: "Abort",
+        warningTitle: "Abort match?",
+        warningDescription: "The current match will be stopped for all players.",
         action: () => abortLazerMatch(props.roomId),
         icon: Square,
+        tone: "red",
+      },
+    ],
+  },
+  {
+    label: "Timer",
+    commands: [
+      {
+        id: "lazer-timer",
+        warningId: BUILTIN_IDS.TIMER,
+        label: "Set timer",
+        warningTitle: "Start countdown?",
+        warningDescription: "The countdown will be announced in the lobby.",
+        action: () => emit("start-timer", timerSeconds.value),
+        icon: Timer,
+        tone: "amber",
+      },
+      {
+        id: "lazer-abort-timer",
+        warningId: BUILTIN_IDS.ABORT_TIMER,
+        label: "Abort timer",
+        warningTitle: "Abort countdown?",
+        warningDescription: "The current countdown will be stopped for all players.",
+        action: () => emit("abort-timer"),
+        icon: TimerOff,
         tone: "red",
       },
     ],
@@ -48,21 +86,30 @@ const commandGroups = computed(() => [
     commands: [
       {
         id: "lazer-lock",
+        warningId: BUILTIN_IDS.LOCK,
         label: "Lock",
+        warningTitle: "Lock room?",
+        warningDescription: "New players will not be able to join the lobby.",
         action: () => setLazerLockState(props.roomId, true),
         icon: Lock,
         tone: "amber",
       },
       {
         id: "lazer-unlock",
+        warningId: BUILTIN_IDS.UNLOCK,
         label: "Unlock",
+        warningTitle: "Unlock room?",
+        warningDescription: "Players will be able to join the lobby.",
         action: () => setLazerLockState(props.roomId, false),
         icon: LockOpen,
         tone: "green",
       },
       {
         id: "lazer-close",
+        warningId: BUILTIN_IDS.CLOSE,
         label: "Close",
+        warningTitle: "Close room?",
+        warningDescription: "The room will be closed. This can't be undone.",
         action: () => closeLazerRoom(props.roomId),
         icon: DoorClosed,
         tone: "red",
@@ -78,6 +125,10 @@ function emitCommand(command) {
 
 function sendBuiltin(cmd) {
   if (props.disabled || !props.roomId) return;
+  if (cmd.warningId && builtinWarnings.value[cmd.warningId]) {
+    requestCommandConfirmation(cmd.label, cmd.action, cmd.warningTitle, cmd.warningDescription);
+    return;
+  }
   cmd.action?.();
 }
 
@@ -92,7 +143,12 @@ function sendCustom(shortcut) {
     emitCommand(shortcut.command);
     return;
   }
-  requestCommandConfirmation(shortcut.command);
+  requestCommandConfirmation(
+    shortcut.command,
+    null,
+    "Send shortcut?",
+    "This shortcut will be sent to the chat.",
+  );
 }
 
 function onCustomShortcutsWheel(event) {
@@ -104,19 +160,35 @@ function onCustomShortcutsWheel(event) {
   container.scrollLeft += event.deltaY;
 }
 
-function requestCommandConfirmation(command) {
+function requestCommandConfirmation(
+  command,
+  action = null,
+  title = "Send shortcut command?",
+  description = "This command will be sent to the chat.",
+) {
   pendingCommand.value = command;
+  pendingAction.value = action;
+  pendingTitle.value = title;
+  pendingDescription.value = description;
   commandConfirmationVisible.value = true;
 }
 
 function cancelCommandConfirmation() {
   commandConfirmationVisible.value = false;
+  pendingAction.value = null;
+  pendingTitle.value = "";
+  pendingDescription.value = "";
 }
 
 function acceptCommandConfirmation() {
   const command = pendingCommand.value;
   commandConfirmationVisible.value = false;
-  if (command) emitCommand(command);
+  const action = pendingAction.value;
+  pendingAction.value = null;
+  if (action) action();
+  else if (command) emitCommand(command);
+  pendingTitle.value = "";
+  pendingDescription.value = "";
 }
 
 const dragIndex = ref(null);
@@ -141,6 +213,7 @@ function onDragEnd() {
 
 const editorVisible = ref(false);
 const editingShortcut = ref(null); // null = creating new
+const builtinSettingsVisible = ref(false);
 
 function openCreate() {
   if (props.disabled) return;
@@ -188,9 +261,9 @@ function handleSave(data) {
           <AlertTriangle :size="20" class="command-confirm-message__icon" />
         </template>
         <div class="command-confirm-message__content">
-          <strong>Send shortcut command?</strong>
-          <span>This command will be sent to the chat:</span>
-          <code>{{ pendingCommand }}</code>
+          <strong>{{ pendingTitle }}</strong>
+          <span>{{ pendingDescription }}</span>
+          <code v-if="pendingCommand && !pendingAction">{{ pendingCommand }}</code>
         </div>
       </Message>
 
@@ -263,7 +336,12 @@ function handleSave(data) {
       </section>
     </div>
 
+    <button v-tooltip.top="'Built-in shortcut settings'" type="button" class="command-bar__settings" :disabled="disabled" aria-label="Edit built-in shortcuts" @click="builtinSettingsVisible = true">
+      <SlidersHorizontal :size="15" />
+    </button>
+
     <ShortcutEditDialog v-model:visible="editorVisible" :shortcut="editingShortcut" :existing-shortcuts="customShortcuts" @save="handleSave" @import="handleImport" @delete="removeCustomShortcut" />
+    <BuiltinShortcutsSettings v-model:visible="builtinSettingsVisible" />
   </div>
 </template>
 
