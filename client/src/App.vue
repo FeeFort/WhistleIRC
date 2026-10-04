@@ -2260,10 +2260,23 @@ function handleSend(text) {
       return;
     }
 
-    if (/^\/roll$/i.test(command)) {
+    const rollMatch = command.match(/^\/roll(?:\s+(\d+))?$/i);
+    if (rollMatch) {
       const roomId = Number(activeLazerRoom.value?.room_id);
       if (!Number.isInteger(roomId) || roomId <= 0 || activeLazerRoom.value?.closed) return;
-      if (!rollLazer(roomId, 100)) {
+      const rollMax = rollMatch[1] ? Number(rollMatch[1]) : 100;
+      if (!Number.isSafeInteger(rollMax) || rollMax < 2 || rollMax > 100) {
+        appendChatMessage(lazerChatId(roomId), {
+          id: `roll-usage-${Date.now()}-${Math.random()}`,
+          type: "system",
+          author: "system",
+          text: "Usage: /roll [2-100]",
+          time: new Date().toISOString(),
+          isRoll: true,
+        });
+        return;
+      }
+      if (!rollLazer(roomId, rollMax)) {
         toast.add({ severity: "error", summary: "Roll failed", detail: "The server connection is not available.", life: 4000 });
       }
       return;
