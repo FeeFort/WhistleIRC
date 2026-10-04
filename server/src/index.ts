@@ -14,7 +14,7 @@ import { applyPendingUpdate } from "./updater/applyUpdate.js";
 import { openInBrowser } from "./browser.js";
 import { createTray } from "./tray/index.js";
 import { evaluateWinCondition } from "./match-result/winConditionRunner.js";
-import { addClient, removeClient, sendJson, broadcast, clientCount } from "./wsGateway.js";
+import { addClient, removeClient, sendJson, broadcast, clientCount, requestContext } from "./wsGateway.js";
 import { connectToRefereeHub, disconnectFromRefereeHub } from "./lazer/refereeHubClient.js";
 import { roomManager } from "./lazer/roomManager.js";
 import * as lazerHandlers from "./lazer/handlers.js";
@@ -946,6 +946,10 @@ function validateMessage(message: unknown): string | null {
     return "Message must be a JSON object.";
   }
 
+  if (message.requestId !== undefined && (!isNonEmptyString(message.requestId) || message.requestId.length > 128)) {
+    return "requestId must be a non-empty string of at most 128 characters.";
+  }
+
   if (!isNonEmptyString(message.type)) {
     return "Message type must be a non-empty string.";
   }
@@ -1370,6 +1374,8 @@ function handleClientMessage(client: WebSocket, rawMessage: unknown): void {
     sendJson(client, {
       type: "error",
       ...(isRecord(rawMessage) && isNonEmptyString(rawMessage.type) ? { request: rawMessage.type } : {}),
+      ...(isRecord(rawMessage) && typeof rawMessage.requestId === "string" ? { requestId: rawMessage.requestId } : {}),
+      code: "VALIDATION_ERROR",
       message: validationError,
     });
     return;
@@ -1449,7 +1455,7 @@ webSocketServer.on("connection", (client) => {
       });
       return;
     }
-    handleClientMessage(client, message);
+    requestContext.run({ requestId: isRecord(message) && typeof message.requestId === "string" ? message.requestId : undefined }, () => handleClientMessage(client, message));
   });
 
   client.on("close", () => {

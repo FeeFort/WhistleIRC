@@ -1,3 +1,4 @@
+import { config } from "../src/config.ts";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { HubConnectionBuilder, HubConnectionState } from "@microsoft/signalr";
@@ -283,6 +284,29 @@ await test("room synchronization", async (t) => {
     assert.match(errors[0], /Sync after reconnect failed: List failed/);
     log.mock.restore();
   });
+  await t.test("SignalR timeout releases a join and ignores its late snapshot", async () => {
+    const previousTimeout = config.hubRequestTimeoutMs;
+    config.hubRequestTimeoutMs = 10;
+    let resolveLate;
+    invoke = () =>
+      new Promise((resolve) => {
+        resolveLate = resolve;
+      });
+    try {
+      await assert.rejects(roomManager.joinRoom(89), (error) => error.code === "REQUEST_TIMEOUT" && error.outcomeUnknown === false);
+      resolveLate(snapshot(89));
+      await new Promise((resolve) => setImmediate(resolve));
+      assert.equal(roomManager.getRoom(89), undefined);
+      invoke = async () => snapshot(89);
+      await roomManager.joinRoom(89);
+      roomManager.removeRoom(89);
+      invoke = () => new Promise(() => {});
+      await assert.rejects(invokeHub("MakeRoom", {}), (error) => error.code === "REQUEST_TIMEOUT" && error.outcomeUnknown === true);
+    } finally {
+      config.hubRequestTimeoutMs = previousTimeout;
+    }
+  });
+
   await t.test("session reset rejects old room snapshots and chat waits", async () => {
     let resolveJoin;
     invoke = () =>

@@ -189,7 +189,29 @@ export async function invokeHub<T = unknown>(methodName: string, ...args: unknow
     throw new Error(`Cannot invoke ${methodName}: referee hub is not connected.`);
   }
   const generation = connectionGeneration;
-  const result = await connection.invoke<T>(methodName, ...args);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let result: T;
+  try {
+    result = await Promise.race([
+      connection.invoke<T>(methodName, ...args),
+      new Promise<never>((_resolve, reject) => {
+        timer = setTimeout(
+          () =>
+            reject(
+              Object.assign(new Error(`SignalR request ${methodName} timed out; its outcome may be unknown.`), {
+                code: "REQUEST_TIMEOUT",
+                outcomeUnknown: methodName !== "ListRooms" && methodName !== "JoinRoom",
+              }),
+            ),
+          config.hubRequestTimeoutMs,
+        );
+      }),
+    ]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+  // TODO: Apply shared exponential backoff retries only where replay is safe.
+  // Mutations must not be retried blindly: timeout does not cancel the remote call.
   if (generation !== connectionGeneration) throw new Error("SignalR session was replaced.");
   return result;
 }

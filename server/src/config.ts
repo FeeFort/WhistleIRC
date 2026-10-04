@@ -1,4 +1,6 @@
 export const config = {
+  hubRequestTimeoutMs: 15_000,
+  apiRequestTimeoutMs: 15_000,
   osuWebUrl: "https://osu.ppy.sh",
   redirectUri: "http://localhost:3000/",
   httpHost: process.env.HTTP_HOST || "0.0.0.0",

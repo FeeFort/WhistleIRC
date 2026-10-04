@@ -188,7 +188,9 @@ export type IrcLine = {
 export type ConnectionState = "disconnected" | "connecting" | "authenticating" | "ready" | "error";
 
 //WS message type
-export type ClientMessage =
+export type ClientMessage = ClientCommand & { requestId?: string };
+
+export type ClientCommand =
   | { type: "login"; login: string; password: string }
   | { type: "logout" }
   | { type: "osu_login"; clientId: string; clientSecret: string; code: string; redirectUri: string }
@@ -734,3 +736,8 @@ export interface LazerRoomErrorEvent {
 
 export type LazerStatusEvent = LazerConnectionStateEvent | LazerSyncStateEvent | LazerRoomErrorEvent;
 export type LazerStatusHandler = (event: LazerStatusEvent) => void;
+
+export interface RequestFailure {
+  code: "REQUEST_TIMEOUT";
+  outcomeUnknown: boolean;
+}

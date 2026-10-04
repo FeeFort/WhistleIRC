@@ -1,4 +1,8 @@
+import { AsyncLocalStorage } from "node:async_hooks";
+import type { ClientMessage } from "./types.js";
 import { WebSocket } from "ws";
+
+export const requestContext = new AsyncLocalStorage<Pick<ClientMessage, "requestId">>();
 
 const clients = new Set<WebSocket>();
 
@@ -12,6 +16,10 @@ export function removeClient(client: WebSocket): void {
 
 export function sendJson(client: WebSocket, payload: unknown): void {
   if (client.readyState === WebSocket.OPEN) {
+    const requestId = requestContext.getStore()?.requestId;
+    if (requestId !== undefined && typeof payload === "object" && payload !== null && "type" in payload && (payload.type === "ack" || payload.type === "error")) {
+      payload = { ...payload, requestId };
+    }
     client.send(JSON.stringify(payload));
   }
 }

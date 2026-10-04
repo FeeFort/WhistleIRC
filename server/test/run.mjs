@@ -3,7 +3,9 @@ import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 const serverDirectory = fileURLToPath(new URL("../", import.meta.url));
-const testFiles = readdirSync(new URL("./", import.meta.url)).filter((name) => name.endsWith(".test.mjs")).sort();
+const testFiles = readdirSync(new URL("./", import.meta.url))
+  .filter((name) => name.endsWith(".test.mjs"))
+  .sort();
 if (!testFiles.length) throw new Error("No test files found.");
 
 for (const file of testFiles) {

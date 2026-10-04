@@ -57,3 +57,9 @@ await test("valid fields and edit nulls remain supported", () => {
   ];
   for (const message of valid) assert.equal(validate(message), null, JSON.stringify(message));
 });
+
+await test("validation errors preserve requestId and carry a machine code", () => {
+  context.handleClientMessage({}, { type: "lazer_join_room", room_id: -1, requestId: "join-1" });
+  assert.deepEqual(replies.pop(), { type: "error", request: "lazer_join_room", requestId: "join-1", code: "VALIDATION_ERROR", message: "room_id must be a positive integer." });
+  assert.ok(validate({ type: "lazer_list_rooms", requestId: 5 }));
+});
