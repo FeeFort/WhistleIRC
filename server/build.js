@@ -6,6 +6,7 @@ import colors from "ansi-colors";
 import cliProgress from "cli-progress";
 import { need as fetchPkgRuntime } from "@yao-pkg/pkg-fetch";
 import { rcedit } from "rcedit";
+import { build as esbuild } from "esbuild";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -15,7 +16,17 @@ const appVersion = pkgJson.version;
 const appName = "WhistleIRC";
 const baseName = pkgJson.name;
 const debug = process.argv.includes("--debug") || process.argv.includes("-d");
-const progressTotal = 9;
+
+const skipClient = process.argv.includes("--skip-client");
+const HOST_PLATFORMS = { linux: "linux", darwin: "macos", win32: "windows" };
+const platform = process.argv.find((arg) => arg.startsWith("--platform="))?.split("=")[1] ?? HOST_PLATFORMS[process.platform];
+if (!["linux", "macos", "windows"].includes(platform)) {
+  console.error(`Unknown platform "${platform}". Use --platform=linux|macos|windows.`);
+  process.exit(1);
+}
+// client if not skipped, bundle, 2 arches and final step
+const progressTotal = (skipClient ? 0 : 1) + 1 + 2 + 1;
+
 let progressCurrent = 0;
 const progressBar = debug
   ? null
@@ -40,11 +51,13 @@ const publicPackages = Object.keys(lockJson.packages ?? {})
 const REQUIRED_TOOLS = [
   {
     command: "appimagetool",
+    platforms: ["linux"],
     installHint: 'curl -fL -o /usr/local/bin/appimagetool "https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage" && chmod +x /usr/local/bin/appimagetool',
     link: "https://github.com/AppImage/AppImageKit/releases",
   },
   {
     command: "zip",
+    platforms: ["macos"],
     installHint: "Install using package manager of your distribution (e.g., apt install zip / dnf install zip / pacman -S zip)",
     link: null,
   },
@@ -114,7 +127,7 @@ function commandExists(cmd) {
 }
 
 function checkDependencies() {
-  const missing = REQUIRED_TOOLS.filter((tool) => !commandExists(tool.command));
+  const missing = REQUIRED_TOOLS.filter((tool) => tool.platforms.includes(platform) && !commandExists(tool.command));
   if (missing.length === 0) return;
 
   const lines = missing.map((tool) => {
@@ -245,51 +258,67 @@ async function main() {
   if (fs.existsSync(buildDir)) {
     fs.rmSync(buildDir, { recursive: true, force: true });
   }
-  if (fs.existsSync(staticDir)) {
+  if (!skipClient) {
     fs.rmSync(staticDir, { recursive: true, force: true });
+    const clientDir = path.join(__dirname, "..", "client");
+    console.log("\r");
+    showProgress("Building client");
+    await run(`npm run build --prefix "${clientDir}"`);
+    progressStage("Client built");
+  } else if (!fs.existsSync(staticDir)) {
+    throw new Error("--skip-client was passed, but static/ does not exist — build the client first.");
   }
-
-  const clientDir = path.join(__dirname, "..", "client");
-  console.log("\r");
-  showProgress("Building client");
-  await run(`npm run build --prefix "${clientDir}"`);
-  progressStage("Client built");
 
   showProgress("Bundling server");
-  await run(`npx esbuild src/index.ts --bundle --platform=node --format=esm --external:x11 ` + `--define:__APP_VERSION__='"${appVersion}"' --outfile=dist/bundle.js`);
+  await esbuild({
+    entryPoints: [path.join(__dirname, "src/index.ts")],
+    bundle: true,
+    platform: "node",
+    format: "esm",
+    external: ["x11"],
+    define: { __APP_VERSION__: JSON.stringify(appVersion) },
+    outfile: path.join(__dirname, "dist/bundle.js"),
+    logLevel: debug ? "warning" : "silent",
+  });
   progressStage("Server bundled");
 
-  for (const arch of ["x64", "arm64"]) {
-    showProgress(`Preparing Windows ${arch} template`);
-    const runtimePath = await withProgressPaused(() => prepareWindowsRuntime(arch));
-    showProgress(`Building Windows ${arch}`);
-    const previousPkgNodePath = process.env.PKG_NODE_PATH;
-    process.env.PKG_NODE_PATH = runtimePath;
-    try {
-      await run(`npx pkg . --targets node22-win-${arch} --no-bytecode --public-packages "${publicPackages}" --public --compress GZip`);
-    } finally {
-      if (previousPkgNodePath === undefined) delete process.env.PKG_NODE_PATH;
-      else process.env.PKG_NODE_PATH = previousPkgNodePath;
-      fs.rmSync(path.dirname(runtimePath), { recursive: true, force: true });
+  if (platform === "windows") {
+    for (const arch of ["x64", "arm64"]) {
+      showProgress(`Preparing Windows ${arch} template`);
+      const runtimePath = await withProgressPaused(() => prepareWindowsRuntime(arch));
+      showProgress(`Building Windows ${arch}`);
+      const previousPkgNodePath = process.env.PKG_NODE_PATH;
+      process.env.PKG_NODE_PATH = runtimePath;
+      try {
+        await run(`npx pkg . --targets node22-win-${arch} --no-bytecode --public-packages "${publicPackages}" --public --compress Brotli`);
+      } finally {
+        if (previousPkgNodePath === undefined) delete process.env.PKG_NODE_PATH;
+        else process.env.PKG_NODE_PATH = previousPkgNodePath;
+        fs.rmSync(path.dirname(runtimePath), { recursive: true, force: true });
+      }
+      renamePkgOutput([`${baseName}.exe`, `${baseName}-win-${arch}.exe`], path.join(buildDir, `${baseName}-win-${arch}.exe`));
+      progressStage(`Windows ${arch} built`);
     }
-    renamePkgOutput([`${baseName}.exe`, `${baseName}-win-${arch}.exe`], path.join(buildDir, `${baseName}-win-${arch}.exe`));
-    progressStage(`Windows ${arch} built`);
   }
 
-  for (const arch of ["x64", "arm64"]) {
-    showProgress(`Building macOS ${arch}`);
-    const rawBinary = path.join(buildDir, `.raw-${arch}`);
-    await run(`npx pkg . --targets node22-macos-${arch} --output "${rawBinary}" --no-bytecode --public-packages "${publicPackages}" --public --compress GZip`);
-    await buildMacZip(buildDir, rawBinary, arch);
-    progressStage(`macOS ${arch} packaged`);
+  if (platform === "macos") {
+    for (const arch of ["x64", "arm64"]) {
+      showProgress(`Building macOS ${arch}`);
+      const rawBinary = path.join(buildDir, `.raw-${arch}`);
+      await run(`npx pkg . --targets node22-macos-${arch} --output "${rawBinary}" --no-bytecode --public-packages "${publicPackages}" --public --compress Brotli`);
+      await buildMacZip(buildDir, rawBinary, arch);
+      progressStage(`macOS ${arch} packaged`);
+    }
   }
 
-  for (const arch of ["x64", "arm64"]) {
-    showProgress(`Building Linux ${arch}`);
-    const rawBinary = path.join(buildDir, `.raw-${arch}`);
-    await run(`npx pkg . --targets node22-linux-${arch} --output "${rawBinary}" --no-bytecode --public-packages "${publicPackages}" --public --compress GZip`);
-    await buildAppImage(buildDir, rawBinary, arch);
-    progressStage(`Linux ${arch} packaged`);
+  if (platform === "linux") {
+    for (const arch of ["x64", "arm64"]) {
+      showProgress(`Building Linux ${arch}`);
+      const rawBinary = path.join(buildDir, `.raw-${arch}`);
+      await run(`npx pkg . --targets node22-linux-${arch} --output "${rawBinary}" --no-bytecode --public-packages "${publicPackages}" --public --compress Brotli`);
+      await buildAppImage(buildDir, rawBinary, arch);
+      progressStage(`Linux ${arch} packaged`);
+    }
   }
 
   progressStage("Build finished");
