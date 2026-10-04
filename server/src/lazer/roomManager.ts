@@ -23,6 +23,7 @@ import type {
   LazerPlayer,
   MatchUserStatus,
   ListRoomsResponse,
+  LazerStatusHandler,
 } from "../types.js";
 import { invokeHub } from "./refereeHubClient.js";
 
@@ -32,13 +33,15 @@ class RoomManager {
   private pendingCreations = new Set<PendingRoomJoin>();
   private resyncPromise: Promise<void> | null = null;
   private onRoomChanged: ((room: RoomState) => void) | null = null;
+  private onStatus: LazerStatusHandler | null = null;
   private onRoomRemoved: ((roomId: number) => void) | null = null;
   private joinedChatChannels = new Set<number>();
   private chatWaiters = new Map<number, Array<() => void>>();
 
-  setListeners(onChanged: (room: RoomState) => void, onRemoved: (roomId: number) => void): void {
+  setListeners(onChanged: (room: RoomState) => void, onRemoved: (roomId: number) => void, onStatus?: LazerStatusHandler): void {
     this.onRoomChanged = onChanged;
     this.onRoomRemoved = onRemoved;
+    this.onStatus = onStatus ?? null;
   }
 
   trackRoom(room: RoomState): void {
@@ -119,6 +122,7 @@ class RoomManager {
     if (eventType === "RefereeAdded") {
       const event = payload as unknown as RefereeAddedEvent;
       this.joinRoom(event.room_id).catch((error) => {
+        this.onStatus?.({ type: "lazer_room_error", roomId: event.room_id, operation: "join", message: error instanceof Error ? error.message : String(error) });
         console.error(`[roomManager] failed to join room ${event.room_id} after RefereeAdded: ${(error as Error).message}`);
       });
       return true;
@@ -271,10 +275,14 @@ class RoomManager {
   resync(): Promise<void> {
     if (this.resyncPromise) return this.resyncPromise;
 
+    this.onStatus?.({ type: "lazer_sync_state", state: "syncing" });
     this.resyncPromise = (async () => {
+      const failedRoomIds: number[] = [];
+      let listed = false;
       try {
         const response = await invokeHub<ListRoomsResponse>("ListRooms");
         const liveRoomIds = new Set(response.room_ids);
+        listed = true;
 
         for (const roomId of this.rooms.keys()) {
           if (!liveRoomIds.has(roomId)) this.removeRoom(roomId);
@@ -289,9 +297,15 @@ class RoomManager {
             const failure = new Error(`Failed to refresh room ${roomId}: ${(error as Error).message}`, { cause: error });
             console.error(`[roomManager] ${failure.message}`);
             errors.push(failure);
+            failedRoomIds.push(roomId);
           }
         }
         if (errors.length) throw new AggregateError(errors, "Some rooms could not be synchronized.");
+        this.onStatus?.({ type: "lazer_sync_state", state: "synced" });
+      } catch (error) {
+        this.onStatus?.({ type: "lazer_sync_state", state: "failed", scope: listed ? "partial" : "all", failedRoomIds, message: error instanceof Error ? error.message : String(error) });
+        // TODO: Retry using the shared API exponential backoff policy once implemented.
+        throw error;
       } finally {
         this.resyncPromise = null;
       }

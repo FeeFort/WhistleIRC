@@ -19,6 +19,9 @@ const snapshot = (roomId, name = "Fresh") => ({
 await test("room synchronization", async (t) => {
   let invoke;
   let reconnect;
+  let reconnecting;
+  let closed;
+  const statuses = [];
   const listeners = new Map();
   const forwarded = [];
   const hub = {
@@ -26,8 +29,12 @@ await test("room synchronization", async (t) => {
     on(name, callback) {
       listeners.set(name, callback);
     },
-    onreconnecting() {},
-    onclose() {},
+    onreconnecting(callback) {
+      reconnecting = callback;
+    },
+    onclose(callback) {
+      closed = callback;
+    },
     onreconnected(callback) {
       reconnect = callback;
     },
@@ -40,13 +47,27 @@ await test("room synchronization", async (t) => {
   await connectToRefereeHub(
     (event) => forwarded.push(event),
     () => roomManager.resync(),
+    (event) => statuses.push(event),
   );
   const updates = [];
   const removed = [];
   roomManager.setListeners(
     (room) => updates.push(structuredClone(room)),
     (id) => removed.push(id),
+    (event) => statuses.push(event),
   );
+
+  await t.test("connection state reports initial connection, reconnect and closure", () => {
+    assert.deepEqual(
+      statuses.map((event) => event.state),
+      ["connecting", "connected"],
+    );
+    reconnecting(new Error("Network lost"));
+    assert.deepEqual(statuses.at(-1), { type: "lazer_connection_state", state: "reconnecting", reason: "Network lost" });
+    closed(new Error("Retries exhausted"));
+    assert.equal(statuses.at(-1).state, "disconnected");
+    assert.equal(statuses.at(-1).reason, "Retries exhausted");
+  });
 
   await t.test("reconnect refreshes existing rooms, adds new rooms and removes missing rooms", async () => {
     roomManager.trackRoom(snapshot(1, "Stale"));
@@ -64,6 +85,11 @@ await test("room synchronization", async (t) => {
       ["JoinRoom", 3],
     ]);
     assert.equal(roomManager.getRoom(1).name, "Fresh");
+    assert.equal(statuses.at(-1).state, "synced");
+    assert.deepEqual(
+      statuses.slice(-3).map((event) => event.state),
+      ["connected", "syncing", "synced"],
+    );
     assert.equal(roomManager.getRoom(2), undefined);
     assert.deepEqual(removed, [2]);
     assert.deepEqual(
@@ -103,6 +129,9 @@ await test("room synchronization", async (t) => {
       return snapshot(roomId);
     };
     await assert.rejects(roomManager.resync(), AggregateError);
+    assert.equal(statuses.at(-1).state, "failed");
+    assert.equal(statuses.at(-1).scope, "partial");
+    assert.deepEqual(statuses.at(-1).failedRoomIds, [1]);
     assert.equal(roomManager.getRoom(1).name, "Live");
     assert.equal(roomManager.getRoom(4).name, "Fresh");
     invoke = async (method, roomId) => (method === "ListRooms" ? { room_ids: [1, 4] } : snapshot(roomId, "Retried"));
@@ -205,6 +234,17 @@ await test("room synchronization", async (t) => {
     warnings.mock.restore();
   });
 
+  await t.test("automatic join failure is reported as a room error", async () => {
+    const log = t.mock.method(console, "error", () => {});
+    invoke = async () => {
+      throw new Error("No access");
+    };
+    roomManager.handleHubEvent("RefereeAdded", { room_id: 77, user_id: 1 });
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.deepEqual(statuses.at(-1), { type: "lazer_room_error", roomId: 77, operation: "join", message: "No access" });
+    log.mock.restore();
+  });
+
   await t.test("SignalR boundary drops invalid events before forwarding", () => {
     const warnings = t.mock.method(console, "warn", () => {});
     listeners.get("UserJoined")(null);
@@ -235,6 +275,8 @@ await test("room synchronization", async (t) => {
       throw new Error("List failed");
     };
     await assert.rejects(roomManager.resync(), /List failed/);
+    assert.equal(statuses.at(-1).scope, "all");
+    assert.equal(statuses.at(-1).message, "List failed");
     await reconnect();
     assert.equal(roomManager.getAllRooms().length, 1);
     assert.match(errors[0], /Sync after reconnect failed: List failed/);

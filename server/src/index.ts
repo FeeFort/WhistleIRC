@@ -18,6 +18,7 @@ import { addClient, removeClient, sendJson, broadcast, clientCount } from "./wsG
 import { connectToRefereeHub } from "./lazer/refereeHubClient.js";
 import { roomManager } from "./lazer/roomManager.js";
 import * as lazerHandlers from "./lazer/handlers.js";
+import type { LazerConnectionStateEvent, LazerSyncStateEvent } from "./types.js";
 import { ChatSocket } from "./lazer/chatSocket.js";
 
 const launchedAfterUpdate = process.argv.includes("--updated");
@@ -233,10 +234,17 @@ function sameLobbyValue(left: unknown, right: unknown): boolean {
   return JSON.stringify(left) === JSON.stringify(right);
 }
 
+let lazerConnectionState: LazerConnectionStateEvent = { type: "lazer_connection_state", state: "disconnected" };
+let lazerSyncState: LazerSyncStateEvent = { type: "lazer_sync_state", state: "idle" };
+
 async function startLazerSession(): Promise<void> {
   roomManager.setListeners(
     (room) => broadcast({ type: "lazer_room_state", room }),
     (roomId) => broadcast({ type: "lazer_room_closed", roomId }),
+    (event) => {
+      if (event.type === "lazer_sync_state") lazerSyncState = event;
+      broadcast(event);
+    },
   );
 
   await connectToRefereeHub(
@@ -244,6 +252,16 @@ async function startLazerSession(): Promise<void> {
       if (roomManager.handleHubEvent(event.eventType, event.payload)) broadcast(event);
     },
     () => roomManager.resync(),
+    (event) => {
+      if (event.type === "lazer_connection_state") {
+        lazerConnectionState = event;
+        if (event.state !== "connected") {
+          lazerSyncState = { type: "lazer_sync_state", state: "idle" };
+          broadcast(lazerSyncState);
+        }
+      }
+      broadcast(event);
+    },
   );
 }
 
@@ -1388,6 +1406,8 @@ function handleClientMessage(client: WebSocket, rawMessage: unknown): void {
 
 webSocketServer.on("connection", (client) => {
   addClient(client);
+  sendJson(client, lazerConnectionState);
+  sendJson(client, lazerSyncState);
   banchoConnection.sendStatus(client);
   for (const [channel, state] of banchoConnection.lobbyStates) {
     banchoConnection.sendLobbyState(channel, state, client);
@@ -1415,12 +1435,6 @@ webSocketServer.on("connection", (client) => {
   });
 });
 
-await restoreSession();
-if (getState().status === "authenticated") {
-  await startLazerSession();
-  startChatSocket();
-}
-
 httpServer.listen(config.httpPort, config.httpHost, () => {
   console.log(`[${formatLogTime()}] WhistleIRC server listening on http://${config.httpHost}:${config.httpPort}`);
   console.log(`[${formatLogTime()}] WebSocket endpoint: ws://${config.httpHost}:${config.httpPort}/ws`);
@@ -1428,6 +1442,18 @@ httpServer.listen(config.httpPort, config.httpHost, () => {
   const browserUrl = `http://localhost:${config.httpPort}${launchedAfterUpdate ? "?updated=1" : ""}`;
 
   openInBrowser(browserUrl);
+
+  // Serve the frontend before restoring authentication or contacting osu!.
+  void (async () => {
+    try {
+      await restoreSession();
+      if (shuttingDown || getState().status !== "authenticated") return;
+      startChatSocket();
+      await startLazerSession();
+    } catch (error) {
+      console.error(`[${formatLogTime()}] lazer session startup failed: ${(error as Error).message}`);
+    }
+  })();
 });
 
 createTray({ port: config.httpPort, onQuit: () => shutdown("tray") });

@@ -1,7 +1,7 @@
 import * as signalR from "@microsoft/signalr";
 import { getAccessToken } from "../auth/auth.js";
 import { config } from "../config.js";
-import { HubEventHandler, ResyncHandler, HubEventType, LazerHubEvent, HubEventPayloads } from "../types.js";
+import { HubEventHandler, ResyncHandler, HubEventType, LazerHubEvent, HubEventPayloads, LazerStatusHandler } from "../types.js";
 
 // Full list of referee hub events that can be invoked by the server
 const CLIENT_EVENTS = [
@@ -108,7 +108,7 @@ export function isHubPayload(eventType: HubEventType, value: unknown): value is 
 
 let connection: signalR.HubConnection | null = null;
 
-export async function connectToRefereeHub(onEvent: HubEventHandler, onResync: ResyncHandler): Promise<signalR.HubConnection> {
+export async function connectToRefereeHub(onEvent: HubEventHandler, onResync: ResyncHandler, onStatus?: LazerStatusHandler): Promise<signalR.HubConnection> {
   const hub = new signalR.HubConnectionBuilder()
     .withUrl(new URL("/referee", config.spectatorServerUrl).toString(), {
       accessTokenFactory: () => getAccessToken(),
@@ -133,10 +133,12 @@ export async function connectToRefereeHub(onEvent: HubEventHandler, onResync: Re
   }
 
   hub.onreconnecting((error) => {
+    onStatus?.({ type: "lazer_connection_state", state: "reconnecting", ...(error ? { reason: error.message } : {}) });
     console.warn(`[refereeHub] Reconnecting: ${error?.message ?? "unknown reason"}`);
   });
 
   hub.onreconnected(async () => {
+    onStatus?.({ type: "lazer_connection_state", state: "connected" });
     console.log("[refereeHub] Reconnected — syncing rooms list");
     try {
       await onResync();
@@ -146,11 +148,19 @@ export async function connectToRefereeHub(onEvent: HubEventHandler, onResync: Re
   });
 
   hub.onclose((error) => {
+    onStatus?.({ type: "lazer_connection_state", state: "disconnected", ...(error ? { reason: error.message } : {}) });
     console.error(`[refereeHub] Connection closed: ${error?.message ?? "no error"}`);
   });
 
-  await hub.start();
+  onStatus?.({ type: "lazer_connection_state", state: "connecting" });
+  try {
+    await hub.start();
+  } catch (error) {
+    onStatus?.({ type: "lazer_connection_state", state: "disconnected", reason: error instanceof Error ? error.message : String(error) });
+    throw error;
+  }
   connection = hub;
+  onStatus?.({ type: "lazer_connection_state", state: "connected" });
   return hub;
 }
 

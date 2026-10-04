@@ -715,3 +715,22 @@ export interface PendingRoomJoin {
   events: Array<{ eventType: HubEventType; payload: HubEventPayloads[HubEventType] }>;
   promise: Promise<void>;
 }
+
+export interface LazerConnectionStateEvent {
+  type: "lazer_connection_state";
+  state: "connecting" | "connected" | "reconnecting" | "disconnected";
+  reason?: string;
+}
+
+export type LazerSyncStateEvent =
+  { type: "lazer_sync_state"; state: "idle" | "syncing" | "synced" } | { type: "lazer_sync_state"; state: "failed"; message: string; failedRoomIds: number[]; scope: "all" | "partial" };
+
+export interface LazerRoomErrorEvent {
+  type: "lazer_room_error";
+  roomId: number;
+  operation: "join";
+  message: string;
+}
+
+export type LazerStatusEvent = LazerConnectionStateEvent | LazerSyncStateEvent | LazerRoomErrorEvent;
+export type LazerStatusHandler = (event: LazerStatusEvent) => void;
