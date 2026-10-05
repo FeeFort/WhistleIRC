@@ -1299,7 +1299,13 @@ async function handleApiRequest(client: WebSocket, message: ClientMessage): Prom
   } catch (error) {
     console.error(`[${formatLogTime()}] osu! API request failed: ${(error as Error).message}`);
     const messageText = (error as Error)?.name === "NotAuthenticatedError" ? "You must be logged in to access the osu! API." : (error as Error).message || "Unable to reach the osu! API.";
-    sendJson(client, { type: "error", request: "api_request", message: messageText });
+    sendJson(client, {
+      type: "error",
+      request: "api_request",
+      message: messageText,
+      ...(error instanceof Error && "code" in error ? { code: error.code, outcomeUnknown: "outcomeUnknown" in error ? error.outcomeUnknown : false } : {}),
+      ...(error instanceof Error && "retryAfterMs" in error ? { retryAfterMs: error.retryAfterMs } : {}),
+    });
   }
 }
 

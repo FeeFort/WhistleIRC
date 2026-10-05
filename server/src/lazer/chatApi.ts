@@ -3,12 +3,6 @@ import { fetchApi } from "../osu-api/osuApiClient.js";
 import type { ChatMessage } from "../types.js";
 
 const CHAT_HISTORY_PAGE_SIZE = 50;
-const API_REQUEST_INTERVAL_MS = 1_000;
-
-function wait(milliseconds: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, milliseconds));
-}
-
 export async function sendChatMessage(channelId: number, message: string, isAction = false): Promise<unknown> {
   return fetchApi(await getAccessToken(), `chat/channels/${channelId}/messages`, "POST", { message, is_action: isAction });
 }
@@ -38,7 +32,6 @@ export async function fetchChatMessages(channelId: number): Promise<ChatMessage[
     }
     if (page.length < CHAT_HISTORY_PAGE_SIZE) break;
     until = oldestId;
-    await wait(API_REQUEST_INTERVAL_MS);
   }
 
   return messages.sort((left, right) => Number(left.message_id) - Number(right.message_id));

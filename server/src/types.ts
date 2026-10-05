@@ -240,6 +240,7 @@ export interface PersistedSession {
 }
 
 export type AllowedMethods = "GET" | "POST";
+export type InternalApiMethod = AllowedMethods | "DELETE";
 
 export type ChatNotification = {
   event: string;
@@ -740,7 +741,8 @@ export type LazerStatusEvent = LazerConnectionStateEvent | LazerSyncStateEvent |
 export type LazerStatusHandler = (event: LazerStatusEvent) => void;
 
 export interface RequestFailure {
-  code: "REQUEST_TIMEOUT" | "INVALID_RESPONSE";
+  code: "REQUEST_TIMEOUT" | "INVALID_RESPONSE" | "RATE_LIMIT_QUEUE_FULL" | "RATE_LIMIT_WAIT_TIMEOUT" | "REQUEST_CANCELLED" | "RATE_LIMITED";
+  retryAfterMs?: number;
   outcomeUnknown: boolean;
 }
 
@@ -758,4 +760,20 @@ export interface PendingChatLoad {
 export interface LazerRoomsEvent {
   type: "lazer_rooms";
   roomIds: number[];
+}
+
+export interface RateLimitConfig {
+  tokensPerSecond: number;
+  capacity: number;
+  concurrency: number;
+  maxQueue: number;
+  maxWaitMs: number;
+}
+
+export interface RateLimitEntry {
+  resolve: (release: () => void) => void;
+  reject: (error: Error) => void;
+  expiresAt: number;
+  signal?: AbortSignal;
+  cancel: () => void;
 }

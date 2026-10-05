@@ -1,3 +1,4 @@
+import { hubRateLimiter, rateLimitError } from "../rateLimiter.js";
 import * as signalR from "@microsoft/signalr";
 import { getAccessToken } from "../auth/auth.js";
 import { config } from "../config.js";
@@ -155,9 +156,12 @@ export function isHubResponse(methodName: string, value: unknown): boolean {
 let connection: signalR.HubConnection | null = null;
 let connectionGeneration = 0;
 let invocationSequence = 0;
+let sessionAbort = new AbortController();
 let statusHandler: LazerStatusHandler | undefined;
 
 export async function disconnectFromRefereeHub(): Promise<void> {
+  sessionAbort.abort();
+  sessionAbort = new AbortController();
   ++connectionGeneration;
   const previous = connection;
   connection = null;
@@ -203,12 +207,15 @@ export async function connectToRefereeHub(onEvent: HubEventHandler, onResync: Re
 
   hub.onreconnecting((error) => {
     if (generation !== connectionGeneration) return;
+    sessionAbort.abort();
+    sessionAbort = new AbortController();
     onStatus?.({ type: "lazer_connection_state", state: "reconnecting", ...(error ? { reason: error.message } : {}) });
     console.warn(`[refereeHub] Reconnecting: ${error?.message ?? "unknown reason"}`);
   });
 
   hub.onreconnected(async () => {
     if (generation !== connectionGeneration) return;
+    sessionAbort = new AbortController();
     onStatus?.({ type: "lazer_connection_state", state: "connected" });
     console.log("[refereeHub] Reconnected — syncing rooms list");
     try {
@@ -221,6 +228,7 @@ export async function connectToRefereeHub(onEvent: HubEventHandler, onResync: Re
   hub.onclose((error) => {
     if (generation !== connectionGeneration) return;
     onStatus?.({ type: "lazer_connection_state", state: "disconnected", ...(error ? { reason: error.message } : {}) });
+    sessionAbort.abort();
     console.error(`[refereeHub] Connection closed: ${error?.message ?? "no error"}`);
   });
 
@@ -252,9 +260,15 @@ export async function invokeHub<T = unknown>(methodName: string, ...args: unknow
   const generation = connectionGeneration;
   let timer: ReturnType<typeof setTimeout> | undefined;
   let result: T;
+  let release: (() => void) | undefined;
+  const hub = connection;
+  const signal = sessionAbort.signal;
   try {
+    release = await hubRateLimiter.acquire(signal);
+    if (signal.aborted || generation !== connectionGeneration || hub !== connection || hub.state !== signalR.HubConnectionState.Connected)
+      throw rateLimitError("REQUEST_CANCELLED", "SignalR connection changed before the request was sent.");
     result = await Promise.race([
-      connection.invoke<T>(methodName, ...args),
+      hub.invoke<T>(methodName, ...args),
       new Promise<never>((_resolve, reject) => {
         timer = setTimeout(
           () =>
@@ -290,6 +304,7 @@ export async function invokeHub<T = unknown>(methodName: string, ...args: unknow
     throw error;
   } finally {
     if (timer !== undefined) clearTimeout(timer);
+    release?.();
   }
   // TODO: Apply shared exponential backoff retries only where replay is safe.
   // Mutations must not be retried blindly: timeout does not cancel the remote call.

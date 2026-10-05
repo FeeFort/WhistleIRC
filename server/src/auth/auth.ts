@@ -1,7 +1,6 @@
-import { fetchMe, OsuApiError } from "../osu-api/osuApiClient.js";
+import { fetchApi, fetchMe, OsuApiError } from "../osu-api/osuApiClient.js";
 import { AuthState, NotAuthenticatedReason, OsuOAuthCredentials, OsuUser } from "../types.js";
 import { exchangeCode, OsuOAuthError, refreshToken as refreshOsuToken } from "./osuOAuthClient.js";
-import { config } from "../config.js";
 import { saveSession, loadSession, clearSession } from "./secureStore.js";
 
 const REFRESH_BUFFER_MS = 60_000;
@@ -43,17 +42,10 @@ export async function logout(): Promise<{ revokedRemotely: boolean }> {
   const accessToken = authState.tokens.accessToken;
 
   try {
-    const response = await fetch(new URL("/api/v2/oauth/tokens/current", config.osuWebUrl), { method: "DELETE", headers: { Authorization: `Bearer ${accessToken}` } });
-
-    if (!response.ok) {
-      const error = await OsuApiError.fromResponse(response);
-      if (!error.isUnauthorized) {
-        return { revokedRemotely: false };
-      }
-    }
+    await fetchApi(accessToken, "oauth/tokens/current", "DELETE");
     return { revokedRemotely: true };
-  } catch {
-    return { revokedRemotely: false };
+  } catch (error) {
+    return { revokedRemotely: error instanceof OsuApiError && error.isUnauthorized };
   } finally {
     authState = { status: "unauthenticated" };
     await clearSession();

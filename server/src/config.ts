@@ -1,4 +1,6 @@
 export const config = {
+  restRateLimit: { tokensPerSecond: 1, capacity: 10, concurrency: 4, maxQueue: 100, maxWaitMs: 30_000 },
+  hubRateLimit: { tokensPerSecond: 1, capacity: 10, concurrency: 4, maxQueue: 100, maxWaitMs: 30_000 },
   hubRequestTimeoutMs: 15_000,
   apiRequestTimeoutMs: 15_000,
   osuWebUrl: "https://osu.ppy.sh",

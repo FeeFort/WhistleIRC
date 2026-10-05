@@ -18,6 +18,7 @@ async function fail(client: WebSocket, message: ClientMessage, error: unknown): 
     ...(typeof error === "object" && error !== null && "code" in error
       ? {
           code: error.code,
+          ...("retryAfterMs" in error ? { retryAfterMs: error.retryAfterMs } : {}),
           outcomeUnknown: "outcomeUnknown" in error ? error.outcomeUnknown : false,
         }
       : {}),

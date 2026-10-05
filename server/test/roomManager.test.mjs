@@ -5,6 +5,10 @@ import { HubConnectionBuilder, HubConnectionState } from "@microsoft/signalr";
 import { connectToRefereeHub, disconnectFromRefereeHub, invokeHub, isHubPayload } from "../src/lazer/refereeHubClient.ts";
 import { roomManager } from "../src/lazer/roomManager.ts";
 
+// These tests exercise room synchronization; limiter behavior has separate tests.
+config.hubRateLimit.tokensPerSecond = 100_000;
+config.hubRateLimit.capacity = 1000;
+
 const snapshot = (roomId, name = "Fresh") => ({
   room_id: roomId,
   chat_channel_id: roomId + 100,
@@ -119,6 +123,7 @@ await test("room synchronization", async (t) => {
     roomManager.handleHubEvent("RoomSettingsChanged", { room_id: 1, name: "Live", password: "", type: "head_to_head", max_participants: 6 });
     const fresh = snapshot(1);
     fresh.playlist = [item];
+    await new Promise((resolve) => setImmediate(resolve));
     resolveJoin(fresh);
     await first;
     assert.equal(roomManager.getRoom(1).playlist.length, 1);
@@ -154,7 +159,9 @@ await test("room synchronization", async (t) => {
     const syncing = roomManager.resync();
     await new Promise((resolve) => setImmediate(resolve));
     roomManager.removeRoom(1);
+    await new Promise((resolve) => setImmediate(resolve));
     resolveJoin(snapshot(1));
+    await new Promise((resolve) => setImmediate(resolve));
     await new Promise((resolve) => setImmediate(resolve));
     resolveJoin(snapshot(4));
     await assert.rejects(syncing, AggregateError);
@@ -173,6 +180,7 @@ await test("room synchronization", async (t) => {
     };
     const first = roomManager.joinRoom(10);
     const second = roomManager.joinRoom(10);
+    await new Promise((resolve) => setImmediate(resolve));
     assert.equal(calls, 1);
     roomManager.handleHubEvent("UserJoined", { room_id: 10, user_id: 42 });
     roomManager.handleHubEvent("UserLeft", { room_id: 10, user_id: 42 });
@@ -181,6 +189,7 @@ await test("room synchronization", async (t) => {
     roomManager.handleHubEvent("RefereeRemoved", { room_id: 10, user_id: 44 });
     const fresh = snapshot(10);
     fresh.referees = [{ user_id: 44 }];
+    await new Promise((resolve) => setImmediate(resolve));
     resolveJoin(fresh);
     assert.equal(await first, await second);
     assert.deepEqual(
@@ -209,6 +218,7 @@ await test("room synchronization", async (t) => {
     roomManager.handleHubEvent("UserStatusChanged", { room_id: 12, user_id: 42, status: "ready" });
     roomManager.handleHubEvent("UserJoined", { room_id: 99, user_id: 99 });
     assert.equal(roomManager.handleHubEvent("RollCompleted", { room_id: 12, user_id: 42, max: 100, result: 10 }), false);
+    await new Promise((resolve) => setImmediate(resolve));
     resolveMake(snapshot(12));
     const room = await creating;
     assert.equal(room.players[0].status, "ready");
@@ -234,6 +244,7 @@ await test("room synchronization", async (t) => {
       });
     const joining = roomManager.joinRoom(13);
     assert.equal(roomManager.handleHubEvent("UserJoined", { room_id: 13, user_id: 42 }), true);
+    await new Promise((resolve) => setImmediate(resolve));
     resolveJoin(snapshot(13));
     await joining;
     assert.equal(roomManager.getRoom(13).players[0].user_id, 42);
@@ -265,16 +276,20 @@ await test("room synchronization", async (t) => {
     assert.equal(roomManager.handleHubEvent("RefereeInvited", { room_id: 78 }), true);
     assert.equal(roomManager.handleHubEvent("RefereeAdded", { room_id: 78, user_id: 44 }), true);
     assert.equal(roomManager.handleHubEvent("RefereeInvited", { room_id: 78 }), true);
+    await new Promise((resolve) => setImmediate(resolve));
     assert.equal(calls, 1);
+    await new Promise((resolve) => setImmediate(resolve));
     resolveJoin(snapshot(78));
     await new Promise((resolve) => setImmediate(resolve));
     assert.deepEqual(roomManager.getRoom(78).referees, [{ user_id: 44 }]);
     roomManager.handleHubEvent("RefereeAdded", { room_id: 78, user_id: 45 });
     roomManager.handleHubEvent("RefereeInvited", { room_id: 78 });
+    await new Promise((resolve) => setImmediate(resolve));
     assert.equal(calls, 1);
     assert.equal(roomManager.getRoom(78).referees.length, 2);
     assert.equal(roomManager.handleHubEvent("RefereeRemoved", { room_id: 78, user_id: 44 }), true);
     assert.deepEqual(roomManager.getRoom(78).referees, [{ user_id: 45 }]);
+    await new Promise((resolve) => setImmediate(resolve));
     assert.equal(calls, 1);
     roomManager.removeRoom(78);
   });
@@ -289,7 +304,9 @@ await test("room synchronization", async (t) => {
       });
     const creating = roomManager.joinRoom(null, { name: "New", ruleset_id: 0, beatmap_id: 1 });
     assert.equal(roomManager.handleHubEvent("RefereeInvited", { room_id: 80 }), true);
+    await new Promise((resolve) => setImmediate(resolve));
     resolveJoin(snapshot(80));
+    await new Promise((resolve) => setImmediate(resolve));
     resolveMake(snapshot(81));
     await creating;
     await new Promise((resolve) => setImmediate(resolve));
@@ -444,6 +461,7 @@ await test("room synchronization", async (t) => {
     fresh.players = [fullPlayer];
     fresh.playlist = [item, { ...item, id: 9 }];
     updates.length = 0;
+    await new Promise((resolve) => setImmediate(resolve));
     resolveJoin(fresh);
     const room = await joining;
     assert.deepEqual(room.players, [fullPlayer]);
@@ -466,11 +484,40 @@ await test("room synchronization", async (t) => {
     const waiting = roomManager.waitForChatChannel(999);
     const rejectedWait = assert.rejects(waiting, /session ended/);
     roomManager.reset();
+    await new Promise((resolve) => setImmediate(resolve));
     resolveJoin(snapshot(88));
     await assert.rejects(joining, /session ended/);
     await rejectedWait;
     assert.deepEqual(roomManager.getAllRooms(), []);
     assert.equal(statuses.at(-1).state, "idle");
+  });
+
+  await t.test("disconnect cancels queued calls without sending them", async () => {
+    const previousConcurrency = config.hubRateLimit.concurrency;
+    config.hubRateLimit.concurrency = 1;
+    let finish;
+    let calls = 0;
+    invoke = () => {
+      calls++;
+      return new Promise((resolve) => {
+        finish = resolve;
+      });
+    };
+    const active = invokeHub("Roll", 1);
+    await new Promise((resolve) => setImmediate(resolve));
+    const queued = invokeHub("Roll", 2);
+    const rejected = assert.rejects(queued, { code: "REQUEST_CANCELLED", outcomeUnknown: false });
+    const activeRejected = assert.rejects(active, /session was replaced/);
+    await disconnectFromRefereeHub();
+    finish({ result: 1 });
+    await Promise.all([rejected, activeRejected]);
+    assert.equal(calls, 1);
+    config.hubRateLimit.concurrency = previousConcurrency;
+    await connectToRefereeHub(
+      (event) => forwarded.push(event),
+      () => roomManager.resync(),
+      (event) => statuses.push(event),
+    );
   });
 
   await t.test("disconnect rejects late invocation results and suppresses old hub events", async () => {
@@ -480,8 +527,10 @@ await test("room synchronization", async (t) => {
         resolveInvoke = resolve;
       });
     const invoking = invokeHub("Roll", 1);
+    await new Promise((resolve) => setImmediate(resolve));
     const before = forwarded.length;
     await disconnectFromRefereeHub();
+    await new Promise((resolve) => setImmediate(resolve));
     resolveInvoke({ result: 1 });
     await assert.rejects(invoking, /session was replaced/);
     listeners.get("UserJoined")({ room_id: 1, user_id: 2 });
