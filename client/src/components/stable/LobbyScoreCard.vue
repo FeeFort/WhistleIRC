@@ -5,7 +5,7 @@ import Dialog from "primevue/dialog";
 import InputNumber from "primevue/inputnumber";
 import SelectButton from "primevue/selectbutton";
 import ToggleSwitch from "primevue/toggleswitch";
-import { AlertTriangle, Check, Copy, Send, SlidersHorizontal } from "@lucide/vue";
+import { AlertTriangle, Check, Copy, Send, SlidersHorizontal, Users } from "@lucide/vue";
 import { useChatSettings } from "../../composables/useChatSettings";
 
 const props = defineProps({
@@ -22,9 +22,10 @@ const props = defineProps({
   qualificationMode: { type: Boolean, default: false },
   mpLink: { type: String, default: "" },
   disabled: { type: Boolean, default: false },
+  refereesVisible: { type: Boolean, default: false },
 });
 
-const emit = defineEmits(["update:teamAScore", "update:teamBScore", "update:qualificationMode", "send-result", "update-settings", "configure-lobby"]);
+const emit = defineEmits(["update:teamAScore", "update:teamBScore", "update:qualificationMode", "send-result", "update-settings", "configure-lobby", "manage-referees"]);
 
 const { redTeamColor, blueTeamColor } = useChatSettings();
 const copied = ref(false);
@@ -186,6 +187,10 @@ function configureLobby() {
   emit("configure-lobby");
 }
 
+function manageReferees() {
+  emit("manage-referees");
+}
+
 function saveSettings() {
   if (!settingsValid.value) return;
   emit("update-settings", {
@@ -278,7 +283,7 @@ async function copyMpLink() {
     </Button>
   </div>
 
-  <Dialog v-model:visible="settingsVisible" modal dismissableMask class="lobby-settings-dialog" header="Lobby settings" :style="{ width: '26rem' }" :pt="{ mask: { class: 'app-dialog-mask' } }">
+  <Dialog v-model:visible="settingsVisible" modal :close-on-escape="!refereesVisible" dismissableMask class="lobby-settings-dialog" header="Lobby settings" :style="{ width: '26rem' }" :pt="{ mask: { class: 'app-dialog-mask' } }">
     <div class="lobby-settings__body">
       <div class="lobby-settings__configure-row">
         <div>
@@ -288,6 +293,17 @@ async function copyMpLink() {
         <Button v-tooltip.top="'Configure lobby'" text severity="secondary" aria-label="Configure lobby" @click="configureLobby">
           <SlidersHorizontal :size="15" />
           <span>Configure</span>
+        </Button>
+      </div>
+
+      <div class="lobby-settings__configure-row">
+        <div>
+          <strong>Lobby referees</strong>
+          <span>Manage the referees for this lobby.</span>
+        </div>
+        <Button v-tooltip.top="'Manage referees'" text severity="secondary" aria-label="Manage referees" @click="manageReferees">
+          <Users :size="15" />
+          <span>Manage</span>
         </Button>
       </div>
 
@@ -315,6 +331,7 @@ async function copyMpLink() {
           <span>Best of and next pick are hidden while qualifications is enabled.</span>
         </div>
       </template>
+
     </div>
 
     <template #footer>

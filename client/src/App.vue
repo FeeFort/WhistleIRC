@@ -13,6 +13,7 @@ import ChatWindow from "./components/stable/ChatWindow.vue";
 import LazerChatWindow from "./components/lazer/ChatWindow.vue";
 import LazerPlayerListCard from "./components/lazer/PlayerListCard.vue";
 import LazerPlayersDialog from "./components/lazer/PlayersDialog.vue";
+import LazerRefereesDialog from "./components/lazer/RefereesDialog.vue";
 import LazerLobbyScoreCard from "./components/lazer/LobbyScoreCard.vue";
 import LazerMappoolCard from "./components/lazer/MappoolCard.vue";
 import AddChannelDialog from "./components/AddChannelDialog.vue";
@@ -23,6 +24,7 @@ import LobbyMessagesSettings from "./components/LobbyMessagesSettings.vue";
 import MappoolCard from "./components/stable/MappoolCard.vue";
 import PlayerListCard from "./components/stable/PlayerListCard.vue";
 import PlayersDialog from "./components/stable/PlayersDialog.vue";
+import RefereesDialog from "./components/stable/RefereesDialog.vue";
 import LobbySetupDialog from "./components/stable/LobbySetupDialog.vue";
 import LazerLobbySetupDialog from "./components/lazer/LobbySetupDialog.vue";
 import AppSidebar from "./components/AppSidebar.vue";
@@ -109,7 +111,10 @@ const pendingLobbySeed = ref(null);
 const pendingLobbyCreatedViaApp = ref(false);
 const pendingJoinChannel = ref(null);
 const lazerPlayersDialogOpen = ref(false);
+const lazerRefereesDialogOpen = ref(false);
+const refereesDialogOpen = ref(false);
 const lazerChatRoomsBeingLoaded = new Set();
+const pendingLazerInviteJoins = new Set();
 let pendingJoinTimeout;
 const { primaryColor, setPrimaryColor } = useDarkMode();
 const {
@@ -151,6 +156,9 @@ const {
   leaveLazerRoom,
   changeLazerRoomSettings,
   loadLazerChat,
+  addLazerReferee,
+  removeLazerReferee,
+  stopLazerMatchCountdown,
   requestApi,
   checkUpdate,
   startUpdate,
@@ -187,7 +195,10 @@ function readPlayerProfileCache() {
 }
 const playerProfilesByLobbyId = reactive(readPlayerProfileCache());
 const lazerUserProfiles = reactive({});
+const lazerStyleBeatmaps = reactive({});
 const pendingLazerUserProfiles = new Set();
+const pendingLazerStyleBeatmaps = new Set();
+const lazerStyleChangedUsers = reactive({});
 const pendingLazerPlaylistRestores = new Map();
 const lazerSinglePlaylistMatches = new Map();
 
@@ -450,7 +461,58 @@ watch(
 
     if (lazerEvent && lazerEventChatId) {
       const room = lazerRooms[lazerEventChatId];
-      if (lazerEvent.eventType === "PlaylistItemChanged" && room && lazerEventPayload.playlist_item) {
+      if (lazerEvent.eventType === "RefereeInvited") {
+        requestLazerInviteJoin(lazerEventRoomId);
+      } else if (lazerEvent.eventType === "RefereeAdded" && room) {
+        const userId = Number(lazerEventPayload.user_id);
+        if (Number.isInteger(userId) && userId > 0) {
+          const referees = Array.isArray(room.referees) ? room.referees : [];
+          if (!referees.some((referee) => Number(referee.user_id) === userId)) {
+            room.referees = [...referees, { user_id: userId }];
+            loadLazerUserProfile(lazerEventRoomId, userId);
+            const username = lazerUserProfiles[userId]?.username || `User ${userId}`;
+            toast.add({ severity: "info", summary: "Referee added", detail: `${username} is now a referee.`, life: 3500 });
+          }
+        }
+      } else if (lazerEvent.eventType === "RefereeRemoved" && room) {
+        const userId = Number(lazerEventPayload.user_id);
+        if (Number.isInteger(userId) && userId > 0) {
+          const referee = (room.referees || []).find((candidate) => Number(candidate.user_id) === userId);
+          const username = lazerUserProfiles[userId]?.username || `User ${userId}`;
+          room.referees = (room.referees || []).filter((candidate) => Number(candidate.user_id) !== userId);
+          if (Number(osuProfile.value?.id) === userId) {
+            pendingLazerInviteJoins.delete(lazerEventRoomId);
+            markLazerRoomClosed(lazerEventChatId, {
+              clearResources: true,
+              systemMessage: "You're not a referee in that room anymore :(",
+            });
+          } else if (referee) {
+            toast.add({ severity: "info", summary: "Referee removed", detail: `${username} is no longer a referee.`, life: 3500 });
+          }
+        }
+      } else if (lazerEvent.eventType === "UserStyleChanged" && room) {
+        const userId = Number(lazerEventPayload.user_id);
+        if (Number.isInteger(userId) && userId > 0) {
+          (lazerStyleChangedUsers[lazerEventRoomId] ||= {})[userId] = true;
+          loadLazerStyleBeatmap(lazerEventRoomId, lazerEventPayload.beatmap_id);
+        }
+      } else if (lazerEvent.eventType === "UserTeamChanged" && room) {
+        const userId = Number(lazerEventPayload.user_id);
+        if (Number.isInteger(userId) && userId > 0) {
+          let player = (room.players || []).find((candidate) => Number(candidate.user_id) === userId);
+          if (!player) {
+            player = {
+              user_id: userId,
+              status: "idle",
+              style: { ruleset_id: null, beatmap_id: null },
+              mods: [],
+              team: null,
+            };
+            room.players = [...(room.players || []), player];
+          }
+          player.team = lazerEventPayload.team ?? null;
+        }
+      } else if (lazerEvent.eventType === "PlaylistItemChanged" && room && lazerEventPayload.playlist_item) {
         const changedItem = lazerEventPayload.playlist_item;
         const history = Array.isArray(room.playlistHistory) ? [...room.playlistHistory] : [];
         const historyIndex = history.findIndex((item) => Number(item.id) === Number(changedItem.id));
@@ -562,6 +624,12 @@ watch(
     }
 
     if (event?.type === "lazer_room_state" && event.room) {
+      const invitedRoomId = Number(event.room.room_id ?? event.room.roomId ?? event.room_id ?? event.roomId);
+      const refereeInvited = event.refereeInvited === true || event.referee_invited === true || event.room.refereeInvited === true || event.room.referee_invited === true;
+      if (refereeInvited && Number.isInteger(invitedRoomId) && invitedRoomId > 0) {
+        requestLazerInviteJoin(invitedRoomId);
+        return;
+      }
       const room = registerLazerRoom(event.room);
       if (room && !lazerChatRoomsBeingLoaded.has(Number(room.room_id))) {
         const roomId = Number(room.room_id);
@@ -594,6 +662,7 @@ watch(
 
     if (event?.type === "ack" && event.received === "lazer_join_room" && event.result) {
       const room = registerLazerRoom(event.result);
+      pendingLazerInviteJoins.delete(Number(event.result.room_id));
       if (room) {
         clearPendingJoin();
         activeChat.value = room.id;
@@ -606,6 +675,11 @@ watch(
     if (event?.type === "error" && event.request === "lazer_join_room" && pendingJoinChannel.value?.type === "lazer") {
       failPendingJoin("You are not a referee in the specified room.");
       return;
+    }
+
+    if (event?.type === "error" && event.request === "lazer_join_room") {
+      const roomId = Number(event.room_id ?? event.roomId);
+      if (Number.isInteger(roomId)) pendingLazerInviteJoins.delete(roomId);
     }
 
     if (event?.type === "ack" && event.received === "lazer_change_room_settings" && lazerLobbySetupLoading.value) {
@@ -1411,6 +1485,21 @@ function loadLazerUserProfile(roomId, userId) {
     .finally(() => pendingLazerUserProfiles.delete(cacheKey));
 }
 
+function loadLazerStyleBeatmap(roomId, beatmapId) {
+  const parsedRoomId = Number(roomId);
+  const parsedBeatmapId = Number(beatmapId);
+  const key = `${parsedRoomId}:${parsedBeatmapId}`;
+  if (!Number.isInteger(parsedRoomId) || parsedRoomId <= 0 || !Number.isInteger(parsedBeatmapId) || parsedBeatmapId <= 0) return;
+  if (lazerStyleBeatmaps[key] || pendingLazerStyleBeatmaps.has(key)) return;
+  pendingLazerStyleBeatmaps.add(key);
+  void loadLazerCachedBeatmap(parsedRoomId, parsedBeatmapId, requestApi)
+    .then((beatmap) => {
+      if (beatmap) lazerStyleBeatmaps[key] = beatmap;
+    })
+    .catch(() => {})
+    .finally(() => pendingLazerStyleBeatmaps.delete(key));
+}
+
 function registerLazerRoom(room) {
   if (!room || !Number.isInteger(Number(room.room_id))) return null;
   for (const player of room.players || []) loadLazerUserProfile(room.room_id, player.user_id);
@@ -1766,6 +1855,7 @@ const activeLobbyPlayers = computed(() => {
       avatarUrl: player.avatarUrl || playerProfilesByLobbyId[activeChat.value]?.[normalizeIrcNick(player.username)]?.avatarUrl || (player.userId ? `https://a.ppy.sh/${player.userId}` : ""),
       team: player.team || null,
       slot: player.slot ?? null,
+      rulesetId: ({ "osu!": 0, "osu!taiko": 1, "osu!catch": 2, "osu!mania": 3 }[lobby.mode] ?? 0),
       mods: [...commonMods, ...(player.mods || [])]
         .filter((mod) => !/^(?:enabled|disabled|freemod|fm)$/i.test(String(mod).trim()))
         .filter((mod, index, mods) => mods.findIndex((candidate) => candidate.toLowerCase() === mod.toLowerCase()) === index),
@@ -1823,6 +1913,21 @@ const activeLazerPlayers = computed(() => {
   const slots = Array.isArray(room.state?.slots) ? room.state.slots : [];
   const maxParticipants = Number(room.max_participants);
   const hasLimitedSlots = Number.isFinite(maxParticipants) && maxParticipants > 0;
+  const playerStyleChange = (player) => {
+    if (!lazerStyleChangedUsers[Number(room.room_id)]?.[Number(player.user_id)]) return null;
+    const lobbyItem = getLazerCurrentPlaylistItem(room);
+    if (!lobbyItem) return null;
+    const before = { rulesetId: lobbyItem.ruleset_id ?? null, beatmapId: lobbyItem.beatmap_id ?? null };
+    const after = { rulesetId: player.style?.ruleset_id ?? null, beatmapId: player.style?.beatmap_id ?? null };
+    if (Number(before.rulesetId) === Number(after.rulesetId) && Number(before.beatmapId) === Number(after.beatmapId)) return null;
+    const beatmap = (style) => {
+      const beatmapId = Number(style?.beatmapId);
+      return Number.isInteger(beatmapId) && beatmapId > 0 ? lazerStyleBeatmaps[`${room.room_id}:${beatmapId}`] || null : null;
+    };
+    loadLazerStyleBeatmap(room.room_id, before.beatmapId);
+    loadLazerStyleBeatmap(room.room_id, after.beatmapId);
+    return { before: { ...before, beatmap: beatmap(before) }, after: { ...after, beatmap: beatmap(after) } };
+  };
   if (!hasLimitedSlots) {
     return [...playersById.values()].map((player) => ({
       name: lazerUserProfiles[player.user_id]?.username || `User ${player.user_id}`,
@@ -1831,7 +1936,10 @@ const activeLazerPlayers = computed(() => {
       isReferee: refereeIds.has(String(player.user_id)),
       isHost: false,
       isReady: player.status === "ready",
+      status: player.status || "idle",
       team: player.team,
+      rulesetId: player.style?.ruleset_id ?? null,
+      styleChange: playerStyleChange(player),
       mods: normalizeLazerMods(player.mods),
       avatarUrl: lazerUserProfiles[player.user_id]?.avatarUrl || `https://a.ppy.sh/${player.user_id}`,
       profileUrl: lazerUserProfiles[player.user_id]?.profileUrl || `https://osu.ppy.sh/users/${player.user_id}`,
@@ -1847,7 +1955,10 @@ const activeLazerPlayers = computed(() => {
     isReferee: refereeIds.has(String(player.user_id)),
     isHost: false,
     isReady: player.status === "ready",
+    status: player.status || "idle",
     team: player.team,
+    rulesetId: player.style?.ruleset_id ?? null,
+    styleChange: playerStyleChange(player),
     mods: normalizeLazerMods(player.mods),
     avatarUrl: lazerUserProfiles[player.user_id]?.avatarUrl || `https://a.ppy.sh/${player.user_id}`,
     profileUrl: lazerUserProfiles[player.user_id]?.profileUrl || `https://osu.ppy.sh/users/${player.user_id}`,
@@ -2515,19 +2626,43 @@ function markRoomClosed(chatId) {
   });
 }
 
-function markLazerRoomClosed(chatId, { clearResources = false } = {}) {
+function markLazerRoomClosed(chatId, { clearResources = false, systemMessage = "Room closed" } = {}) {
   const room = lazerRooms[chatId];
   if (!room || room.closed) return;
 
   room.closed = true;
+  delete lazerStyleChangedUsers[Number(room.room_id)];
+  for (const key of Object.keys(lazerStyleBeatmaps)) {
+    if (key.startsWith(`${room.room_id}:`)) delete lazerStyleBeatmaps[key];
+  }
   clearLazerPlaylistRestore(Number(room.room_id));
   clearLazerCountdown(room.room_id);
   if (clearResources) clearLazerRoomResourceCache(room.room_id);
   appendChatMessage(chatId, {
     id: nextId++,
     type: "system",
-    text: "Room closed",
+    text: systemMessage,
   });
+}
+
+function requestLazerInviteJoin(roomId) {
+  const id = Number(roomId);
+  if (!Number.isInteger(id) || id <= 0) return false;
+  const chatId = lazerChatId(id);
+  if (lazerRooms[chatId] && !lazerRooms[chatId].closed) {
+    activeChat.value = chatId;
+    return true;
+  }
+  if (pendingLazerInviteJoins.has(id)) return true;
+  pendingLazerInviteJoins.add(id);
+  const sent = joinLazerRoom(id);
+  if (!sent) {
+    pendingLazerInviteJoins.delete(id);
+    toast.add({ severity: "error", summary: "Room join failed", detail: "Unable to join the invited lazer room.", life: 5000 });
+    return false;
+  }
+  showJoinToast("info", "Room invitation", "Joining the invited lazer room...");
+  return true;
 }
 
 function joinChannel(channel) {
@@ -2617,6 +2752,10 @@ function closeActiveChat(chatId = activeChat.value) {
   const lazerRoom = lazerRooms[chatId];
   if (lazerRoom) {
     leaveLazerRoom(lazerRoom.room_id);
+    delete lazerStyleChangedUsers[Number(lazerRoom.room_id)];
+    for (const key of Object.keys(lazerStyleBeatmaps)) {
+      if (key.startsWith(`${lazerRoom.room_id}:`)) delete lazerStyleBeatmaps[key];
+    }
     clearLazerPlaylistRestore(Number(lazerRoom.room_id));
     delete lazerRooms[chatId];
     delete lazerLobbyStates[chatId];
@@ -2819,6 +2958,15 @@ function abortLazerCountdown(roomId, countdownType = "local") {
   if (!lazerCountdowns[id]) return;
   clearLazerCountdown(id);
   queueLazerChatMessage(id, "Countdown aborted");
+}
+
+function abortActiveLazerTimer(roomId) {
+  const id = Number(roomId);
+  if (activeLazerMatchStartSeconds.value > 0) {
+    if (stopLazerMatchCountdown(id)) clearLazerMatchStartCountdown(id);
+    return;
+  }
+  abortLazerCountdown(id);
 }
 
 function updateActiveLobbyPlayers(update) {
@@ -3704,7 +3852,7 @@ function handleLazerSendResult(result) {
         @send="handleSend"
         @send-command="handleCommand"
         @start-timer="startLazerCountdown(activeLazerRoom?.room_id, $event)"
-        @abort-timer="abortLazerCountdown(activeLazerRoom?.room_id)"
+        @abort-timer="abortActiveLazerTimer(activeLazerRoom?.room_id)"
         @download-chat-history="downloadChatHistory"
         @toggle-sidebar="sidebarOpen = !sidebarOpen"
       />
@@ -3759,6 +3907,9 @@ function handleLazerSendResult(result) {
             @send-result="handleLazerSendResult"
             @update-settings="updateActiveLazerSettings"
             @configure-lobby="openLobbySetup"
+            :referees="activeLazerRoom?.referees || []"
+            :referees-visible="lazerRefereesDialogOpen"
+            @manage-referees="lazerRefereesDialogOpen = true"
           />
         </SidebarSectionCard>
         <LazerPlayerListCard :players="activeLazerDisplayPlayers" :current-user="currentUser" :disabled="Boolean(activeLazerRoom?.closed)" @open-players="lazerPlayersDialogOpen = true" />
@@ -3790,6 +3941,8 @@ function handleLazerSendResult(result) {
             @send-result="handleSendResult"
             @update-settings="updateActiveLobbySettings"
             @configure-lobby="openLobbySetup"
+            @manage-referees="refereesDialogOpen = true"
+            :referees-visible="refereesDialogOpen"
           />
         </SidebarSectionCard>
         <PlayerListCard :players="activeLobbyDisplayPlayers" :current-user="currentUser" :disabled="Boolean(roomClosedByChat[activeChat])" @open-players="playersDialogOpen = true" />
@@ -3824,6 +3977,18 @@ function handleLazerSendResult(result) {
         :room-id="activeLazerRoom?.room_id || null"
         :disabled="Boolean(activeLazerRoom?.closed)"
         @move-player="moveLazerPlayer"
+      />
+      <LazerRefereesDialog
+        v-if="activeChatKind === 'lazer'"
+        v-model:visible="lazerRefereesDialogOpen"
+        :referees="(activeLazerRoom?.referees || []).map((referee) => ({ ...referee, name: lazerUserProfiles[referee.user_id]?.username, avatarUrl: lazerUserProfiles[referee.user_id]?.avatarUrl }))"
+        :room-id="activeLazerRoom?.room_id || null"
+        :current-user-id="Number(osuProfile?.id) || null"
+        :disabled="Boolean(activeLazerRoom?.closed)"
+      />
+      <RefereesDialog
+        v-if="activeChatKind === 'lobby'"
+        v-model:visible="refereesDialogOpen"
       />
       <LazerLobbySetupDialog
         v-if="activeChatKind === 'lazer'"

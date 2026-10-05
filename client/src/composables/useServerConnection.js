@@ -87,6 +87,18 @@ function kickLazerPlayer(room_id, user_id) {
   return socket.value ? send(socket.value, { type: "lazer_kick_player", room_id, user_id }) : false;
 }
 
+function addLazerReferee(room_id, user_id) {
+  return socket.value ? send(socket.value, { type: "lazer_add_referee", room_id, user_id }) : false;
+}
+
+function removeLazerReferee(room_id, user_id) {
+  return socket.value ? send(socket.value, { type: "lazer_remove_referee", room_id, user_id }) : false;
+}
+
+function stopLazerMatchCountdown(room_id) {
+  return socket.value ? send(socket.value, { type: "lazer_stop_match_countdown", room_id }) : false;
+}
+
 function addLazerPlaylistItem(room_id, payload) {
   return socket.value ? send(socket.value, { type: "lazer_add_playlist_item", room_id, ...payload }) : false;
 }
@@ -441,6 +453,9 @@ export function useServerConnection() {
     changeLazerRoomSettings,
     moveLazerUser,
     kickLazerPlayer,
+    addLazerReferee,
+    removeLazerReferee,
+    stopLazerMatchCountdown,
     addLazerPlaylistItem,
     editLazerCurrentPlaylistItem,
     editLazerPlaylistItem,
