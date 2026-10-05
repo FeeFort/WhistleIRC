@@ -413,7 +413,7 @@ function modStyle(category) {
 }
 
 function remove(item) {
-  if (props.disabled || removingId.value !== null || !Number.isInteger(props.roomId)) return;
+  if (props.disabled || orderedItems.value.length <= 1 || removingId.value !== null || !Number.isInteger(props.roomId)) return;
   removingId.value = Number(item.id);
   if (!removeLazerPlaylistItem(props.roomId, removingId.value)) removingId.value = null;
 }
@@ -425,8 +425,6 @@ watch(lastEvent, (event) => {
       modsSettingsVisible.value = false;
       modsVisible.value = false;
       toast.add({ severity: "success", summary: "Mods updated", detail: "Playlist mods were updated successfully.", life: 3500 });
-    } else {
-      toast.add({ severity: "error", summary: "Save failed", detail: event.message || "The server rejected the playlist mods.", life: 5000 });
     }
     return;
   }
@@ -498,7 +496,7 @@ onBeforeUnmount(() => window.removeEventListener("keydown", handleEscape, true))
         <Button v-tooltip.top="'Mods'" text rounded class="playlist-dialog__mods-button" :disabled="disabled || submitting || removingId !== null" :aria-label="`Mods for ${itemLabel(item)}`" @click="openModsSettings(item)">
           <ArrowRightLeft :size="15" />
         </Button>
-        <Button v-tooltip.top="'Remove map'" text rounded severity="danger" class="playlist-dialog__remove-button" :loading="removingId === Number(item.id)" :disabled="disabled || removingId !== null" :aria-label="`Remove ${itemLabel(item)}`" @click="remove(item)">
+        <Button v-tooltip.top="orderedItems.length <= 1 ? 'The last map cannot be removed' : 'Remove map'" text rounded severity="danger" class="playlist-dialog__remove-button" :loading="removingId === Number(item.id)" :disabled="disabled || orderedItems.length <= 1 || removingId !== null" :aria-label="`Remove ${itemLabel(item)}`" @click="remove(item)">
           <Trash2 :size="15" />
         </Button>
         </span>

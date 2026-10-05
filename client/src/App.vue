@@ -417,7 +417,7 @@ watch(
         const index = list.findIndex((item) => item.id === pending.messageId);
         if (index !== -1) list.splice(index, 1);
       }
-      toast.add({ severity: "error", summary: "Message failed", detail: event.message || "The server rejected the message.", life: 5000 });
+      toast.add({ severity: "error", summary: "Message failed", detail: formatLazerWsError(event.message, "The server rejected the message."), life: 5000 });
       return;
     }
 
@@ -442,7 +442,7 @@ watch(
     }
 
     if (event?.type === "lazer_room_error") {
-      toast.add({ severity: "error", summary: "Lazer room sync failed", detail: event.message || "Unable to synchronize the lazer room.", life: 5000 });
+      toast.add({ severity: "error", summary: "Lazer room sync failed", detail: formatLazerWsError(event.message, "Unable to synchronize the lazer room."), life: 5000 });
       return;
     }
 
@@ -515,7 +515,7 @@ watch(
     }
 
     if (event?.type === "error" && event.request === "lazer_roll") {
-      toast.add({ severity: "error", summary: "Roll failed", detail: event.message || "The server rejected the roll.", life: 5000 });
+      toast.add({ severity: "error", summary: "Roll failed", detail: formatLazerWsError(event.message, "The server rejected the roll."), life: 5000 });
       return;
     }
 
@@ -591,7 +591,7 @@ watch(
       toast.add({
         severity: "error",
         summary: "Update failed",
-        detail: event.message || "Unable to apply lazer lobby settings.",
+        detail: formatLazerWsError(event.message, "Unable to apply lazer lobby settings."),
         life: 5000,
       });
       return;
@@ -687,6 +687,26 @@ watch(
       }
 
       markRoomClosed(partedChannelId);
+      return;
+    }
+
+    if (event?.type === "error") {
+      const operation = {
+        lazer_add_playlist_item: "Add map failed",
+        lazer_edit_playlist_item: "Update map failed",
+        lazer_edit_current_playlist_item: "Update map failed",
+        lazer_remove_playlist_item: "Remove map failed",
+        lazer_close_room: "Close room failed",
+        lazer_start_match: "Start match failed",
+        lazer_stop_match_countdown: "Stop countdown failed",
+        lazer_abort_match: "Abort match failed",
+        lazer_set_lock_state: "Update room lock failed",
+        lazer_move_user: "Move player failed",
+        lazer_kick_player: "Kick player failed",
+        lazer_invite_player: "Invite failed",
+        lazer_load_chat: "Chat history failed",
+      }[event.request] || "Request failed";
+      toast.add({ severity: "error", summary: operation, detail: formatLazerWsError(event.message, "The server rejected the request."), life: 5000 });
       return;
     }
 
@@ -1265,6 +1285,19 @@ const activeMessages = computed(() => (activeChat.value === "bancho" ? banchoMes
 const activeDirectChat = computed(() => directChats.value.find((item) => item.id === activeChat.value) || null);
 function lazerChatId(roomId) {
   return `lazer:${roomId}`;
+}
+
+function formatLazerWsError(message, fallback = "The server rejected the request.") {
+  const text = String(message || "").trim();
+  if (!text) return fallback;
+
+  const refereeDetail = text.match(/RefereeHubException:\s*(?:Error\s+\d+\s*:\s*)?(.+?)(?:\s*$)/is);
+  if (refereeDetail?.[1]) return refereeDetail[1].trim();
+
+  const numberedDetail = text.match(/(?:^|\n)\s*Error\s+\d+\s*:\s*(.+?)(?:\s*$)/is);
+  if (numberedDetail?.[1]) return numberedDetail[1].trim();
+
+  return text;
 }
 
 function normalizeLazerChatMessage(message, users = []) {

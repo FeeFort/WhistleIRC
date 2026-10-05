@@ -140,7 +140,6 @@ watch(lastEvent, (event) => {
     return;
   }
 
-  toast.add({ severity: "error", summary: "Invite failed", detail: event.message || "The server rejected the invitation.", life: 5000 });
 });
 
 watch(lastEvent, (event) => {
@@ -158,15 +157,6 @@ watch(lastEvent, (event) => {
     return;
   }
   pendingSlotMove.value = null;
-  if (event.type !== "ack") {
-    const isKick = event.received === "lazer_kick_player" || event.request === "lazer_kick_player";
-    toast.add({
-      severity: "error",
-      summary: isKick ? "Kick failed" : "Team change failed",
-      detail: event.message || (isKick ? "The server rejected the kick." : "The server rejected the team change."),
-      life: 5000,
-    });
-  }
 });
 </script>
 
