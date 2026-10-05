@@ -35,6 +35,7 @@ import { fetchChatMessages } from "./chatApi.js";
 import { invokeHub } from "./refereeHubClient.js";
 
 class RoomManager {
+  private currentUserId: number | null = null;
   private excludedRooms = new Set<number>();
   private generation = 0;
   private replayPlaylist: Map<number, LazerPlaylistItem> | null = null;
@@ -59,6 +60,7 @@ class RoomManager {
   }
 
   reset(): void {
+    this.currentUserId = null;
     ++this.generation;
     this.excludedRooms.clear();
     for (const pending of [...this.pendingJoins.values(), ...this.pendingCreations]) pending.cancelled = true;
@@ -79,6 +81,10 @@ class RoomManager {
   trackRoom(room: RoomState): void {
     this.rooms.set(room.room_id, room);
     this.onRoomChanged?.(room);
+  }
+
+  setCurrentUserId(userId: number): void {
+    this.currentUserId = userId;
   }
 
   getRoom(roomId: number): RoomState | undefined {
@@ -173,6 +179,11 @@ class RoomManager {
     if (typeof roomId !== "number") {
       console.warn(`[roomManager] event ${eventType} has no room_id, ignoring`, payload);
       return false;
+    }
+
+    if (eventType === "UserKicked" && (payload as UserKickedEvent).kicked_user_id === this.currentUserId) {
+      this.removeRoom(roomId, true);
+      return true;
     }
 
     const pendingJoin = this.pendingJoins.get(roomId);
@@ -338,6 +349,7 @@ class RoomManager {
       try {
         const response = roomId === null ? await invokeHub<RoomJoinedResponse>("MakeRoom", request) : await invokeHub<RoomJoinedResponse>("JoinRoom", roomId);
         roomId = response.room_id;
+        if (this.excludedRooms.has(roomId)) pending.cancelled = true;
         if (!pending.cancelled) this.rooms.set(roomId, response);
       } finally {
         this.pendingCreations.delete(pending);
@@ -347,10 +359,7 @@ class RoomManager {
           this.replayPlayers = new Map(room.players.map((player) => [player.user_id, structuredClone(player)]));
           this.replayPlaylist = new Map(room.playlist.map((item) => [item.id, structuredClone(item)]));
           try {
-            // The spectator copies the snapshot under its room lock, but releases
-            // that lock before sending the completion. Some buffered events can
-            // therefore be newer than the snapshot. Replay in delivery order.
-            // No wire revision exists; keep snapshot data for idempotent re-adds.
+            // Replay any events that were received during the JoinRoom/MakeRoom call, which may have been buffered by the hub.
             for (const event of pending.events) {
               if (event.payload.room_id === roomId) this.handleHubEvent(event.eventType, event.payload);
             }
@@ -358,7 +367,7 @@ class RoomManager {
             this.replayPlayers = null;
             this.replayPlaylist = null;
           }
-          this.onRoomChanged?.(room);
+          if (this.rooms.get(roomId) === room) this.onRoomChanged?.(room);
           for (const event of pending.events) {
             if (event.deferred && event.payload.room_id === roomId) {
               this.onDeferredEvent?.({ type: "lazer_event", eventType: event.eventType, roomId, payload: event.payload } as LazerHubEvent);

@@ -249,6 +249,9 @@ async function stopLazerSession(): Promise<void> {
 
 async function startLazerSession(): Promise<void> {
   if (shuttingDown) return;
+  const auth = getState();
+  if (auth.status !== "authenticated") return;
+  roomManager.setCurrentUserId(auth.user.id);
   roomManager.setListeners(
     (room) => broadcast({ type: "lazer_room_state", room }),
     (roomId) => broadcast({ type: "lazer_room_closed", roomId }),

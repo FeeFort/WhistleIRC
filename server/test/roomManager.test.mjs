@@ -474,6 +474,61 @@ await test("room synchronization", async (t) => {
     roomManager.removeRoom(97);
   });
 
+  await t.test("self kick removes tracking and prevents resync without invoking LeaveRoom", async () => {
+    roomManager.setCurrentUserId(35948605);
+    roomManager.trackRoom(snapshot(4593225));
+    const calls = [];
+    invoke = async (method) => {
+      calls.push(method);
+      return { room_ids: [4593225] };
+    };
+    assert.equal(roomManager.handleHubEvent("UserKicked", { room_id: 4593225, kicked_user_id: 35948605, kicking_user_id: 15055190 }), true);
+    assert.equal(roomManager.getRoom(4593225), undefined);
+    assert.equal(removed.at(-1), 4593225);
+    await roomManager.resync();
+    assert.deepEqual(calls, ["ListRooms"]);
+    assert.equal(roomManager.getRoom(4593225), undefined);
+  });
+
+  await t.test("kicking another user only removes that player", () => {
+    const room = snapshot(4593226);
+    room.players = [{ user_id: 42 }, { user_id: 35948605 }];
+    roomManager.trackRoom(room);
+    roomManager.handleHubEvent("UserKicked", { room_id: room.room_id, kicked_user_id: 42, kicking_user_id: 15055190 });
+    assert.equal(roomManager.getRoom(room.room_id), room);
+    assert.deepEqual(room.players, [{ user_id: 35948605 }]);
+    roomManager.removeRoom(room.room_id);
+  });
+
+  for (const method of ["JoinRoom", "MakeRoom"]) {
+    await t.test(`self kick during ${method} rejects the late snapshot`, async () => {
+      const roomId = method === "JoinRoom" ? 4593227 : 4593228;
+      let resolveJoin;
+      invoke = () =>
+        new Promise((resolve) => {
+          resolveJoin = resolve;
+        });
+      const joining = roomManager.joinRoom(method === "JoinRoom" ? roomId : null, {});
+      const rejected = assert.rejects(joining);
+      await new Promise((resolve) => setImmediate(resolve));
+      updates.length = 0;
+      roomManager.handleHubEvent("UserKicked", { room_id: roomId, kicked_user_id: 35948605, kicking_user_id: 15055190 });
+      resolveJoin(snapshot(roomId));
+      await rejected;
+      assert.equal(roomManager.getRoom(roomId), undefined);
+      assert.deepEqual(updates, []);
+    });
+  }
+
+  await t.test("reset clears the current user identity", () => {
+    roomManager.reset();
+    const room = snapshot(4593229);
+    roomManager.trackRoom(room);
+    roomManager.handleHubEvent("UserKicked", { room_id: room.room_id, kicked_user_id: 35948605, kicking_user_id: 15055190 });
+    assert.equal(roomManager.getRoom(room.room_id), room);
+    roomManager.removeRoom(room.room_id);
+  });
+
   await t.test("session reset rejects old room snapshots and chat waits", async () => {
     let resolveJoin;
     invoke = () =>
