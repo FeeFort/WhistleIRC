@@ -34,6 +34,7 @@ import { fetchChatMessages } from "./chatApi.js";
 import { invokeHub } from "./refereeHubClient.js";
 
 class RoomManager {
+  private excludedRooms = new Set<number>();
   private generation = 0;
   private rooms = new Map<number, RoomState>();
   private pendingJoins = new Map<number, PendingRoomJoin>();
@@ -56,6 +57,7 @@ class RoomManager {
 
   reset(): void {
     ++this.generation;
+    this.excludedRooms.clear();
     for (const pending of [...this.pendingJoins.values(), ...this.pendingCreations]) pending.cancelled = true;
     this.pendingJoins.clear();
     this.pendingCreations.clear();
@@ -168,6 +170,7 @@ class RoomManager {
 
     const pendingJoin = this.pendingJoins.get(roomId);
     if (eventType === "RefereeInvited") {
+      if (this.excludedRooms.has(roomId)) return false;
       // This notification is addressed to the invited referee. Added/Removed
       // instead describe changes to the creator's tracked referee list.
       if (!pendingJoin && !this.rooms.has(roomId)) {
@@ -299,7 +302,8 @@ class RoomManager {
     return true;
   }
 
-  removeRoom(roomId: number): void {
+  removeRoom(roomId: number, excludeFromResync = false): void {
+    if (excludeFromResync) this.excludedRooms.add(roomId);
     const chatLoad = this.pendingChatLoads.get(roomId);
     if (chatLoad) chatLoad.cancelled = true;
     this.pendingChatLoads.delete(roomId);
@@ -355,7 +359,11 @@ class RoomManager {
   }
 
   resync(): Promise<void> {
-    if (this.resyncPromise) return this.resyncPromise;
+    if (this.resyncPromise) {
+      console.log("[roomManager] sync already running, sharing pending operation");
+      return this.resyncPromise;
+    }
+    console.log(`[roomManager] sync starting: tracked=${JSON.stringify([...this.rooms.keys()])}, excluded=${JSON.stringify([...this.excludedRooms])}`);
 
     const generation = this.generation;
     this.onStatus?.({ type: "lazer_sync_state", state: "syncing" });
@@ -365,8 +373,9 @@ class RoomManager {
       try {
         const response = await invokeHub<ListRoomsResponse>("ListRooms");
         if (generation !== this.generation) throw new Error("osu! session ended.");
-        const liveRoomIds = new Set(response.room_ids);
+        const liveRoomIds = new Set(response.room_ids.filter((roomId) => !this.excludedRooms.has(roomId)));
         listed = true;
+        console.log(`[roomManager] ListRooms returned=${JSON.stringify(response.room_ids)}, restoring=${JSON.stringify([...liveRoomIds])}`);
 
         for (const roomId of this.rooms.keys()) {
           if (!liveRoomIds.has(roomId)) this.removeRoom(roomId);
@@ -374,8 +383,10 @@ class RoomManager {
 
         const errors: Error[] = [];
         for (const roomId of liveRoomIds) {
+          if (this.excludedRooms.has(roomId)) continue;
           try {
             // JoinRoom returns a full snapshot and restores hub subscriptions.
+            console.log(`[roomManager] restoring room ${roomId} via JoinRoom (${this.rooms.has(roomId) ? "refresh tracked snapshot" : "start tracking"})`);
             await this.joinRoom(roomId);
           } catch (error) {
             if (generation !== this.generation) throw error;
@@ -386,8 +397,10 @@ class RoomManager {
           }
         }
         if (errors.length) throw new AggregateError(errors, "Some rooms could not be synchronized.");
+        console.log(`[roomManager] sync completed: tracked=${JSON.stringify([...this.rooms.keys()])}`);
         this.onStatus?.({ type: "lazer_sync_state", state: "synced" });
       } catch (error) {
+        console.error(`[roomManager] sync failed: scope=${listed ? "partial" : "all"}, failedRooms=${JSON.stringify(failedRoomIds)}`);
         if (generation === this.generation)
           this.onStatus?.({ type: "lazer_sync_state", state: "failed", scope: listed ? "partial" : "all", failedRoomIds, message: error instanceof Error ? error.message : String(error) });
         // TODO: Retry using the shared API exponential backoff policy once implemented.

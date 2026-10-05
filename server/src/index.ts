@@ -18,7 +18,7 @@ import { addClient, removeClient, sendJson, broadcast, clientCount, requestConte
 import { connectToRefereeHub, disconnectFromRefereeHub } from "./lazer/refereeHubClient.js";
 import { roomManager } from "./lazer/roomManager.js";
 import * as lazerHandlers from "./lazer/handlers.js";
-import type { LazerConnectionStateEvent, LazerSyncStateEvent } from "./types.js";
+import type { LazerConnectionStateEvent, LazerSyncStateEvent, LazerRoomsEvent } from "./types.js";
 import { ChatSocket } from "./lazer/chatSocket.js";
 
 const launchedAfterUpdate = process.argv.includes("--updated");
@@ -251,7 +251,10 @@ async function startLazerSession(): Promise<void> {
     (room) => broadcast({ type: "lazer_room_state", room }),
     (roomId) => broadcast({ type: "lazer_room_closed", roomId }),
     (event) => {
-      if (event.type === "lazer_sync_state") lazerSyncState = event;
+      if (event.type === "lazer_sync_state") {
+        lazerSyncState = event;
+        if (event.state === "synced") broadcast({ type: "lazer_rooms", roomIds: roomManager.getAllRooms().map((room) => room.room_id) } satisfies LazerRoomsEvent);
+      }
       broadcast(event);
     },
     (event) => broadcast(event),
@@ -273,6 +276,13 @@ async function startLazerSession(): Promise<void> {
       broadcast(event);
     },
   );
+  // Initial hub connection must discover rooms without a frontend request.
+  try {
+    await roomManager.resync();
+  } catch (error) {
+    console.error(`[lazer] Initial room sync failed: ${(error as Error).message}`);
+    // TODO: Use the shared API exponential backoff policy for sync retries.
+  }
 }
 
 class BanchoConnection {
@@ -1442,6 +1452,9 @@ webSocketServer.on("connection", (client) => {
   addClient(client);
   sendJson(client, lazerConnectionState);
   sendJson(client, lazerSyncState);
+  // A browser reconnect reuses the live hub session and cached room snapshots.
+  for (const room of roomManager.getAllRooms()) sendJson(client, { type: "lazer_room_state", room });
+  sendJson(client, { type: "lazer_rooms", roomIds: roomManager.getAllRooms().map((room) => room.room_id) } satisfies LazerRoomsEvent);
   banchoConnection.sendStatus(client);
   for (const [channel, state] of banchoConnection.lobbyStates) {
     banchoConnection.sendLobbyState(channel, state, client);

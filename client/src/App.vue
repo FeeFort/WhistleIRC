@@ -108,7 +108,7 @@ const pendingLobbySeed = ref(null);
 const pendingLobbyCreatedViaApp = ref(false);
 const pendingJoinChannel = ref(null);
 const lazerPlayersDialogOpen = ref(false);
-const lazerRoomIdsBeingRestored = new Set();
+const lazerChatRoomsBeingLoaded = new Set();
 let pendingJoinTimeout;
 const { primaryColor, setPrimaryColor } = useDarkMode();
 const {
@@ -149,7 +149,7 @@ const {
   rollLazer,
   leaveLazerRoom,
   changeLazerRoomSettings,
-  listLazerRooms,
+  loadLazerChat,
   requestApi,
   checkUpdate,
   startUpdate,
@@ -485,12 +485,7 @@ watch(
           }, 3000);
         }
       } else if (lazerEvent.eventType === "CountdownStarted") {
-        startLazerCountdown(
-          lazerEventRoomId,
-          Number(lazerEventPayload.seconds),
-          Number(lazerEventPayload.countdown_id),
-          lazerEventPayload.type,
-        );
+        startLazerCountdown(lazerEventRoomId, Number(lazerEventPayload.seconds), Number(lazerEventPayload.countdown_id), lazerEventPayload.type);
       } else if (lazerEvent.eventType === "CountdownStopped") {
         abortLazerCountdown(lazerEventRoomId, lazerEventPayload.type);
       }
@@ -524,13 +519,19 @@ watch(
     }
 
     if (event?.type === "lazer_room_state" && event.room) {
-      registerLazerRoom(event.room);
+      const room = registerLazerRoom(event.room);
+      if (room && !lazerChatRoomsBeingLoaded.has(Number(room.room_id))) {
+        const roomId = Number(room.room_id);
+        lazerChatRoomsBeingLoaded.add(roomId);
+        if (!loadLazerChat(roomId)) lazerChatRoomsBeingLoaded.delete(roomId);
+      }
       return;
     }
 
     if (event?.type === "lazer_room_closed") {
       const id = lazerChatId(Number(event.roomId));
       markLazerRoomClosed(id);
+      lazerChatRoomsBeingLoaded.delete(Number(event.roomId));
       return;
     }
 
@@ -540,21 +541,16 @@ watch(
       return;
     }
 
-    if (event?.type === "ack" && event.received === "lazer_list_rooms") {
-      const roomIds = Array.isArray(event.result?.room_ids) ? event.result.room_ids : [];
-      for (const roomId of roomIds) {
-        const id = Number(roomId);
-        if (!Number.isInteger(id) || id <= 0 || lazerRooms[lazerChatId(id)] || lazerRoomIdsBeingRestored.has(id)) continue;
-        lazerRoomIdsBeingRestored.add(id);
-        if (!joinLazerRoom(id)) lazerRoomIdsBeingRestored.delete(id);
+    if (event?.type === "lazer_rooms" && Array.isArray(event.roomIds)) {
+      const roomIds = new Set(event.roomIds.map(Number));
+      for (const room of Object.values(lazerRooms)) {
+        if (!roomIds.has(Number(room.room_id))) markLazerRoomClosed(room.id);
       }
       return;
     }
 
     if (event?.type === "ack" && event.received === "lazer_join_room" && event.result) {
       const room = registerLazerRoom(event.result);
-      const restoredRoomId = Number(event.result.room_id);
-      if (lazerRoomIdsBeingRestored.delete(restoredRoomId)) return;
       if (room) {
         clearPendingJoin();
         activeChat.value = room.id;
@@ -566,11 +562,6 @@ watch(
 
     if (event?.type === "error" && event.request === "lazer_join_room" && pendingJoinChannel.value?.type === "lazer") {
       failPendingJoin("You are not a referee in the specified room.");
-      return;
-    }
-
-    if (event?.type === "error" && event.request === "lazer_join_room") {
-      lazerRoomIdsBeingRestored.clear();
       return;
     }
 
@@ -977,6 +968,7 @@ function handleLogout() {
   Object.keys(lobbyStates).forEach((channelIdValue) => {
     delete lobbyStates[channelIdValue];
   });
+  lazerChatRoomsBeingLoaded.clear();
   Object.keys(lazerRooms).forEach((chatId) => delete lazerRooms[chatId]);
   Object.keys(lazerLobbyStates).forEach((chatId) => delete lazerLobbyStates[chatId]);
   Object.keys(lobbyContexts).forEach((channelIdValue) => {
@@ -1033,7 +1025,6 @@ async function connectWithToast(username, password, { checkUpdates = false } = {
 
   try {
     await loginToServer(username, password);
-    listLazerRooms();
     if (checkUpdates) await checkForUpdates();
     else {
       toast.removeGroup(loginToastGroup);
@@ -1297,7 +1288,10 @@ function normalizeLazerChatMessage(message, users = []) {
 function appendLazerChatHistory(roomId, messages, users = []) {
   const chatId = lazerChatId(Number(roomId));
   const normalized = (Array.isArray(messages) ? messages : []).map((message) => normalizeLazerChatMessage(message, users)).filter(Boolean);
-  channelMessages[chatId] = normalized;
+  // History may arrive after live messages or local system notifications.
+  const historyIds = new Set(normalized.map((message) => String(message.id)));
+  const newer = (channelMessages[chatId] || []).filter((message) => !historyIds.has(String(message.id)));
+  channelMessages[chatId] = [...normalized, ...newer];
   unreadChats[chatId] ??= false;
 }
 
@@ -1306,12 +1300,7 @@ function appendLazerChatMessage(roomId, message, users = [], notify = true) {
   if (!normalized) return;
   const chatId = lazerChatId(Number(roomId));
   const list = (channelMessages[chatId] ||= []);
-  const pending = list.find(
-    (item) =>
-      (item.pending || item.awaitingEcho) &&
-      normalizeIrcNick(item.author) === normalizeIrcNick(normalized.author) &&
-      item.text === normalized.text,
-  );
+  const pending = list.find((item) => (item.pending || item.awaitingEcho) && normalizeIrcNick(item.author) === normalizeIrcNick(normalized.author) && item.text === normalized.text);
   if (pending) {
     Object.assign(pending, normalized, { pending: false, awaitingEcho: false });
     return;
@@ -1767,7 +1756,9 @@ function moveLazerPlayer({ userId, slot }) {
   nextSlots[targetSlot - 1] = userId;
   room.state = { ...room.state, slots: nextSlots };
 }
-const activeLazerDisplayPlayers = computed(() => activeLazerPlayers.value.filter((player) => !player.isSlot || (Number(activeLazerRoom.value?.max_participants) > 0 && Number.isFinite(Number(activeLazerRoom.value?.max_participants)))));
+const activeLazerDisplayPlayers = computed(() =>
+  activeLazerPlayers.value.filter((player) => !player.isSlot || (Number(activeLazerRoom.value?.max_participants) > 0 && Number.isFinite(Number(activeLazerRoom.value?.max_participants)))),
+);
 const lobbyClock = ref(Date.now());
 const activeLazerTimerSeconds = computed(() => {
   const roomId = Number(activeLazerRoom.value?.room_id);
@@ -1997,11 +1988,7 @@ function updateActiveLazerScore(field, value) {
   const lobby = activeLazerLobbyState.value;
   if (!lobby || !["teamAScore", "teamBScore"].includes(field)) return;
   lobby[field] = Math.max(0, Number.parseInt(value, 10) || 0);
-  lobby.matchStatus = getMatchStatus(
-    { bestOf: lobby.bestOf, nextPickTeam: lobby.nextPickTeam, teamRedScore: lobby.teamAScore, teamBlueScore: lobby.teamBScore },
-    lobby.teamAName,
-    lobby.teamBName,
-  );
+  lobby.matchStatus = getMatchStatus({ bestOf: lobby.bestOf, nextPickTeam: lobby.nextPickTeam, teamRedScore: lobby.teamAScore, teamBlueScore: lobby.teamBScore }, lobby.teamAName, lobby.teamBName);
 }
 
 function updateActiveLazerSettings(settings) {
@@ -2009,11 +1996,7 @@ function updateActiveLazerSettings(settings) {
   if (!lobby) return;
   lobby.bestOf = Number.isInteger(settings.bestOf) && settings.bestOf > 0 ? settings.bestOf : null;
   lobby.nextPickTeam = settings.nextPickTeam || null;
-  lobby.matchStatus = getMatchStatus(
-    { bestOf: lobby.bestOf, nextPickTeam: lobby.nextPickTeam, teamRedScore: lobby.teamAScore, teamBlueScore: lobby.teamBScore },
-    lobby.teamAName,
-    lobby.teamBName,
-  );
+  lobby.matchStatus = getMatchStatus({ bestOf: lobby.bestOf, nextPickTeam: lobby.nextPickTeam, teamRedScore: lobby.teamAScore, teamBlueScore: lobby.teamBScore }, lobby.teamAName, lobby.teamBName);
 }
 
 function applyRefereeConfirmation(channel, text) {
@@ -2645,9 +2628,12 @@ function startLazerCountdown(roomId, duration, countdownId = null, countdownType
     lazerMatchStartCountdowns[id] = {
       endsAt,
       countdownId,
-      timeoutId: window.setTimeout(() => {
-        if (lazerMatchStartCountdowns[id]?.endsAt === endsAt) clearLazerMatchStartCountdown(id);
-      }, totalSeconds * 1000 + 100),
+      timeoutId: window.setTimeout(
+        () => {
+          if (lazerMatchStartCountdowns[id]?.endsAt === endsAt) clearLazerMatchStartCountdown(id);
+        },
+        totalSeconds * 1000 + 100,
+      ),
     };
     return;
   }
@@ -2671,10 +2657,13 @@ function startLazerCountdown(roomId, duration, countdownId = null, countdownType
     .sort((left, right) => right - left)
     .forEach((secondsRemaining) => {
       scheduledTimeouts.push(
-        window.setTimeout(() => {
-          if (lazerCountdowns[id]?.endsAt !== endsAt) return;
-          queueLazerChatMessage(id, `Countdown ends in ${formatLazerCountdownDuration(secondsRemaining)}`);
-        }, (totalSeconds - secondsRemaining) * 1000),
+        window.setTimeout(
+          () => {
+            if (lazerCountdowns[id]?.endsAt !== endsAt) return;
+            queueLazerChatMessage(id, `Countdown ends in ${formatLazerCountdownDuration(secondsRemaining)}`);
+          },
+          (totalSeconds - secondsRemaining) * 1000,
+        ),
       );
     });
 

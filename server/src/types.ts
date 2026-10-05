@@ -754,3 +754,8 @@ export interface PendingChatLoad {
   cancelled: boolean;
   promise: Promise<ChatMessage[]>;
 }
+
+export interface LazerRoomsEvent {
+  type: "lazer_rooms";
+  roomIds: number[];
+}

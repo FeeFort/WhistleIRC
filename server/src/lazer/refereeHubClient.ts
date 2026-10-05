@@ -108,6 +108,7 @@ export function isHubPayload(eventType: HubEventType, value: unknown): value is 
 
 let connection: signalR.HubConnection | null = null;
 let connectionGeneration = 0;
+let invocationSequence = 0;
 let statusHandler: LazerStatusHandler | undefined;
 
 export async function disconnectFromRefereeHub(): Promise<void> {
@@ -117,6 +118,7 @@ export async function disconnectFromRefereeHub(): Promise<void> {
   const notify = statusHandler;
   statusHandler = undefined;
   notify?.({ type: "lazer_connection_state", state: "disconnected" });
+  if (previous) console.log(`[refereeHub] session=${connectionGeneration - 1} stopping connection (${previous.state})`);
   await previous?.stop();
 }
 
@@ -135,7 +137,11 @@ export async function connectToRefereeHub(onEvent: HubEventHandler, onResync: Re
   connection = hub;
   for (const eventName of CLIENT_EVENTS) {
     hub.on(eventName, (payload: unknown) => {
-      if (generation !== connectionGeneration) return;
+      if (generation !== connectionGeneration) {
+        console.log(`[refereeHub] session=${generation} ignored stale event ${eventName}`);
+        return;
+      }
+      console.log(`[refereeHub] session=${generation} received ${eventName}: ${JSON.stringify(payload, (key, value) => (/password|token|secret|authorization/i.test(key) ? "[redacted]" : value))}`);
       if (!isHubPayload(eventName, payload)) {
         console.warn(`[refereeHub] Invalid ${eventName} payload, ignoring`);
         return;
@@ -172,20 +178,29 @@ export async function connectToRefereeHub(onEvent: HubEventHandler, onResync: Re
     console.error(`[refereeHub] Connection closed: ${error?.message ?? "no error"}`);
   });
 
+  console.log(`[refereeHub] session=${generation} connecting to ${new URL("/referee", config.spectatorServerUrl)}`);
   onStatus?.({ type: "lazer_connection_state", state: "connecting" });
   try {
     await hub.start();
   } catch (error) {
+    console.error(`[refereeHub] session=${generation} connection failed: ${error instanceof Error ? error.message : String(error)}`);
     if (generation === connectionGeneration) onStatus?.({ type: "lazer_connection_state", state: "disconnected", reason: error instanceof Error ? error.message : String(error) });
     throw error;
   }
   if (generation !== connectionGeneration) throw new Error("SignalR session was replaced.");
+  console.log(`[refereeHub] session=${generation} connected, connectionId=${hub.connectionId ?? "unknown"}`);
   onStatus?.({ type: "lazer_connection_state", state: "connected" });
   return hub;
 }
 
 export async function invokeHub<T = unknown>(methodName: string, ...args: unknown[]): Promise<T> {
+  const invocationId = ++invocationSequence;
+  const startedAt = Date.now();
+  console.log(
+    `[refereeHub] call=${invocationId} session=${connectionGeneration} invoke ${methodName}: ${JSON.stringify(args, (key, value) => (/password|token|secret|authorization/i.test(key) ? "[redacted]" : value))}`,
+  );
   if (!connection || connection.state !== signalR.HubConnectionState.Connected) {
+    console.warn(`[refereeHub] call=${invocationId} rejected: connection state=${connection?.state ?? "absent"}`);
     throw new Error(`Cannot invoke ${methodName}: referee hub is not connected.`);
   }
   const generation = connectionGeneration;
@@ -207,6 +222,16 @@ export async function invokeHub<T = unknown>(methodName: string, ...args: unknow
         );
       }),
     ]);
+    if (generation !== connectionGeneration) throw new Error("SignalR session was replaced.");
+    if (methodName === "ListRooms") {
+      console.log(`[refereeHub] call=${invocationId} ${methodName} succeeded (${Date.now() - startedAt}ms): ${JSON.stringify(result)}`);
+    } else {
+      const roomId = typeof result === "object" && result !== null && "room_id" in result ? result.room_id : undefined;
+      console.log(`[refereeHub] call=${invocationId} ${methodName} succeeded (${Date.now() - startedAt}ms)${roomId === undefined ? "" : `, room=${roomId}`}`);
+    }
+  } catch (error) {
+    console.error(`[refereeHub] call=${invocationId} session=${generation} ${methodName} failed (${Date.now() - startedAt}ms): ${error instanceof Error ? error.message : String(error)}`);
+    throw error;
   } finally {
     if (timer !== undefined) clearTimeout(timer);
   }

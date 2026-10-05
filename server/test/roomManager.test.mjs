@@ -347,7 +347,7 @@ await test("room synchronization", async (t) => {
     assert.equal(statuses.at(-1).message, "List failed");
     await reconnect();
     assert.equal(roomManager.getAllRooms().length, 1);
-    assert.match(errors[0], /Sync after reconnect failed: List failed/);
+    assert.ok(errors.some((message) => /Sync after reconnect failed: List failed/.test(message)));
     log.mock.restore();
   });
   await t.test("SignalR timeout releases a join and ignores its late snapshot", async () => {
@@ -371,6 +371,37 @@ await test("room synchronization", async (t) => {
     } finally {
       config.hubRequestTimeoutMs = previousTimeout;
     }
+  });
+
+  await t.test("closed rooms from a stale ListRooms response are never rejoined", async () => {
+    roomManager.trackRoom(snapshot(91));
+    roomManager.removeRoom(91, true);
+    const calls = [];
+    invoke = async (method, roomId) => {
+      calls.push([method, roomId]);
+      return method === "ListRooms" ? { room_ids: [91, 92] } : snapshot(roomId);
+    };
+    await roomManager.resync();
+    assert.equal(
+      calls.some(([method, roomId]) => method === "JoinRoom" && roomId === 91),
+      false,
+    );
+    assert.equal(roomManager.getRoom(91), undefined);
+    assert.ok(roomManager.getRoom(92));
+    roomManager.removeRoom(92);
+  });
+
+  await t.test("SignalR diagnostics redact passwords in request logs", async (t) => {
+    const logs = [];
+    t.mock.method(console, "log", (message) => logs.push(message));
+    invoke = async () => undefined;
+    await invokeHub("ChangeRoomSettings", 1, { name: "Room", password: "do-not-log-this" });
+    assert.ok(logs.some((message) => message.includes("ChangeRoomSettings")));
+    assert.ok(logs.some((message) => message.includes("[redacted]")));
+    assert.equal(
+      logs.some((message) => message.includes("do-not-log-this")),
+      false,
+    );
   });
 
   await t.test("session reset rejects old room snapshots and chat waits", async () => {

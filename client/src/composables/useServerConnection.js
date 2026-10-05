@@ -103,8 +103,8 @@ function removeLazerPlaylistItem(room_id, playlist_item_id) {
   return socket.value ? send(socket.value, { type: "lazer_remove_playlist_item", room_id, playlist_item_id }) : false;
 }
 
-function listLazerRooms() {
-  return socket.value ? send(socket.value, { type: "lazer_list_rooms" }) : false;
+function loadLazerChat(room_id) {
+  return socket.value ? send(socket.value, { type: "lazer_load_chat", room_id }) : false;
 }
 
 function getRequestSocket() {
@@ -445,7 +445,7 @@ export function useServerConnection() {
     editLazerCurrentPlaylistItem,
     editLazerPlaylistItem,
     removeLazerPlaylistItem,
-    listLazerRooms,
+    loadLazerChat,
     lazerInvitePlayer: inviteLazerPlayer,
     sendLazerChatMessage,
     rollLazer,
