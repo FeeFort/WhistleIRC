@@ -2,8 +2,8 @@ import { WebSocket } from "ws";
 import { sendJson } from "../wsGateway.js";
 import { invokeHub } from "./refereeHubClient.js";
 import { roomManager } from "./roomManager.js";
-import { fetchChatMessages, sendChatMessage } from "./chatApi.js";
-import type { ClientMessage, ListRoomsResponse } from "../types.js";
+import { sendChatMessage } from "./chatApi.js";
+import type { ClientMessage, ListRoomsResponse, LazerChatStateEvent } from "../types.js";
 
 async function ack(client: WebSocket, message: ClientMessage, result?: unknown): Promise<void> {
   sendJson(client, { type: "ack", received: message.type, ...(message.requestId !== undefined ? { requestId: message.requestId } : {}), ...(result !== undefined ? { result } : {}) });
@@ -33,8 +33,8 @@ export async function handleLazerMakeRoom(client: WebSocket, message: ClientMess
       name: m.name,
       max_participants: m.max_participants,
     });
-    await roomManager.waitForChatChannel(room.chat_channel_id);
     await ack(client, message, room);
+    await handleLazerLoadChat(client, { type: "lazer_load_chat", room_id: room.room_id, requestId: message.requestId }, false);
   } catch (error) {
     await fail(client, message, error);
   }
@@ -44,12 +44,37 @@ export async function handleLazerJoinRoom(client: WebSocket, message: ClientMess
   const m = message as Extract<ClientMessage, { type: "lazer_join_room" }>;
   try {
     const room = await roomManager.joinRoom(m.room_id);
-    await roomManager.waitForChatChannel(room.chat_channel_id);
-    const history = await fetchChatMessages(room.chat_channel_id);
-    sendJson(client, { type: "lazer_chat_history", roomId: room.room_id, messages: history });
     await ack(client, message, room);
+    await handleLazerLoadChat(client, { type: "lazer_load_chat", room_id: room.room_id, requestId: message.requestId }, false);
   } catch (error) {
     await fail(client, message, error);
+  }
+}
+
+export async function handleLazerLoadChat(client: WebSocket, message: ClientMessage, acknowledge = true): Promise<void> {
+  const m = message as Extract<ClientMessage, { type: "lazer_load_chat" }>;
+  sendJson(client, { type: "lazer_chat_state", roomId: m.room_id, requestId: m.requestId, state: "loading" } satisfies LazerChatStateEvent);
+  try {
+    const history = await roomManager.loadChat(m.room_id);
+    sendJson(client, { type: "lazer_chat_history", roomId: m.room_id, requestId: m.requestId, messages: history });
+    sendJson(client, { type: "lazer_chat_state", roomId: m.room_id, requestId: m.requestId, state: "ready" } satisfies LazerChatStateEvent);
+    if (acknowledge) await ack(client, message);
+  } catch (error) {
+    const failure = error instanceof Error ? error : new Error(String(error));
+    const code = "code" in failure && typeof failure.code === "string" ? failure.code : undefined;
+    // Old room/session notifications must not update the new session's chat state.
+    if (code !== "SESSION_ENDED") {
+      sendJson(client, {
+        type: "lazer_chat_state",
+        roomId: m.room_id,
+        requestId: m.requestId,
+        state: "failed",
+        stage: "stage" in failure && failure.stage === "history" ? "history" : "channel",
+        message: failure.message,
+        ...(code ? { code } : {}),
+      } satisfies LazerChatStateEvent);
+    }
+    if (acknowledge) await fail(client, message, failure);
   }
 }
 

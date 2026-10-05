@@ -210,6 +210,7 @@ export type ClientCommand =
   | { type: "confirm_install" }
   | { type: "test_win_condition"; slotId: string; source: string; sampleContext: Record<string, unknown> }
   | ({ type: "lazer_make_room" } & MakeRoomRequest)
+  | { type: "lazer_load_chat"; room_id: number }
   | { type: "lazer_join_room"; room_id: number }
   | { type: "lazer_leave_room"; room_id: number }
   | { type: "lazer_close_room"; room_id: number }
@@ -740,4 +741,15 @@ export type LazerStatusHandler = (event: LazerStatusEvent) => void;
 export interface RequestFailure {
   code: "REQUEST_TIMEOUT";
   outcomeUnknown: boolean;
+}
+
+export type LazerChatStateEvent = {
+  type: "lazer_chat_state";
+  roomId: number;
+  requestId?: string;
+} & ({ state: "loading" | "ready" } | { state: "failed"; stage: "channel" | "history"; message: string; code?: string });
+
+export interface PendingChatLoad {
+  cancelled: boolean;
+  promise: Promise<ChatMessage[]>;
 }

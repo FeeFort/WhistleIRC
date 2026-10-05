@@ -1058,6 +1058,7 @@ function validateMessage(message: unknown): string | null {
         return "max_participants must be a positive integer.";
       return null;
     },
+    lazer_load_chat: () => validateLazerRoomId(message),
     lazer_join_room: () => validateLazerRoomId(message),
     lazer_leave_room: () => validateLazerRoomId(message),
     lazer_close_room: () => validateLazerRoomId(message),
@@ -1409,6 +1410,7 @@ function handleClientMessage(client: WebSocket, rawMessage: unknown): void {
     confirm_install: handleConfirmInstall,
     test_win_condition: handleTestWinCondition,
     lazer_make_room: lazerHandlers.handleLazerMakeRoom,
+    lazer_load_chat: lazerHandlers.handleLazerLoadChat,
     lazer_join_room: lazerHandlers.handleLazerJoinRoom,
     lazer_leave_room: lazerHandlers.handleLazerLeaveRoom,
     lazer_close_room: lazerHandlers.handleLazerCloseRoom,

@@ -24,7 +24,10 @@ import type {
   MatchUserStatus,
   ListRoomsResponse,
   LazerStatusHandler,
+  PendingChatLoad,
+  ChatMessage,
 } from "../types.js";
+import { fetchChatMessages } from "./chatApi.js";
 import { invokeHub } from "./refereeHubClient.js";
 
 class RoomManager {
@@ -32,6 +35,7 @@ class RoomManager {
   private rooms = new Map<number, RoomState>();
   private pendingJoins = new Map<number, PendingRoomJoin>();
   private pendingCreations = new Set<PendingRoomJoin>();
+  private pendingChatLoads = new Map<number, PendingChatLoad>();
   private resyncPromise: Promise<void> | null = null;
   private onRoomChanged: ((room: RoomState) => void) | null = null;
   private onStatus: LazerStatusHandler | null = null;
@@ -51,6 +55,8 @@ class RoomManager {
     this.pendingJoins.clear();
     this.pendingCreations.clear();
     this.resyncPromise = null;
+    for (const load of this.pendingChatLoads.values()) load.cancelled = true;
+    this.pendingChatLoads.clear();
     for (const roomId of [...this.rooms.keys()]) this.removeRoom(roomId);
     this.joinedChatChannels.clear();
     for (const waiters of this.chatWaiters.values()) {
@@ -103,6 +109,36 @@ class RoomManager {
       waiters.push(done);
       this.chatWaiters.set(channelId, waiters);
     });
+  }
+
+  loadChat(roomId: number): Promise<ChatMessage[]> {
+    const existing = this.pendingChatLoads.get(roomId);
+    if (existing) return existing.promise;
+    const room = this.rooms.get(roomId);
+    if (!room) return Promise.reject(Object.assign(new Error(`Room ${roomId} is not tracked.`), { stage: "channel" }));
+    const generation = this.generation;
+    const pending: PendingChatLoad = { cancelled: false, promise: Promise.resolve([]) };
+    this.pendingChatLoads.set(roomId, pending);
+    pending.promise = (async () => {
+      let stage = "channel";
+      try {
+        await this.waitForChatChannel(room.chat_channel_id);
+        if (pending.cancelled || generation !== this.generation) throw new Error("osu! session or room ended.");
+        stage = "history";
+        const history = await fetchChatMessages(room.chat_channel_id);
+        if (pending.cancelled || generation !== this.generation) throw new Error("osu! session or room ended.");
+        return history;
+      } catch (error) {
+        // TODO: Retry chat initialization with the shared exponential backoff policy.
+        throw Object.assign(error instanceof Error ? error : new Error(String(error)), {
+          stage,
+          ...(pending.cancelled || generation !== this.generation ? { code: "SESSION_ENDED" } : {}),
+        });
+      } finally {
+        if (this.pendingChatLoads.get(roomId) === pending) this.pendingChatLoads.delete(roomId);
+      }
+    })();
+    return pending.promise;
   }
 
   private findPlayer(room: RoomState, userId: number): LazerPlayer | undefined {
@@ -244,6 +280,9 @@ class RoomManager {
   }
 
   removeRoom(roomId: number): void {
+    const chatLoad = this.pendingChatLoads.get(roomId);
+    if (chatLoad) chatLoad.cancelled = true;
+    this.pendingChatLoads.delete(roomId);
     const pending = this.pendingJoins.get(roomId);
     if (pending) pending.cancelled = true;
     if (this.rooms.delete(roomId)) {
