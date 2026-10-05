@@ -480,15 +480,18 @@ watch(
           const referee = (room.referees || []).find((candidate) => Number(candidate.user_id) === userId);
           const username = lazerUserProfiles[userId]?.username || `User ${userId}`;
           room.referees = (room.referees || []).filter((candidate) => Number(candidate.user_id) !== userId);
-          if (Number(osuProfile.value?.id) === userId) {
-            pendingLazerInviteJoins.delete(lazerEventRoomId);
-            markLazerRoomClosed(lazerEventChatId, {
-              clearResources: true,
-              systemMessage: "You're not a referee in that room anymore :(",
-            });
-          } else if (referee) {
+          if (referee) {
             toast.add({ severity: "info", summary: "Referee removed", detail: `${username} is no longer a referee.`, life: 3500 });
           }
+        }
+      } else if (lazerEvent.eventType === "UserKicked" && room) {
+        const kickedUserId = Number(lazerEventPayload.kicked_user_id);
+        if (Number(osuProfile.value?.id) === kickedUserId) {
+          pendingLazerInviteJoins.delete(lazerEventRoomId);
+          markLazerRoomClosed(lazerEventChatId, {
+            clearResources: true,
+            systemMessage: "You're not a referee in that room anymore :(",
+          });
         }
       } else if (lazerEvent.eventType === "UserStyleChanged" && room) {
         const userId = Number(lazerEventPayload.user_id);
