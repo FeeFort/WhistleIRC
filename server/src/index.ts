@@ -25,6 +25,7 @@ const launchedAfterUpdate = process.argv.includes("--updated");
 let chatSocket: ChatSocket | null = null;
 
 function startChatSocket(): void {
+  if (shuttingDown) return;
   chatSocket?.close();
   chatSocket = new ChatSocket({
     accessToken: getAccessToken,
@@ -247,6 +248,7 @@ async function stopLazerSession(): Promise<void> {
 }
 
 async function startLazerSession(): Promise<void> {
+  if (shuttingDown) return;
   roomManager.setListeners(
     (room) => broadcast({ type: "lazer_room_state", room }),
     (roomId) => broadcast({ type: "lazer_room_closed", roomId }),
@@ -276,6 +278,10 @@ async function startLazerSession(): Promise<void> {
       broadcast(event);
     },
   );
+  if (shuttingDown) {
+    await stopLazerSession();
+    return;
+  }
   // Initial hub connection must discover rooms without a frontend request.
   try {
     await roomManager.resync();
@@ -1528,7 +1534,9 @@ function shutdown(signal?: string): void {
     client.terminate();
   }
 
-  let pendingClosures = 2;
+  // Keep the process alive until the hub has sent its disconnect as well.
+  // Abrupt termination leaves the old referee connection active remotely.
+  let pendingClosures = 3;
   const finishClosure = () => {
     pendingClosures -= 1;
     if (pendingClosures === 0) {
@@ -1536,14 +1544,22 @@ function shutdown(signal?: string): void {
     }
   };
 
+  const shutdownTimer = setTimeout(() => {
+    console.warn(`[${formatLogTime()}] Shutdown timed out; forcing exit with ${pendingClosures} pending closures.`);
+    process.exit(0);
+  }, 5000);
+  shutdownTimer.unref();
+
+  void stopLazerSession()
+    .catch((error) => console.error(`[${formatLogTime()}] Failed to stop lazer session: ${error instanceof Error ? error.message : String(error)}`))
+    .finally(finishClosure);
+
   webSocketServer.close(finishClosure);
   if (httpServer.listening) {
     httpServer.close(finishClosure);
   } else {
     finishClosure();
   }
-
-  setTimeout(() => process.exit(0), 1500).unref();
 }
 
 if (process.stdin.isTTY && typeof process.stdin.setRawMode === "function") {

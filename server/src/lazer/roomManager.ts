@@ -403,7 +403,24 @@ class RoomManager {
           try {
             // JoinRoom returns a full snapshot and restores hub subscriptions.
             console.log(`[roomManager] restoring room ${roomId} via JoinRoom (${this.rooms.has(roomId) ? "refresh tracked snapshot" : "start tracking"})`);
-            await this.joinRoom(roomId);
+            try {
+              await this.joinRoom(roomId);
+            } catch (error) {
+              // The hub can retain a referee in room therefore trying to recover membership by joining again
+              if (
+                generation !== this.generation ||
+                this.excludedRooms.has(roomId) ||
+                !(error instanceof Error) ||
+                "code" in error ||
+                error.message !== "An unexpected error occurred invoking 'JoinRoom' on the server."
+              )
+                throw error;
+              console.warn(`[roomManager] room ${roomId}: JoinRoom rejected by hub; attempting membership recovery once`);
+              // TODO: Integrate this bounded recovery with shared exponential
+              // backoff once available, keeping unknown-outcome requests excluded.
+              await this.joinRoom(roomId);
+              console.log(`[roomManager] room ${roomId}: membership recovery succeeded`);
+            }
           } catch (error) {
             if (generation !== this.generation) throw error;
             const failure = new Error(`Failed to refresh room ${roomId}: ${(error as Error).message}`, { cause: error });

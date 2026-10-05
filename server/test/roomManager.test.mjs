@@ -492,6 +492,41 @@ await test("room synchronization", async (t) => {
     assert.equal(statuses.at(-1).state, "idle");
   });
 
+  await t.test("resync recovers stale membership once and preserves closed room failures", async () => {
+    const attempts = new Map();
+    invoke = async (method, roomId) => {
+      if (method === "ListRooms") return { room_ids: [100, 101] };
+      attempts.set(roomId, (attempts.get(roomId) ?? 0) + 1);
+      if (roomId === 100 || attempts.get(roomId) === 1) throw new Error("An unexpected error occurred invoking 'JoinRoom' on the server.");
+      return snapshot(roomId);
+    };
+    await assert.rejects(roomManager.resync(), AggregateError);
+    assert.deepEqual(
+      [...attempts],
+      [
+        [100, 2],
+        [101, 2],
+      ],
+    );
+    assert.equal(roomManager.getRoom(100), undefined);
+    assert.equal(roomManager.getRoom(101).room_id, 101);
+    assert.deepEqual(statuses.at(-1).failedRoomIds, [100]);
+    roomManager.removeRoom(101);
+  });
+
+  await t.test("resync never repeats local failures or uncertain outcomes", async () => {
+    for (const code of ["REQUEST_TIMEOUT", "REQUEST_CANCELLED", "INVALID_RESPONSE", "RATE_LIMIT_WAIT_TIMEOUT", "RATE_LIMIT_QUEUE_FULL"]) {
+      let calls = 0;
+      invoke = async (method) => {
+        if (method === "ListRooms") return { room_ids: [102] };
+        calls++;
+        throw Object.assign(new Error("An unexpected error occurred invoking 'JoinRoom' on the server."), { code });
+      };
+      await assert.rejects(roomManager.resync(), AggregateError);
+      assert.equal(calls, 1, code);
+    }
+  });
+
   await t.test("disconnect cancels queued calls without sending them", async () => {
     const previousConcurrency = config.hubRateLimit.concurrency;
     config.hubRateLimit.concurrency = 1;
