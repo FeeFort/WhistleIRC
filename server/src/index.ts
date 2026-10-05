@@ -254,6 +254,7 @@ async function startLazerSession(): Promise<void> {
       if (event.type === "lazer_sync_state") lazerSyncState = event;
       broadcast(event);
     },
+    (event) => broadcast(event),
   );
 
   await connectToRefereeHub(

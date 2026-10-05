@@ -23,6 +23,7 @@ await test("room synchronization", async (t) => {
   let reconnecting;
   let closed;
   const statuses = [];
+  const deferred = [];
   const listeners = new Map();
   const forwarded = [];
   const hub = {
@@ -57,6 +58,7 @@ await test("room synchronization", async (t) => {
     (room) => updates.push(structuredClone(room)),
     (id) => removed.push(id),
     (event) => statuses.push(event),
+    (event) => deferred.push(event),
   );
 
   await t.test("connection state reports initial connection, reconnect and closure", () => {
@@ -206,13 +208,17 @@ await test("room synchronization", async (t) => {
     const creating = roomManager.joinRoom(null, { name: "New", ruleset_id: 0, beatmap_id: 1 });
     roomManager.handleHubEvent("UserStatusChanged", { room_id: 12, user_id: 42, status: "ready" });
     roomManager.handleHubEvent("UserJoined", { room_id: 99, user_id: 99 });
-    roomManager.handleHubEvent("RefereeAdded", { room_id: 12, user_id: 44 });
-    roomManager.handleHubEvent("RefereeRemoved", { room_id: 12, user_id: 44 });
+    assert.equal(roomManager.handleHubEvent("RollCompleted", { room_id: 12, user_id: 42, max: 100, result: 10 }), false);
     resolveMake(snapshot(12));
     const room = await creating;
     assert.equal(room.players[0].status, "ready");
     assert.deepEqual(room.referees, []);
     assert.equal(roomManager.getRoom(99), undefined);
+    assert.ok(deferred.some((event) => event.eventType === "RollCompleted" && event.roomId === 12));
+    assert.equal(
+      deferred.some((event) => event.roomId === 99),
+      false,
+    );
     roomManager.removeRoom(12);
   });
 
@@ -241,10 +247,70 @@ await test("room synchronization", async (t) => {
     invoke = async () => {
       throw new Error("No access");
     };
-    roomManager.handleHubEvent("RefereeAdded", { room_id: 77, user_id: 1 });
+    roomManager.handleHubEvent("RefereeInvited", { room_id: 77 });
     await new Promise((resolve) => setImmediate(resolve));
     assert.deepEqual(statuses.at(-1), { type: "lazer_room_error", roomId: 77, operation: "join", message: "No access" });
     log.mock.restore();
+  });
+
+  await t.test("invitations join unknown rooms once; referee updates only modify tracked state", async () => {
+    let resolveJoin;
+    let calls = 0;
+    invoke = () => {
+      calls++;
+      return new Promise((resolve) => {
+        resolveJoin = resolve;
+      });
+    };
+    assert.equal(roomManager.handleHubEvent("RefereeInvited", { room_id: 78 }), true);
+    assert.equal(roomManager.handleHubEvent("RefereeAdded", { room_id: 78, user_id: 44 }), true);
+    assert.equal(roomManager.handleHubEvent("RefereeInvited", { room_id: 78 }), true);
+    assert.equal(calls, 1);
+    resolveJoin(snapshot(78));
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.deepEqual(roomManager.getRoom(78).referees, [{ user_id: 44 }]);
+    roomManager.handleHubEvent("RefereeAdded", { room_id: 78, user_id: 45 });
+    roomManager.handleHubEvent("RefereeInvited", { room_id: 78 });
+    assert.equal(calls, 1);
+    assert.equal(roomManager.getRoom(78).referees.length, 2);
+    assert.equal(roomManager.handleHubEvent("RefereeRemoved", { room_id: 78, user_id: 44 }), true);
+    assert.deepEqual(roomManager.getRoom(78).referees, [{ user_id: 45 }]);
+    assert.equal(calls, 1);
+    roomManager.removeRoom(78);
+  });
+
+  await t.test("referee notifications for another room are not swallowed by MakeRoom", async () => {
+    let resolveMake;
+    let resolveJoin;
+    invoke = (method) =>
+      new Promise((resolve) => {
+        if (method === "MakeRoom") resolveMake = resolve;
+        else resolveJoin = resolve;
+      });
+    const creating = roomManager.joinRoom(null, { name: "New", ruleset_id: 0, beatmap_id: 1 });
+    assert.equal(roomManager.handleHubEvent("RefereeInvited", { room_id: 80 }), true);
+    resolveJoin(snapshot(80));
+    resolveMake(snapshot(81));
+    await creating;
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(roomManager.getRoom(80).room_id, 80);
+    assert.equal(roomManager.getRoom(81).room_id, 81);
+    roomManager.removeRoom(80);
+    roomManager.removeRoom(81);
+  });
+
+  await t.test("Added and Removed for unknown rooms never invoke JoinRoom", () => {
+    let calls = 0;
+    invoke = () => {
+      calls++;
+      throw new Error("Unexpected JoinRoom");
+    };
+    const warnings = t.mock.method(console, "warn", () => {});
+    assert.equal(roomManager.handleHubEvent("RefereeAdded", { room_id: 90, user_id: 1 }), false);
+    assert.equal(roomManager.handleHubEvent("RefereeRemoved", { room_id: 90, user_id: 1 }), false);
+    assert.equal(calls, 0);
+    assert.equal(roomManager.getRoom(90), undefined);
+    warnings.mock.restore();
   });
 
   await t.test("SignalR boundary drops invalid events before forwarding", () => {

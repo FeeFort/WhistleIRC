@@ -715,7 +715,8 @@ export type LazerHubEvent = {
 
 export interface PendingRoomJoin {
   cancelled: boolean;
-  events: Array<{ eventType: HubEventType; payload: HubEventPayloads[HubEventType] }>;
+  startedAt: number;
+  events: Array<{ eventType: HubEventType; payload: HubEventPayloads[HubEventType]; deferred?: boolean }>;
   promise: Promise<void>;
 }
 

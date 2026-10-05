@@ -24,9 +24,12 @@ import type {
   MatchUserStatus,
   ListRoomsResponse,
   LazerStatusHandler,
+  HubEventHandler,
+  LazerHubEvent,
   PendingChatLoad,
   ChatMessage,
 } from "../types.js";
+import { config } from "../config.js";
 import { fetchChatMessages } from "./chatApi.js";
 import { invokeHub } from "./refereeHubClient.js";
 
@@ -38,15 +41,17 @@ class RoomManager {
   private pendingChatLoads = new Map<number, PendingChatLoad>();
   private resyncPromise: Promise<void> | null = null;
   private onRoomChanged: ((room: RoomState) => void) | null = null;
+  private onDeferredEvent: HubEventHandler | null = null;
   private onStatus: LazerStatusHandler | null = null;
   private onRoomRemoved: ((roomId: number) => void) | null = null;
   private joinedChatChannels = new Set<number>();
   private chatWaiters = new Map<number, Array<(error?: Error) => void>>();
 
-  setListeners(onChanged: (room: RoomState) => void, onRemoved: (roomId: number) => void, onStatus?: LazerStatusHandler): void {
+  setListeners(onChanged: (room: RoomState) => void, onRemoved: (roomId: number) => void, onStatus?: LazerStatusHandler, onDeferredEvent?: HubEventHandler): void {
     this.onRoomChanged = onChanged;
     this.onRoomRemoved = onRemoved;
     this.onStatus = onStatus ?? null;
+    this.onDeferredEvent = onDeferredEvent ?? null;
   }
 
   reset(): void {
@@ -162,25 +167,35 @@ class RoomManager {
     }
 
     const pendingJoin = this.pendingJoins.get(roomId);
+    if (eventType === "RefereeInvited") {
+      // This notification is addressed to the invited referee. Added/Removed
+      // instead describe changes to the creator's tracked referee list.
+      if (!pendingJoin && !this.rooms.has(roomId)) {
+        const generation = this.generation;
+        this.joinRoom(roomId).catch((error) => {
+          if (generation !== this.generation) return;
+          this.onStatus?.({ type: "lazer_room_error", roomId, operation: "join", message: error instanceof Error ? error.message : String(error) });
+          // TODO: Retry automatic joins using the shared exponential backoff policy.
+          console.error(`[roomManager] failed to join room ${roomId} after RefereeInvited: ${(error as Error).message}`);
+        });
+      }
+      // Deliver the invitation immediately, independently of the join result.
+      return true;
+    }
+
     if (pendingJoin) {
       pendingJoin.events.push({ eventType, payload });
       return true;
     }
 
     if (!this.rooms.has(roomId) && this.pendingCreations.size) {
-      for (const creation of this.pendingCreations) creation.events.push({ eventType, payload });
-      return true;
-    }
-
-    if (eventType === "RefereeAdded") {
-      const event = payload as unknown as RefereeAddedEvent;
-      const generation = this.generation;
-      this.joinRoom(event.room_id).catch((error) => {
-        if (generation !== this.generation) return;
-        this.onStatus?.({ type: "lazer_room_error", roomId: event.room_id, operation: "join", message: error instanceof Error ? error.message : String(error) });
-        console.error(`[roomManager] failed to join room ${event.room_id} after RefereeAdded: ${(error as Error).message}`);
-      });
-      return true;
+      for (const creation of this.pendingCreations) {
+        // Creation is bounded by the hub timeout; also cap retained events under load.
+        if (Date.now() - creation.startedAt <= config.hubRequestTimeoutMs && creation.events.length < 512) {
+          creation.events.push({ eventType, payload, deferred: true });
+        } else console.warn(`[roomManager] creation event buffer limit reached, ignoring ${eventType}`);
+      }
+      return false;
     }
 
     const room = this.rooms.get(roomId);
@@ -265,6 +280,11 @@ class RoomManager {
         this.upsertPlayerStub(room, e.user_id).team = e.team;
         break;
       }
+      case "RefereeAdded": {
+        const e = payload as RefereeAddedEvent;
+        if (!room.referees.some((referee) => referee.user_id === e.user_id)) room.referees.push({ user_id: e.user_id });
+        break;
+      }
       case "RefereeRemoved": {
         const e = payload as unknown as RefereeRemovedEvent;
         room.referees = room.referees.filter((r) => r.user_id !== e.user_id);
@@ -301,7 +321,7 @@ class RoomManager {
       return room;
     }
 
-    const pending: PendingRoomJoin = { cancelled: false, events: [], promise: Promise.resolve() };
+    const pending: PendingRoomJoin = { cancelled: false, startedAt: Date.now(), events: [], promise: Promise.resolve() };
     if (roomId === null) this.pendingCreations.add(pending);
     else this.pendingJoins.set(roomId, pending);
     pending.promise = (async () => {
@@ -315,14 +335,15 @@ class RoomManager {
         if (!pending.cancelled && roomId !== null && this.rooms.has(roomId)) {
           for (const event of pending.events) {
             if (event.payload.room_id === roomId) {
-              if (event.eventType === "RefereeAdded") {
-                const userId = (event.payload as RefereeAddedEvent).user_id;
-                const room = this.rooms.get(roomId)!;
-                if (!room.referees.some((referee) => referee.user_id === userId)) room.referees.push({ user_id: userId });
-              } else this.handleHubEvent(event.eventType, event.payload);
+              this.handleHubEvent(event.eventType, event.payload);
             }
           }
           this.onRoomChanged?.(this.rooms.get(roomId)!);
+          for (const event of pending.events) {
+            if (event.deferred && event.payload.room_id === roomId) {
+              this.onDeferredEvent?.({ type: "lazer_event", eventType: event.eventType, roomId, payload: event.payload } as LazerHubEvent);
+            }
+          }
         }
       }
     })();
