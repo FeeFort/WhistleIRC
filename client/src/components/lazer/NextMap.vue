@@ -4,33 +4,11 @@ import Button from "primevue/button";
 import Dialog from "primevue/dialog";
 import InputText from "primevue/inputtext";
 import { useToast } from "primevue/usetoast";
-import ToggleSwitch from "primevue/toggleswitch";
 import { ArrowRightLeft, Gamepad2, ListMusic, Plus, RefreshCw, Trash2 } from "@lucide/vue";
 import { useServerConnection } from "../../composables/useServerConnection";
 import { beatmapCoverBackground } from "../../composables/useBeatmapCover";
 import { getLazerCachedBeatmap, loadLazerCachedBeatmap } from "../../composables/useLazerRoomResourceCache";
-import modsMetadata from "../../assets/mods/mods.json";
-import modHexRaw from "../../assets/mods/mod-icon.svg?raw";
-
-const modIconSources = import.meta.glob("../../assets/mods/*/*.svg", { eager: true, query: "?raw", import: "default" });
-const GLYPH_SCALE = 0.75;
-
-const svgBody = (raw) => String(raw || "")
-  .replace(/<defs>[\s\S]*?<\/defs>/g, "")
-  .replace(/\sclip-path="[^"]*"/g, "")
-  .replace(/^[\s\S]*?<svg[^>]*>/, "")
-  .replace(/<\/svg>\s*$/, "");
-
-const hexBody = svgBody(modHexRaw);
-
-function escapeHtml(value) {
-  return String(value ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
+import PlaylistModsModal from "./PlaylistModsModal.vue";
 
 const props = defineProps({
   roomId: { type: Number, default: null },
@@ -45,35 +23,12 @@ const beatmapId = ref("");
 const submitting = ref(false);
 const removingId = ref(null);
 const swappingItemId = ref(null);
-const modsVisible = ref(false);
 const modsSettingsVisible = ref(false);
 const modsItemId = ref(null);
-const selectedMods = reactive(new Set());
-const requiredMods = reactive(new Set());
-const allowedMods = reactive(new Set());
-const freestyle = ref(false);
-const modsPickerKind = ref("required");
-const savingMods = ref(false);
 const toast = useToast();
 const { addLazerPlaylistItem, editLazerCurrentPlaylistItem, editLazerPlaylistItem, removeLazerPlaylistItem, requestApi, lastEvent } = useServerConnection();
 const beatmaps = reactive({});
 const loadingBeatmapIds = new Set();
-const categoryColors = Object.freeze({
-  green: ["#b3ff66", "#3c591e"],
-  red: ["#ff6666", "#591e1e"],
-  blue: ["#66ccff", "#1e4659"],
-  purple: ["#8c66ff", "#2d1e59"],
-  pink: ["#ff66ab", "#591e39"],
-  yellow: ["#ffcc22", "#594605"],
-});
-const categoryDefinitions = Object.freeze([
-  { type: "DifficultyReduction", title: "Difficulty Reduction", tone: "green", folder: "difficulty-reduction" },
-  { type: "DifficultyIncrease", title: "Difficulty Increase", tone: "red", folder: "difficulty-increase" },
-  { type: "Automation", title: "Automation", tone: "blue", folder: "automation" },
-  { type: "Conversion", title: "Conversion", tone: "purple", folder: "conversion" },
-  { type: "Fun", title: "Fun", tone: "pink", folder: "fun" },
-  { type: "System", title: "System", tone: "yellow", folder: "system" },
-]);
 
 const orderedItems = computed(() => [...props.items].sort((left, right) => Number(left.order) - Number(right.order)));
 const orderedHistoryItems = computed(() => [...props.historyItems].sort((left, right) => Number(left.order) - Number(right.order)));
@@ -82,25 +37,6 @@ const parsedBeatmapId = computed(() => Number.parseInt(beatmapId.value.trim(), 1
 const isSwapping = computed(() => swappingItemId.value !== null);
 const swappingItem = computed(() => orderedHistoryItems.value.find((item) => Number(item.id) === Number(swappingItemId.value)) || null);
 const modsItem = computed(() => orderedItems.value.find((item) => Number(item.id) === Number(modsItemId.value)) || orderedHistoryItems.value.find((item) => Number(item.id) === Number(modsItemId.value)) || null);
-const rulesetMods = computed(() => {
-  const ruleset = Number(modsItem.value?.ruleset_id);
-  return modsMetadata.find((entry) => Number(entry.RulesetID) === ruleset)?.Mods || [];
-});
-const modByAcronym = computed(() => new Map(rulesetMods.value.map((mod) => [String(mod.Acronym).toUpperCase(), mod])));
-const modCategories = computed(() => categoryDefinitions
-  .map((category) => ({ ...category, mods: rulesetMods.value.filter((mod) => mod.ValidForMultiplayer === true && mod.Type === category.type) }))
-  .filter((category) => category.mods.length));
-const pickerCategories = computed(() => modCategories.value
-  .map((category) => ({
-    ...category,
-    mods: category.mods.filter((mod) => {
-      if (modsPickerKind.value === "required") return freestyle.value ? mod.ValidForFreestyleAsRequiredMod === true : mod.ValidForMultiplayer === true;
-      return mod.ValidForMultiplayerAsFreeMod === true && !conflictsWithRequired(mod);
-    }),
-  }))
-  .filter((category) => category.mods.length));
-const modsDialogStyle = computed(() => ({ width: `min(90vw, ${Math.max(28, pickerCategories.value.length * 16 + 5)}rem)` }));
-const modsCategoriesStyle = computed(() => ({ gridTemplateColumns: `repeat(${Math.max(1, pickerCategories.value.length)}, minmax(9rem, 1fr))` }));
 const canAdd = computed(
   () =>
     Number.isInteger(parsedBeatmapId.value) &&
@@ -133,9 +69,7 @@ function itemMeta(item) {
   return values;
 }
 
-function itemMods(item) {
-  return itemModsFrom(item, "required_mods");
-}
+function itemMods(item) { return itemModsFrom(item, "required_mods"); }
 
 function itemModsFrom(item, field) {
   return (Array.isArray(item?.[field]) ? item[field] : []).map((mod) => (typeof mod === "string" ? mod : mod?.acronym)).filter(Boolean);
@@ -213,101 +147,17 @@ function beginSwap(item) {
   beatmapId.value = "";
 }
 
-function openMods(item) {
-  if (props.disabled || submitting.value || removingId.value !== null) return;
-  modsItemId.value = Number(item.id);
-  selectedMods.clear();
-  itemMods(item).forEach((mod) => selectedMods.add(String(mod).toUpperCase()));
-  modsVisible.value = true;
-}
-
 function openModsSettings(item) {
-  if (props.disabled || submitting.value || savingMods.value || removingId.value !== null) return;
   modsItemId.value = Number(item.id);
-  requiredMods.clear();
-  allowedMods.clear();
-  itemModsFrom(item, "required_mods").forEach((mod) => requiredMods.add(String(mod).toUpperCase()));
-  itemModsFrom(item, "allowed_mods").forEach((mod) => allowedMods.add(String(mod).toUpperCase()));
-  freestyle.value = Boolean(item.freestyle);
   modsSettingsVisible.value = true;
-}
-
-function commitSelectedMods() {
-  const target = modsPickerKind.value === "required" ? requiredMods : allowedMods;
-  target.clear();
-  selectedMods.forEach((mod) => target.add(mod));
-}
-
-function openModsPicker(kind) {
-  if (kind === "allowed") removeRequiredConflictsFromAllowed();
-  modsPickerKind.value = kind;
-  selectedMods.clear();
-  const source = kind === "required" ? requiredMods : allowedMods;
-  source.forEach((mod) => selectedMods.add(mod));
-  modsVisible.value = true;
-}
-
-function closeModsPicker() {
-  commitSelectedMods();
-  modsVisible.value = false;
-}
-
-function conflictsWithRequired(mod) {
-  const acronym = String(mod.Acronym).toUpperCase();
-  if (requiredMods.has(acronym)) return true;
-  return [...requiredMods].some((requiredAcronym) => {
-    const required = modByAcronym.value.get(requiredAcronym);
-    return required?.IncompatibleMods?.some((incompatible) => String(incompatible).toUpperCase() === acronym)
-      || mod.IncompatibleMods?.some((incompatible) => String(incompatible).toUpperCase() === requiredAcronym);
-  });
-}
-
-function removeRequiredConflictsFromAllowed() {
-  [...allowedMods].forEach((acronym) => {
-    const mod = modByAcronym.value.get(acronym);
-    if (mod && conflictsWithRequired(mod)) allowedMods.delete(acronym);
-  });
-}
-
-function categoryAcronyms(category) {
-  return category.mods.map((mod) => String(mod.Acronym).toUpperCase());
-}
-
-function selectCategoryMods(category) {
-  categoryAcronyms(category).forEach((acronym) => selectedMods.add(acronym));
-}
-
-function categoryModsSelected(category) {
-  const acronyms = categoryAcronyms(category);
-  return acronyms.length > 0 && acronyms.every((acronym) => selectedMods.has(acronym));
-}
-
-function toggleCategoryMods(category) {
-  const acronyms = categoryAcronyms(category);
-  if (categoryModsSelected(category)) acronyms.forEach((acronym) => selectedMods.delete(acronym));
-  else acronyms.forEach((acronym) => selectedMods.add(acronym));
-}
-
-function selectAllPickerMods() {
-  pickerCategories.value.forEach((category) => selectCategoryMods(category));
-}
-
-function deselectAllPickerMods() {
-  selectedMods.clear();
 }
 
 function handleEscape(event) {
   if (event.code !== "Escape" || event.isComposing) return;
-  if (modsVisible.value) {
-    event.preventDefault();
-    event.stopImmediatePropagation();
-    closeModsPicker();
-    return;
-  }
   if (modsSettingsVisible.value) {
     event.preventDefault();
     event.stopImmediatePropagation();
-    if (!savingMods.value) modsSettingsVisible.value = false;
+    modsSettingsVisible.value = false;
     return;
   }
   if (visible.value) {
@@ -317,100 +167,6 @@ function handleEscape(event) {
   }
 }
 
-function playlistModPayload(mods) {
-  return [...mods].map((acronym) => ({ acronym }));
-}
-
-function saveModSettings() {
-  if (savingMods.value || !modsItem.value || !Number.isInteger(props.roomId) || props.roomId <= 0) return;
-  commitSelectedMods();
-  removeRequiredConflictsFromAllowed();
-  const payload = {
-    required_mods: playlistModPayload(requiredMods),
-    allowed_mods: freestyle.value ? [] : playlistModPayload(allowedMods),
-    freestyle: freestyle.value,
-  };
-  const isCurrent = Number(modsItem.value.id) === Number(props.currentItemId);
-  savingMods.value = isCurrent
-    ? editLazerCurrentPlaylistItem(props.roomId, payload)
-    : editLazerPlaylistItem(props.roomId, Number(modsItem.value.id), payload);
-  if (!savingMods.value) {
-    toast.add({ severity: "error", summary: "Save failed", detail: "The server connection is not available.", life: 4000 });
-  }
-}
-
-function modIsBlocked(mod) {
-  if (modsPickerKind.value === "allowed") return false;
-  const acronym = String(mod.Acronym).toUpperCase();
-  if (selectedMods.has(acronym)) return false;
-  return [...selectedMods].some((selectedAcronym) => {
-    const selected = modByAcronym.value.get(selectedAcronym);
-    return selected?.IncompatibleMods?.some((incompatible) => String(incompatible).toUpperCase() === acronym)
-      || mod.IncompatibleMods?.some((incompatible) => String(incompatible).toUpperCase() === selectedAcronym);
-  });
-}
-
-function toggleMod(mod) {
-  const acronym = String(mod.Acronym).toUpperCase();
-  if (selectedMods.has(acronym)) {
-    selectedMods.delete(acronym);
-    return;
-  }
-
-  if (modsPickerKind.value === "allowed") {
-    selectedMods.add(acronym);
-    return;
-  }
-
-  for (const selectedAcronym of [...selectedMods]) {
-    const selected = modByAcronym.value.get(selectedAcronym);
-    const conflicts = selected?.IncompatibleMods || [];
-    const isConflicting = conflicts.some((incompatible) => String(incompatible).toUpperCase() === acronym)
-      || (mod.IncompatibleMods || []).some((incompatible) => String(incompatible).toUpperCase() === selectedAcronym);
-    if (isConflicting) selectedMods.delete(selectedAcronym);
-  }
-  selectedMods.add(acronym);
-}
-
-function modIconRaw(category, mod) {
-  const slug = String(mod.Name || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-  return modIconSources[`../../assets/mods/${category.folder}/${slug}.svg`] || "";
-}
-
-function modIconSvg(category, mod, isSelected = false) {
-  const raw = modIconRaw(category, mod);
-  if (!raw) return "";
-  const [light, dark] = categoryColors[category.tone];
-  const hex = hexBody.replace(/fill="white"/g, `fill="${isSelected ? dark : light}"`);
-  const glyph = svgBody(raw).replace(/(fill|stroke)="white"/g, `$1="${isSelected ? light : dark}"`);
-  return `<svg viewBox="10 7 100 70" fill="none" aria-hidden="true"><g transform="translate(10 7)">${hex}</g><g transform="translate(60 42) scale(${GLYPH_SCALE}) translate(-60 -42)">${glyph}</g></svg>`;
-}
-
-function conflictingMods(mod) {
-  return (Array.isArray(mod.IncompatibleMods) ? mod.IncompatibleMods : [])
-    .map((acronym) => modByAcronym.value.get(String(acronym).toUpperCase()))
-    .filter((conflict) => conflict && conflict.ValidForMultiplayer === true && modCategories.value.some((category) => category.mods.some((visibleMod) => String(visibleMod.Acronym).toUpperCase() === String(conflict.Acronym).toUpperCase())));
-}
-
-function modTooltip(mod) {
-  if (modsPickerKind.value === "allowed") return "";
-  const conflicts = conflictingMods(mod);
-  const description = String(mod.Description || "");
-  if (!description && !conflicts.length) return "";
-  const conflictMarkup = conflicts.map((conflict) => {
-    const category = categoryDefinitions.find((definition) => definition.type === conflict.Type);
-    const svg = category ? modIconSvg(category, conflict) : "";
-    return svg ? `<span class="app-tooltip__conflict-icon" role="img" aria-label="${escapeHtml(conflict.Name)}">${svg}</span>` : "";
-  }).filter(Boolean).join("");
-  return {
-    html: `<strong>${escapeHtml(mod.Name)}</strong>${description ? `<span>${escapeHtml(description)}</span>` : ""}${conflictMarkup ? `<small>Conflicts with:</small><div class="app-tooltip__conflicts">${conflictMarkup}</div>` : ""}`,
-  };
-}
-
-function modStyle(category) {
-  const [selected, base] = categoryColors[category.tone];
-  return { "--mod-selected": selected, "--mod-base": base, "--category-color": selected };
-}
 
 function remove(item) {
   if (props.disabled || item?.was_played || orderedItems.value.length <= 1 || removingId.value !== null || !Number.isInteger(props.roomId)) return;
@@ -419,15 +175,6 @@ function remove(item) {
 }
 
 watch(lastEvent, (event) => {
-  if (savingMods.value && ["lazer_edit_current_playlist_item", "lazer_edit_playlist_item"].includes(event?.received || event?.request)) {
-    savingMods.value = false;
-    if (event.type === "ack") {
-      modsSettingsVisible.value = false;
-      modsVisible.value = false;
-      toast.add({ severity: "success", summary: "Mods updated", detail: "Playlist mods were updated successfully.", life: 3500 });
-    }
-    return;
-  }
   if (["lazer_add_playlist_item", "lazer_edit_current_playlist_item", "lazer_edit_playlist_item"].includes(event?.received || event?.request)) {
     if (!submitting.value) return;
     submitting.value = false;
@@ -505,60 +252,7 @@ onBeforeUnmount(() => window.removeEventListener("keydown", handleEscape, true))
     </div>
   </Dialog>
 
-  <Dialog v-model:visible="modsSettingsVisible" modal :close-on-escape="false" dismissableMask class="playlist-dialog playlist-mods-settings-dialog" header="Configure mods" :style="{ width: '34rem' }" :pt="{ mask: { class: 'app-dialog-mask' } }" :closable="!savingMods" :dismissable-mask="!savingMods">
-    <div class="playlist-mods-settings-dialog__rows">
-      <div class="playlist-mods-settings-dialog__row">
-        <div>
-          <strong>Required mods</strong>
-          <p>Mods that are required for everyone playing this map.</p>
-        </div>
-        <Button label="Configure" text :disabled="savingMods" @click="openModsPicker('required')" />
-      </div>
-      <div class="playlist-mods-settings-dialog__row" :class="{ 'playlist-mods-settings-dialog__row--disabled': freestyle }">
-        <div>
-          <strong>Allowed mods</strong>
-          <p>Free mods that players may add to this map.</p>
-        </div>
-        <Button label="Configure" text :disabled="savingMods || freestyle" @click="openModsPicker('allowed')" />
-      </div>
-      <div class="playlist-mods-settings-dialog__row">
-        <div>
-          <strong>Freestyle</strong>
-          <p>Allow players to choose their own mods for the map.</p>
-        </div>
-        <ToggleSwitch v-model="freestyle" class="app-solid-switch" :disabled="savingMods" />
-      </div>
-    </div>
-    <div class="playlist-mods-settings-dialog__actions">
-      <Button label="Cancel" text :disabled="savingMods" @click="modsSettingsVisible = false" />
-      <Button label="Save" :loading="savingMods" :disabled="savingMods" @click="saveModSettings" />
-    </div>
-  </Dialog>
-
-  <Dialog v-model:visible="modsVisible" modal :close-on-escape="false" dismissableMask class="playlist-dialog playlist-mods-dialog" :header="modsPickerKind === 'required' ? 'Required mods' : 'Allowed mods'" :style="modsDialogStyle" :pt="{ mask: { class: 'app-dialog-mask' } }" @hide="closeModsPicker">
-    <div class="playlist-mods-dialog__categories" :style="modsCategoriesStyle">
-      <section v-for="category in pickerCategories" :key="category.title" class="playlist-mods-dialog__category" :class="`playlist-mods-dialog__category--${category.tone}`" :style="modStyle(category)">
-        <h3 class="playlist-mods-dialog__category-title"><span class="playlist-mods-dialog__category-dot" aria-hidden="true"></span>{{ category.title }}</h3>
-        <Button v-if="modsPickerKind === 'allowed'" :label="categoryModsSelected(category) ? 'Deselect all' : 'Select all'" text class="playlist-mods-dialog__category-select-all" :disabled="savingMods" @click="toggleCategoryMods(category)" />
-        <div class="playlist-mods-dialog__category-list">
-          <button v-for="mod in category.mods" :key="mod.Acronym" v-tooltip.top="modTooltip(mod)" type="button" class="playlist-mods-dialog__mod" :class="{ 'playlist-mods-dialog__mod--selected': selectedMods.has(mod.Acronym), 'playlist-mods-dialog__mod--blocked': modIsBlocked(mod) }" @click="toggleMod(mod)">
-            <span class="playlist-mods-dialog__mod-icon" v-html="modIconSvg(category, mod, selectedMods.has(mod.Acronym))"></span>
-            <span class="playlist-mods-dialog__mod-copy">
-              <span class="playlist-mods-dialog__mod-name">{{ mod.Name }}</span>
-              <span v-if="mod.Description" class="playlist-mods-dialog__mod-description">{{ mod.Description }}</span>
-            </span>
-          </button>
-        </div>
-      </section>
-    </div>
-    <div class="playlist-mods-dialog__bulk-actions">
-      <Button v-if="modsPickerKind === 'required'" label="Deselect all" text @click="deselectAllPickerMods" />
-      <template v-else>
-        <Button label="Select all" text @click="selectAllPickerMods" />
-        <Button label="Deselect all" text @click="deselectAllPickerMods" />
-      </template>
-    </div>
-  </Dialog>
+  <PlaylistModsModal v-model:visible="modsSettingsVisible" :room-id="roomId" :item="modsItem" :current-item-id="currentItemId" :disabled="disabled || submitting || removingId !== null" />
 </template>
 
 <style scoped>

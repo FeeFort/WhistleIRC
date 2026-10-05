@@ -4,24 +4,25 @@ import Button from "primevue/button";
 import { useToast } from "primevue/usetoast";
 import { Ban, ChevronDown, Crosshair, ShieldCheck, Settings } from "@lucide/vue";
 import { sortMappoolSlots, useMappool } from "../../composables/useMappool";
+import MappoolsModal from "./MappoolsModal.vue";
 import { useServerConnection } from "../../composables/useServerConnection";
-import MappoolsModal from "../MappoolsModal.vue";
 
 const props = defineProps({
   disabled: { type: Boolean, default: false },
   lobbyId: { type: String, default: "" },
+  roomId: { type: Number, default: null },
   qualificationMode: { type: Boolean, default: false },
 });
 const emit = defineEmits(["send-command", "pick-map"]);
 const toast = useToast();
+const { editLazerCurrentPlaylistItem } = useServerConnection();
 const mappoolsVisible = ref(false);
 const poolMenuOpen = ref(false);
 const poolSearch = ref("");
 const poolTrigger = ref(null);
 const poolMenu = ref(null);
 const poolMenuStyle = ref({});
-const { mappools, getActivePool, setActivePool, getMapState, setMapState } = useMappool();
-const { setActiveWinCondition } = useServerConnection();
+const { mappools, getActivePool, setActivePool, getMapState, setMapState } = useMappool("lazer");
 const lobbyKey = computed(() => props.lobbyId || "");
 const activePool = computed(() => getActivePool(lobbyKey.value));
 const filteredMappools = computed(() => {
@@ -42,11 +43,6 @@ const groups = computed(() => {
 
   return [...grouped.entries()].map(([name, maps]) => ({ name, maps }));
 });
-
-function send(command) {
-  if (props.disabled) return;
-  emit("send-command", command);
-}
 
 function mapState(slot) {
   return getMapState(lobbyKey.value, slot.slotId);
@@ -72,14 +68,28 @@ function runAction(slot, action) {
     return;
   }
 
-  const commands = [
-    `!mp map ${slot.beatmapId} ${rulesetNumber(activePool.value?.ruleset)}`,
-    slot.mods.length ? `!mp mods ${slot.mods.join(" ")}` : "!mp mods",
-    ...slot.commands,
-    ...(activePool.value?.globalCommands || []),
-  ];
-  commands.forEach(send);
-  setActiveWinCondition(props.lobbyId, slot.beatmapId, slot.winCondition?.source || null);
+  const toMods = (mods) => (Array.isArray(mods) ? mods : [])
+    .map((mod) => (typeof mod === "string" ? mod : mod?.acronym))
+    .filter(Boolean)
+    .map((acronym) => ({ acronym: String(acronym).toUpperCase() }));
+  const requiredMods = toMods(slot.requiredMods || slot.required_mods);
+  const allowedMods = toMods(slot.allowedMods || slot.allowed_mods);
+  const payload = {
+    beatmap_id: Number(slot.beatmapId),
+    ruleset_id: rulesetNumber(activePool.value?.ruleset),
+    required_mods: requiredMods,
+    allowed_mods: allowedMods,
+    freestyle: slot.freestyle === true,
+  };
+  const roomId = Number(props.roomId);
+  if (!Number.isInteger(roomId) || roomId <= 0) {
+    toast.add({ severity: "error", summary: "Pick failed", detail: "The Lazer room is not available.", life: 3500 });
+    return;
+  }
+  if (!editLazerCurrentPlaylistItem(roomId, payload)) {
+    toast.add({ severity: "error", summary: "Pick failed", detail: "The server connection is not available.", life: 3500 });
+    return;
+  }
   setMapState(lobbyKey.value, slot.slotId, { picked: true });
   emit("pick-map", { ...slot, pickedBy: current.team || null });
   toast.add({

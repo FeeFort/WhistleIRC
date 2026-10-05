@@ -173,6 +173,7 @@ const loginToastGroup = "irc-login";
 const launchedAfterUpdate = new URLSearchParams(window.location.search).has("updated");
 const { activePreset } = useLobbyMessages();
 const { getActivePool, getMapState, setMapState, getQualificationMode, hasQualificationMode, setQualificationMode } = useMappool();
+const { getActivePool: getLazerActivePool } = useMappool("lazer");
 const { soundEnabled, toastEnabled, ignoreBanchoBot, sound, soundTrigger, toastTrigger } = useNotifications();
 const { showNowPlaying, showProgressBar, showProgressTimeLabel } = useNowPlayingSettings();
 const nowPlayingByLobby = reactive({});
@@ -3132,9 +3133,45 @@ async function loadLazerMatchResult(room, playlistItemId) {
       teamScores[team] += Number(score.total_score) || 0;
     }
 
-    const redScore = teamScores.red;
-    const blueScore = teamScores.blue;
-    const winnerTeam = redScore === blueScore ? null : redScore > blueScore ? "red" : "blue";
+    const teamPlayers = { red: [], blue: [] };
+    for (const score of scores) {
+      const player = playersById.get(Number(score.user_id));
+      const team = player?.team;
+      if (team !== "red" && team !== "blue") continue;
+      teamPlayers[team].push({
+        userId: Number(score.user_id),
+        username: score.user?.username || player?.username || "",
+        team,
+        score: Number(score.total_score) || 0,
+        accuracy: Number(score.accuracy) || 0,
+        combo: Number(score.max_combo) || 0,
+        misses: Number(score.statistics?.miss) || 0,
+        mods: Array.isArray(score.mods) ? score.mods.map((mod) => String(mod.acronym || mod)).filter(Boolean) : [],
+      });
+    }
+    const average = (values) => values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 0;
+    const makeTeam = (team) => ({
+      score: team.reduce((sum, player) => sum + player.score, 0),
+      accuracy: average(team.map((player) => player.accuracy)),
+      combo: average(team.map((player) => player.combo)),
+      misses: team.reduce((sum, player) => sum + player.misses, 0),
+      players: team,
+    });
+    const resultRoom = { teamRed: makeTeam(teamPlayers.red), teamBlue: makeTeam(teamPlayers.blue) };
+    const baseRedScore = resultRoom.teamRed.score;
+    const baseBlueScore = resultRoom.teamBlue.score;
+    let redScore = baseRedScore;
+    let blueScore = baseBlueScore;
+    let winnerTeam = redScore === blueScore ? null : redScore > blueScore ? "red" : "blue";
+    const pool = getLazerActivePool(lazerChatId(roomId));
+    const completedBeatmapId = Number(room?.playlistHistory?.find((item) => Number(item.id) === itemId)?.beatmap_id);
+    const condition = pool?.slots?.find((slot) => Number(slot.beatmapId) === completedBeatmapId)?.winCondition;
+    const calculated = await evaluateLazerWinCondition(condition?.source, resultRoom);
+    if (calculated?.result) {
+      redScore = calculated.result.red;
+      blueScore = calculated.result.blue;
+      winnerTeam = calculated.winner === "tie" ? null : calculated.winner;
+    }
     const chatId = lazerChatId(roomId);
     const state = lazerLobbyStates[chatId] || (lazerLobbyStates[chatId] = {});
     const previousRedScore = Number(state.teamAScore) || 0;
@@ -3153,6 +3190,29 @@ async function loadLazerMatchResult(room, playlistItemId) {
     if (winnerTeam === "blue" && (!winningScore || previousBlueScore < winningScore)) state.teamBScore = previousBlueScore + 1;
   } catch (error) {
     toast.add({ severity: "error", summary: "Result loading failed", detail: formatLazerWsError(error?.message, "Unable to load the map result."), life: 5000 });
+  }
+}
+
+async function evaluateLazerWinCondition(source, room) {
+  if (!String(source || "").trim()) return null;
+  let winner = null;
+  let result = null;
+  const systemMessages = [];
+  const calculateWinner = (scores, options = {}) => {
+    const red = Number(scores?.red);
+    const blue = Number(scores?.blue);
+    if (!Number.isFinite(red) || !Number.isFinite(blue)) throw new Error("calculateWinner: red/blue scores must be numbers");
+    winner = red === blue ? "tie" : (options.reverse ? red < blue : red > blue) ? "red" : "blue";
+    result = { red, blue };
+    return winner;
+  };
+  try {
+    const execute = new Function("room", "system", "calculateWinner", `return (async () => { ${source} })();`);
+    await execute(room, { sendMessage: (text) => systemMessages.push(String(text)) }, calculateWinner);
+    return { winner, systemMessages, result };
+  } catch (error) {
+    toast.add({ severity: "error", summary: "Win condition failed", detail: error?.message || "Unable to evaluate the win condition.", life: 5000 });
+    return null;
   }
 }
 
@@ -3984,6 +4044,7 @@ function handleLazerSendResult(result) {
           <LazerMappoolCard
             :disabled="Boolean(activeLazerRoom?.closed)"
             :lobby-id="activeChat"
+            :room-id="activeLazerRoom?.room_id"
             :qualification-mode="activeLazerQualificationMode"
             @send-command="handleCommand"
           />

@@ -5,22 +5,25 @@ import InputText from "primevue/inputtext";
 import Button from "primevue/button";
 import SelectButton from "primevue/selectbutton";
 import ToggleSwitch from "primevue/toggleswitch";
-import { Plus, Pencil, Trash2, Download, Upload, ChevronDown, ChevronRight, Settings, Check, AlertTriangle } from "@lucide/vue";
-import TagInput from "./TagInput.vue";
-import WinConditionEditor from "./WinConditionEditor.vue";
-import BulkBeatmapImportDialog from "./BulkBeatmapImportDialog.vue";
-import { escapeRegExp } from "../composables/useMessageHighlighting";
-import { beatmapCoverBackground } from "../composables/useBeatmapCover";
-import { DEFAULT_WIN_CONDITION, WIN_CONDITION_TEMPLATES, defaultModsForCategory, serializeMappool, useMappool, winConditionSource } from "../composables/useMappool";
-import { useServerConnection } from "../composables/useServerConnection";
+import { Plus, Pencil, Trash2, Download, Upload, ChevronDown, ChevronRight, Settings, Check, AlertTriangle, SlidersHorizontal } from "@lucide/vue";
+import WinConditionEditor from "../WinConditionEditor.vue";
+import PlaylistModsModal from "./PlaylistModsModal.vue";
+import BulkBeatmapImportDialog from "../BulkBeatmapImportDialog.vue";
+import { escapeRegExp } from "../../composables/useMessageHighlighting";
+import { beatmapCoverBackground } from "../../composables/useBeatmapCover";
+import { LAZER_DEFAULT_WIN_CONDITION, LAZER_WIN_CONDITION_TEMPLATES, defaultLazerModsForCategory, defaultModsForCategory, serializeLazerMappool, useMappool, lazerWinConditionSource } from "../../composables/useMappool";
+import { useServerConnection } from "../../composables/useServerConnection";
 const props = defineProps({ visible: Boolean });
 const emit = defineEmits(["update:visible"]);
-const { mappools, addMappool, updateMappool, deleteMappool } = useMappool();
-const { lastEvent, testWinCondition, requestApi } = useServerConnection();
+const { mappools, addMappool, updateMappool, deleteMappool } = useMappool("lazer");
+const { requestApi } = useServerConnection();
 const editing = ref(null);
 const poolEditVisible = ref(false);
 const editingSlot = ref(null);
 const slotEditVisible = ref(false);
+const slotModsVisible = ref(false);
+const slotModsTarget = ref(null);
+const slotModsRuleset = ref(0);
 const winVisible = ref(false);
 const winTemplateMenuOpen = ref(false);
 const expanded = ref(new Set());
@@ -225,15 +228,15 @@ function multipliersFromRows(rows) {
 }
 function newPool() {
   const category = "Untitled category";
+  const defaultMods = defaultLazerModsForCategory(category);
   openPoolEditor({
     id: "",
     name: "",
     stage: "",
     ruleset: "osu",
-    globalCommands: [],
     freeModMultipliers: [],
     categories: [category],
-    slots: [{ slotId: `${category}1`, category, beatmapId: 0, mods: defaultModsForCategory(category), commands: [] }],
+    slots: [{ slotId: `${category}1`, category, beatmapId: 0, mods: [...defaultMods.requiredMods], ...defaultMods }],
   });
 }
 function closePoolEditor() {
@@ -281,7 +284,7 @@ function savePool() {
               type: "script",
               template: "freemod",
               reverse: slot.winCondition?.reverse === true,
-              source: winConditionSource("freemod", slot.winCondition?.reverse === true, freeModMultipliers),
+              source: lazerWinConditionSource("freemod", slot.winCondition?.reverse === true, freeModMultipliers),
             },
           }
         : slot,
@@ -306,9 +309,36 @@ function editSlot(pool, slot) {
     winTemplate: slot.freeMod || inferredFreeMod ? "freemod" : condition?.template || (condition?.source ? "custom" : "score"),
     winReverse: condition?.reverse === true,
     freeMod: slot.freeMod === true || inferredFreeMod,
-    slot: { ...slot, mods: [...slot.mods], commands: [...slot.commands] },
+    slot: { ...slot, mods: [...slot.mods] },
   };
   slotEditVisible.value = true;
+}
+function openSlotMods(pool, slot) {
+  // Older Lazer mappools only stored the legacy `mods` array. Infer the new
+  // configuration once so the picker reflects what is already on the slot.
+  if (!(Array.isArray(slot.requiredMods) && slot.requiredMods.length) && !(Array.isArray(slot.allowedMods) && slot.allowedMods.length)) {
+    const defaults = defaultLazerModsForCategory(slot.category);
+    const legacyMods = new Set((slot.mods || []).map((mod) => String(mod).toUpperCase()));
+    const requiredMods = defaults.requiredMods.filter((mod) => legacyMods.has(mod));
+    const allowedMods = defaults.allowedMods.filter((mod) => legacyMods.has(mod));
+    if (requiredMods.length || allowedMods.length) {
+      slot.requiredMods = requiredMods;
+      slot.allowedMods = allowedMods;
+    }
+  }
+  slotModsTarget.value = slot;
+  slotModsRuleset.value = ({ osu: 0, taiko: 1, fruits: 2, mania: 3 }[pool.ruleset] ?? 0);
+  slotModsVisible.value = true;
+}
+function applySlotMods(value) {
+  if (!slotModsTarget.value) return;
+  slotModsTarget.value.requiredMods = Array.isArray(value.required_mods) ? value.required_mods.map((mod) => mod.acronym).filter(Boolean) : [];
+  slotModsTarget.value.allowedMods = Array.isArray(value.allowed_mods) ? value.allowed_mods.map((mod) => mod.acronym).filter(Boolean) : [];
+  slotModsTarget.value.freestyle = value.freestyle === true;
+  slotModsTarget.value.mods = [...slotModsTarget.value.requiredMods];
+  // Keep the local mappool state in sync immediately; this modal is local-only.
+  const pool = mappools.value.find((item) => item.slots.some((itemSlot) => itemSlot.slotId === slotModsTarget.value.slotId));
+  if (pool) updateMappool(pool.id, { slots: [...pool.slots] });
 }
 function selectWinTemplate(template) {
   const draft = editingSlot.value;
@@ -316,8 +346,8 @@ function selectWinTemplate(template) {
   draft.freeMod = template === "freemod";
   draft.slot.freeMod = draft.freeMod;
   winTemplateMenuOpen.value = false;
-  if (template === "freemod") draft.slot.winCondition = { type: "script", template, reverse: draft.winReverse, source: winConditionSource(template, draft.winReverse, draft.pool.freeModMultipliers) };
-  else if (template !== "custom") draft.slot.winCondition = { type: "script", template, reverse: draft.winReverse, source: winConditionSource(template, draft.winReverse) };
+  if (template === "freemod") draft.slot.winCondition = { type: "script", template, reverse: draft.winReverse, source: lazerWinConditionSource(template, draft.winReverse, draft.pool.freeModMultipliers) };
+  else if (template !== "custom") draft.slot.winCondition = { type: "script", template, reverse: draft.winReverse, source: lazerWinConditionSource(template, draft.winReverse) };
 }
 function setWinReverse(reverse) {
   const draft = editingSlot.value;
@@ -327,7 +357,7 @@ function setWinReverse(reverse) {
       type: "script",
       template: draft.winTemplate,
       reverse,
-      source: winConditionSource(draft.winTemplate, reverse, draft.winTemplate === "freemod" ? draft.pool.freeModMultipliers : {}),
+      source: lazerWinConditionSource(draft.winTemplate, reverse, draft.winTemplate === "freemod" ? draft.pool.freeModMultipliers : {}),
     };
 }
 function configureWinCondition() {
@@ -337,9 +367,9 @@ function saveSlot() {
   const { pool, slot, winTemplate, winReverse } = editingSlot.value;
   slot.freeMod = editingSlot.value.freeMod === true;
   slot.freemodResolved = true;
-  if (slot.freeMod) slot.winCondition = { type: "script", template: "freemod", reverse: winReverse, source: winConditionSource("freemod", winReverse, pool.freeModMultipliers) };
+  if (slot.freeMod) slot.winCondition = { type: "script", template: "freemod", reverse: winReverse, source: lazerWinConditionSource("freemod", winReverse, pool.freeModMultipliers) };
   else if (winTemplate === "custom") slot.winCondition = slot.winCondition?.source ? { type: "script", template: "custom", reverse: winReverse, source: slot.winCondition.source } : undefined;
-  else slot.winCondition = { type: "script", template: winTemplate, reverse: winReverse, source: winConditionSource(winTemplate, winReverse) };
+  else slot.winCondition = { type: "script", template: winTemplate, reverse: winReverse, source: lazerWinConditionSource(winTemplate, winReverse) };
   const slots = pool.slots.map((item) => (item.slotId === slot.slotId ? slot : item));
   updateMappool(pool.id, { slots });
   closeSlotEditor();
@@ -454,9 +484,10 @@ function addCategory(pool) {
   let name = "Untitled category";
   let suffix = 2;
   while (existing.has(name)) name = `Untitled category ${suffix++}`;
+  const defaultMods = defaultLazerModsForCategory(name);
   updateMappool(pool.id, {
     categories: [...(pool.categories || []), name],
-    slots: [...pool.slots, { slotId: `${name}1`, category: name, beatmapId: 0, mods: defaultModsForCategory(name), commands: [] }],
+    slots: [...pool.slots, { slotId: `${name}1`, category: name, beatmapId: 0, mods: [...defaultMods.requiredMods], ...defaultMods }],
   });
   const next = new Set(expandedCategories.value);
   next.add(categoryKey(pool, name));
@@ -469,7 +500,8 @@ function addSlot(pool, category) {
   const used = new Set(pool.slots.map((slot) => slot.slotId));
   let number = 1;
   while (used.has(`${category}${number}`)) number += 1;
-  updateMappool(pool.id, { slots: [...pool.slots, { slotId: `${category}${number}`, category, beatmapId: 0, mods: defaultModsForCategory(category), commands: [] }] });
+  const defaultMods = defaultLazerModsForCategory(category);
+  updateMappool(pool.id, { slots: [...pool.slots, { slotId: `${category}${number}`, category, beatmapId: 0, mods: [...defaultMods.requiredMods], ...defaultMods }] });
 }
 function previewKey(pool, slot) {
   return `${pool.id}:${slot.slotId}`;
@@ -552,7 +584,7 @@ async function loadSlotPreview(pool, slot, beatmapId, version) {
   }
 }
 function exportPool(pool) {
-  const exportedPool = serializeMappool(pool);
+  const exportedPool = serializeLazerMappool(pool);
   const blob = new Blob([JSON.stringify(exportedPool, null, 2)], { type: "application/json" });
   const link = document.createElement("a");
   link.href = URL.createObjectURL(blob);
@@ -571,7 +603,7 @@ function importBulkMaps({ maps }) {
   if (!pool || !maps?.length) return;
 
   const categories = [...(pool.categories || [])];
-  const slots = pool.slots.map((slot) => ({ ...slot, mods: [...(slot.mods || [])], commands: [...(slot.commands || [])] }));
+  const slots = pool.slots.map((slot) => ({ ...slot, mods: [...(slot.mods || [])] }));
   const nextNumbers = new Map();
   const ensureCategory = (name) => {
     if (categories.some((category) => category.toLowerCase() === name.toLowerCase())) return categories.find((category) => category.toLowerCase() === name.toLowerCase());
@@ -597,8 +629,8 @@ function importBulkMaps({ maps }) {
     const emptySlot = slots.find((slot) => slot.category === category && Number(slot.beatmapId) <= 0);
     const value = {
       beatmapId: Number(map.id),
-      mods: defaultModsForCategory(category),
-      commands: [],
+      mods: [...defaultLazerModsForCategory(category).requiredMods],
+      ...defaultLazerModsForCategory(category),
       preview: map.preview,
     };
     if (emptySlot) Object.assign(emptySlot, value);
@@ -618,12 +650,6 @@ function importPool(event) {
     })
     .catch(() => {});
 }
-function testScript(payload) {
-  testWinCondition(editingSlot.value.slot.slotId, payload.source, payload.sampleContext);
-}
-watch(lastEvent, (event) => {
-  if (event?.type === "win_condition_test_result" && event.slotId === editingSlot.value?.slot?.slotId) editor.value?.applyTestResult(event);
-});
 watch(editing, (value) => {
   if (value) poolEditVisible.value = true;
 });
@@ -667,7 +693,7 @@ watch(editing, (value) => {
             text
             rounded
             aria-label="Edit mappool"
-            @click="editing = { ...pool, globalCommands: [...pool.globalCommands], freeModMultipliers: multiplierRows(pool.freeModMultipliers) }"
+            @click="editing = { ...pool, freeModMultipliers: multiplierRows(pool.freeModMultipliers) }"
             ><Pencil :size="15" /></Button
           ><Button v-tooltip.top="'Export mappool'" text rounded aria-label="Export mappool" @click="exportPool(pool)"><Download :size="15" /></Button
           ><Button v-tooltip.top="'Add bulk of beatmaps'" text rounded aria-label="Add bulk of beatmaps" @click="openBulkImport(pool)"><Upload :size="15" /></Button
@@ -721,7 +747,7 @@ watch(editing, (value) => {
                   <div v-for="slot in category.slots" :key="slot.slotId" class="slot">
                     <div class="slot__fields" @click.stop>
                       <label class="slot__field"><span>Beatmap ID</span><InputText v-model="slot.beatmapId" inputmode="numeric" @input="handleBeatmapInput(pool, slot)" /></label
-                      ><label class="slot__field"><span>Mods</span><TagInput v-model="slot.mods" placeholder="Add mod" split-on-space /></label>
+                      ><div class="slot__field slot__mods-field"><span>Mods</span><button type="button" class="slot__mods-configure" aria-label="Configure mods" @click.stop="openSlotMods(pool, slot)"><SlidersHorizontal :size="13" /><span>Configure</span></button></div>
                     </div>
                     <Transition name="slot-preview">
                       <div
@@ -746,7 +772,7 @@ watch(editing, (value) => {
                       </div>
                     </Transition>
                     <span class="slot__actions" @click.stop
-                      ><Button v-tooltip.top="'Edit beatmap commands and win condition'" text rounded aria-label="Edit beatmap commands and win condition" @click="editSlot(pool, slot)"
+                      ><Button v-tooltip.top="'Edit beatmap win condition'" text rounded aria-label="Edit beatmap win condition" @click="editSlot(pool, slot)"
                         ><Pencil :size="15" /></Button
                       ><Button v-tooltip.top="'Delete beatmap'" text rounded severity="danger" aria-label="Delete beatmap" @click="requestDelete(pool, { type: 'slot', slotId: slot.slotId })"
                         ><Trash2 :size="15" /></Button
@@ -798,7 +824,6 @@ watch(editing, (value) => {
         >
       </div>
     </div>
-    <div class="mappools-dialog__field"><span>Global commands</span><TagInput v-model="editing.globalCommands" /></div>
     <div class="mappools-dialog__field">
       <span>FreeMod multipliers</span>
       <div class="mappools-multipliers">
@@ -827,19 +852,19 @@ watch(editing, (value) => {
     :style="{ width: '34rem' }"
     :pt="{ mask: { class: 'app-dialog-mask' } }"
     @update:visible="(value) => !value && cancelSlotEdit()"
-    ><div class="mappools-dialog__field"><span>Custom commands</span><TagInput v-model="editingSlot.slot.commands" /></div>
+  >
     <div class="mappools-dialog__win-section">
       <span class="mappools-dialog__win-label">Win condition</span>
       <div class="mappools-dialog__win-row">
         <div class="mappools-win-dropdown">
           <button ref="winTemplateTrigger" type="button" class="mappools-win-dropdown__trigger" :aria-expanded="winTemplateMenuOpen" aria-haspopup="listbox" @click="toggleWinTemplateMenu">
-            <span>{{ WIN_CONDITION_TEMPLATES.find((item) => item.value === editingSlot.winTemplate)?.label }}</span
+            <span>{{ LAZER_WIN_CONDITION_TEMPLATES.find((item) => item.value === editingSlot.winTemplate)?.label }}</span
             ><ChevronDown :size="14" /></button
           ><Teleport to="body"
             ><Transition name="mappools-dropdown"
               ><div v-if="winTemplateMenuOpen" class="mappools-win-dropdown__menu" :style="winTemplateMenuStyle" role="listbox">
                 <button
-                  v-for="option in WIN_CONDITION_TEMPLATES"
+                  v-for="option in LAZER_WIN_CONDITION_TEMPLATES"
                   :key="option.value"
                   type="button"
                   class="mappools-win-dropdown__option"
@@ -896,10 +921,10 @@ watch(editing, (value) => {
     :pt="{ mask: { class: 'app-dialog-mask' } }"
     ><WinConditionEditor
       ref="editor"
-      :model-value="editingSlot.slot.winCondition?.source || DEFAULT_WIN_CONDITION"
+      lazer-mode
+      :model-value="editingSlot.slot.winCondition?.source || LAZER_DEFAULT_WIN_CONDITION"
       :slot-id="editingSlot.slot.slotId"
       @update:model-value="(source) => (editingSlot.slot.winCondition = { ...(editingSlot.slot.winCondition || {}), type: 'script', template: 'custom', reverse: editingSlot.winReverse, source })"
-      @test="testScript"
   /></Dialog>
   <Dialog
     v-if="deleteConfirmation"
@@ -928,6 +953,14 @@ watch(editing, (value) => {
       <Button v-tooltip.top="'Confirm deletion'" label="Delete" severity="danger" @click="confirmDelete" />
     </template>
   </Dialog>
+  <PlaylistModsModal
+    v-if="slotModsTarget"
+    v-model:visible="slotModsVisible"
+    :item="slotModsTarget"
+    :ruleset-id="slotModsRuleset"
+    local-only
+    @save-mods="applySlotMods"
+  />
   <Dialog
     v-if="invalidMappoolsConfirmation"
     :visible="Boolean(invalidMappoolsConfirmation)"
@@ -1076,8 +1109,7 @@ watch(editing, (value) => {
   font-size: 0.6rem;
   font-weight: 700;
 }
-.slot__field > .p-inputtext,
-.slot__field > .tag-input {
+.slot__field > .p-inputtext {
   width: 100%;
   min-width: 0;
   height: 1.85rem;
@@ -1090,27 +1122,40 @@ watch(editing, (value) => {
   font: inherit;
   font-size: 0.68rem;
 }
-.slot__field > .p-inputtext:focus,
-.slot__field > .tag-input:focus-within {
+.slot__mods-field .slot__mods-configure {
+  display: inline-flex;
+  width: fit-content;
+  min-height: 2.1rem;
+  align-items: center;
+  gap: 0.3rem;
+  justify-content: flex-start;
+  padding: 0 0.4rem;
+  overflow: visible;
+  border: 1px solid transparent;
+  border-radius: 0.35rem;
+  background: transparent;
+  color: var(--app-muted) !important;
+  font: inherit;
+  font-size: 0.62rem;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: border-color 160ms ease, background-color 160ms ease, color 160ms ease;
+}
+.slot__mods-field .slot__mods-configure {
+  margin-top: 0.225rem;
+}
+.slot__mods-field .slot__mods-configure :deep(svg) {
+  flex: 0 0 auto;
+}
+.slot__mods-field .slot__mods-configure:hover:not(:disabled) {
+  border-color: rgba(var(--app-primary-rgb), 0.24);
+  background: rgba(var(--app-primary-rgb), 0.1);
+  color: var(--app-primary-bright) !important;
+}
+.slot__field > .p-inputtext:focus {
   border-color: var(--app-primary-bright) !important;
   box-shadow: 0 0 0 0.1rem rgba(var(--app-primary-rgb), 0.14) !important;
-}
-.slot__field > .tag-input {
-  display: flex;
-  align-items: center;
-  overflow: hidden;
-  white-space: nowrap;
-}
-.slot__field > .tag-input :deep(.tag-input__tag) {
-  margin: 0;
-  padding: 0.1rem 0.25rem;
-  font-size: 0.58rem;
-}
-.slot__field > .tag-input :deep(.tag-input input) {
-  min-width: 2rem;
-  flex-basis: 2rem;
-  padding: 0;
-  font-size: 0.62rem;
 }
 .slot__actions {
   display: flex;
@@ -1556,17 +1601,18 @@ watch(editing, (value) => {
   max-width: 45%;
 }
 .slot__field:first-child {
-  flex: 0 0 33%;
+  flex: 0 0 42%;
 }
 .slot__field:nth-child(2) {
-  flex: 0 0 65%;
+  flex: 1 1 auto;
+  min-width: 0;
 }
-.slot__field > .p-inputtext,
-.slot__field > .tag-input {
+.slot__mods-field {
+  flex: 1 1 auto !important;
+  min-width: 7.5rem;
+}
+.slot__field > .p-inputtext {
   height: 2.55rem;
-}
-.slot__field > .tag-input {
-  min-height: 2.55rem !important;
 }
 .slot__field:first-child > .p-inputtext {
   font-size: 0.78rem;
@@ -1736,36 +1782,6 @@ watch(editing, (value) => {
 .slot__field > .p-inputtext {
   padding: 0 0.4rem !important;
   line-height: calc(2.55rem - 2px);
-}
-.slot__field > .tag-input {
-  box-sizing: border-box;
-  align-items: center !important;
-  align-content: center !important;
-  flex-wrap: nowrap !important;
-  overflow-x: auto;
-  overflow-y: hidden;
-  white-space: nowrap;
-  padding: 0 0.4rem !important;
-}
-.slot__field > .tag-input :deep(.tag-input__tag) {
-  align-self: center !important;
-  flex-shrink: 0 !important;
-  margin-block: auto !important;
-  width: fit-content !important;
-}
-.slot__field > .tag-input :deep(.tag-input__tag button) {
-  flex: 0 0 1rem !important;
-  width: 1rem !important;
-  min-width: 1rem !important;
-  max-width: 1rem !important;
-  height: 1rem !important;
-  min-height: 1rem !important;
-  max-height: 1rem !important;
-}
-.slot__field > .tag-input :deep(input) {
-  align-self: center !important;
-  flex: 0 0 2rem !important;
-  margin-block: auto !important;
 }
 .mappools-dialog__win-row .mappools-win-dropdown {
   flex: 0 0 40%;

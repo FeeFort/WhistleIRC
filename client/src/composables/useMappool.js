@@ -1,7 +1,7 @@
 import { ref, watch } from "vue";
 
-const STORAGE_KEY = "whistleirc-mappool-state";
-const MAPPOOLS_KEY = "whistleirc-mappools";
+const STORAGE_KEYS = Object.freeze({ stable: "whistleirc-mappool-state", lazer: "whistleirc-lazer-mappool-state" });
+const MAPPOOLS_KEYS = Object.freeze({ stable: "whistleirc-mappools", lazer: "whistleirc-lazer-mappools" });
 const DEFAULT_WIN_CONDITION = `const room = await parseRoom();
 system.sendMessage(\`Scores: \${room.teamRed.score} - \${room.teamBlue.score}\`);
 return calculateWinner({ red: room.teamRed.score, blue: room.teamBlue.score }, { onTie: "manual" });`;
@@ -12,6 +12,15 @@ const WIN_CONDITION_TEMPLATES = Object.freeze([
   { label: "Combo", value: "combo" },
   { label: "Custom", value: "custom" },
 ]);
+const LAZER_WIN_CONDITION_TEMPLATES = Object.freeze([
+  { label: "Score", value: "score" },
+  { label: "FreeMod (Score)", value: "freemod" },
+  { label: "Accuracy", value: "accuracy" },
+  { label: "Combo", value: "combo" },
+  { label: "Custom", value: "custom" },
+]);
+const LAZER_DEFAULT_WIN_CONDITION = `system.sendMessage(\`Scores: \${room.teamRed.score} - \${room.teamBlue.score}\`);
+return calculateWinner({ red: room.teamRed.score, blue: room.teamBlue.score }, { onTie: "manual" });`;
 
 const CATEGORY_DEFAULT_MODS = Object.freeze({ HD: "HD", HR: "HR", DT: "DT", FM: "Freemod", TB: "Freemod" });
 
@@ -20,6 +29,17 @@ export function defaultModsForCategory(category) {
     .trim()
     .toUpperCase();
   return ["NF", CATEGORY_DEFAULT_MODS[normalized]].filter(Boolean);
+}
+
+export function defaultLazerModsForCategory(category) {
+  const normalized = String(category || "").trim().toUpperCase();
+  if (["HD", "HR", "DT"].includes(normalized)) {
+    return { requiredMods: [normalized], allowedMods: [] };
+  }
+  if (["FM", "TB"].includes(normalized)) {
+    return { requiredMods: [], allowedMods: ["EZ", "HR", "HD"] };
+  }
+  return { requiredMods: [], allowedMods: [] };
 }
 
 function normalizeMultipliers(value) {
@@ -57,6 +77,7 @@ function getMultiplier(mods) {
   }
   return 1;
 }
+
 function adjustedTeamScore(team) {
   let total = 0;
   for (const player of team.players) {
@@ -83,9 +104,42 @@ system.sendMessage(\`Team Red ${metric[0].toUpperCase() + metric.slice(1)} | \${
 return calculateWinner({ red: red${metric[0].toUpperCase() + metric.slice(1)}, blue: blue${metric[0].toUpperCase() + metric.slice(1)} }, { reverse: ${reverse ? "true" : "false"}, onTie: "manual" });`;
 }
 
-function readStoredState() {
+function lazerWinConditionSource(template, reverse = false, multipliers = {}) {
+  if (template === "score") {
+    return `system.sendMessage(\`Scores: \${room.teamRed.score} - \${room.teamBlue.score}\`);
+return calculateWinner({ red: room.teamRed.score, blue: room.teamBlue.score }, { reverse: ${reverse ? "true" : "false"}, onTie: "manual" });`;
+  }
+  if (template === "freemod") {
+    const multiplierTable = JSON.stringify(normalizeMultipliers(multipliers));
+    return `const multipliers = ${multiplierTable};
+function getMultiplier(mods) {
+  const playerMods = (mods || []).map((mod) => String(mod).toUpperCase());
+  const entries = Object.entries(multipliers).sort((a, b) => b[0].split("+").length - a[0].split("+").length);
+  for (const [combination, multiplier] of entries) if (combination.split("+").every((mod) => playerMods.includes(mod))) return Number(multiplier) || 1;
+  return 1;
+}
+function adjustedTeamScore(team) {
+  let total = 0;
+  for (const player of team.players) {
+    const oldScore = Number(player.score) || 0;
+    const multiplier = getMultiplier(player.mods);
+    const score = oldScore * multiplier;
+    total += score;
+    system.sendMessage(\`${"${player.username}"}: \${oldScore} × \${multiplier} = \${score}\`);
+  }
+  return total;
+}
+return calculateWinner({ red: adjustedTeamScore(room.teamRed), blue: adjustedTeamScore(room.teamBlue) }, { reverse: ${reverse ? "true" : "false"}, onTie: "manual" });`;
+  }
+  const metric = template === "accuracy" ? "accuracy" : "combo";
+  const label = metric[0].toUpperCase() + metric.slice(1);
+  return `system.sendMessage(\`${label}: \${room.teamRed.${metric}} - \${room.teamBlue.${metric}}\`);
+return calculateWinner({ red: room.teamRed.${metric}, blue: room.teamBlue.${metric} }, { reverse: ${reverse ? "true" : "false"}, onTie: "manual" });`;
+}
+
+function readStoredState(mode = "stable") {
   try {
-    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null");
+    const saved = JSON.parse(localStorage.getItem(STORAGE_KEYS[mode] || STORAGE_KEYS.stable) || "null");
     return {
       qualificationModeByLobbyId: saved?.qualificationModeByLobbyId && typeof saved.qualificationModeByLobbyId === "object" ? saved.qualificationModeByLobbyId : {},
       mapStatesByLobbyId: saved?.mapStatesByLobbyId && typeof saved.mapStatesByLobbyId === "object" ? saved.mapStatesByLobbyId : {},
@@ -96,39 +150,44 @@ function readStoredState() {
   }
 }
 
-const storedState = readStoredState();
-function readMappools() {
+const storedStates = { stable: readStoredState("stable"), lazer: readStoredState("lazer") };
+function readMappools(mode = "stable") {
   try {
-    const value = JSON.parse(localStorage.getItem(MAPPOOLS_KEY) || "[]");
+    const value = JSON.parse(localStorage.getItem(MAPPOOLS_KEYS[mode] || MAPPOOLS_KEYS.stable) || "[]");
     return Array.isArray(value) ? value.map(normalizeConfig) : [];
   } catch {
     return [];
   }
 }
-const mappools = ref(readMappools());
-const qualificationModeByLobbyId = ref(storedState.qualificationModeByLobbyId);
-const mapStatesByLobbyId = ref(storedState.mapStatesByLobbyId);
-const activePoolByLobbyId = ref(storedState.activePoolByLobbyId);
-
-watch(
-  [qualificationModeByLobbyId, mapStatesByLobbyId, activePoolByLobbyId],
-  () => {
-    localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify({
-        qualificationModeByLobbyId: qualificationModeByLobbyId.value,
-        mapStatesByLobbyId: mapStatesByLobbyId.value,
-        activePoolByLobbyId: activePoolByLobbyId.value,
-      }),
-    );
+const stores = {
+  stable: {
+    mappools: ref(readMappools("stable")),
+    qualificationModeByLobbyId: ref(storedStates.stable.qualificationModeByLobbyId),
+    mapStatesByLobbyId: ref(storedStates.stable.mapStatesByLobbyId),
+    activePoolByLobbyId: ref(storedStates.stable.activePoolByLobbyId),
   },
-  { deep: true },
-);
-watch(mappools, (value) => localStorage.setItem(MAPPOOLS_KEY, JSON.stringify(value.map(serializeMappool))), { deep: true });
-// Migrate mappools saved by the brief-lived slots/categories format on startup.
-localStorage.setItem(MAPPOOLS_KEY, JSON.stringify(mappools.value.map(serializeMappool)));
+  lazer: {
+    mappools: ref(readMappools("lazer")),
+    qualificationModeByLobbyId: ref(storedStates.lazer.qualificationModeByLobbyId),
+    mapStatesByLobbyId: ref(storedStates.lazer.mapStatesByLobbyId),
+    activePoolByLobbyId: ref(storedStates.lazer.activePoolByLobbyId),
+  },
+};
 
-export { DEFAULT_WIN_CONDITION, WIN_CONDITION_TEMPLATES, winConditionSource, serializeMappool };
+Object.entries(stores).forEach(([mode, store]) => {
+  const serializer = mode === "lazer" ? serializeLazerMappool : serializeMappool;
+  watch([store.qualificationModeByLobbyId, store.mapStatesByLobbyId, store.activePoolByLobbyId], () => {
+    localStorage.setItem(STORAGE_KEYS[mode], JSON.stringify({
+      qualificationModeByLobbyId: store.qualificationModeByLobbyId.value,
+      mapStatesByLobbyId: store.mapStatesByLobbyId.value,
+      activePoolByLobbyId: store.activePoolByLobbyId.value,
+    }));
+  }, { deep: true });
+  watch(store.mappools, (value) => localStorage.setItem(MAPPOOLS_KEYS[mode], JSON.stringify(value.map(serializer))), { deep: true });
+  localStorage.setItem(MAPPOOLS_KEYS[mode], JSON.stringify(store.mappools.value.map(serializer)));
+});
+
+export { DEFAULT_WIN_CONDITION, WIN_CONDITION_TEMPLATES, LAZER_DEFAULT_WIN_CONDITION, LAZER_WIN_CONDITION_TEMPLATES, winConditionSource, lazerWinConditionSource, serializeMappool, serializeLazerMappool };
 
 export function sortMappoolSlots(slots, categories = []) {
   const grouped = new Map();
@@ -176,6 +235,17 @@ function normalizeConfig(value) {
       const normalizedMods = Array.isArray(slot.mods) ? slot.mods.map(String).filter(Boolean) : [];
       return normalizedMods.length ? normalizedMods : defaultModsForCategory(slot.category || categoryFromSlotKey(slot.slotId));
     })(),
+    requiredMods: Array.isArray(slot.requiredMods)
+      ? slot.requiredMods.map((mod) => (typeof mod === "string" ? mod : mod?.acronym)).filter(Boolean).map(String)
+      : Array.isArray(slot.required_mods)
+        ? slot.required_mods.map((mod) => (typeof mod === "string" ? mod : mod?.acronym)).filter(Boolean).map(String)
+        : [],
+    allowedMods: Array.isArray(slot.allowedMods)
+      ? slot.allowedMods.map((mod) => (typeof mod === "string" ? mod : mod?.acronym)).filter(Boolean).map(String)
+      : Array.isArray(slot.allowed_mods)
+        ? slot.allowed_mods.map((mod) => (typeof mod === "string" ? mod : mod?.acronym)).filter(Boolean).map(String)
+        : [],
+    freestyle: slot.freestyle === true,
     preview: normalizePreview(slot.preview),
     commands: normalizeCommands(slot.commands),
     freeMod: slot.freeMod === true || slot.winCondition?.template === "freemod",
@@ -213,6 +283,9 @@ function serializeMappool(value) {
       beatmapId: slot.beatmapId,
       category: slot.category,
       mods: [...slot.mods],
+      requiredMods: [...slot.requiredMods],
+      allowedMods: [...slot.allowedMods],
+      ...(slot.freestyle ? { freestyle: true } : {}),
       ...(slot.preview ? { preview: { ...slot.preview } } : {}),
       commands: [...slot.commands],
       ...(slot.freeMod ? { freeMod: true } : {}),
@@ -220,6 +293,13 @@ function serializeMappool(value) {
       ...(slot.winCondition ? { winCondition: { ...slot.winCondition } } : {}),
     })),
   };
+}
+
+function serializeLazerMappool(value) {
+  const serialized = serializeMappool(value);
+  delete serialized.globalCommands;
+  serialized.slots = serialized.slots.map(({ commands, ...slot }) => slot);
+  return serialized;
 }
 
 function normalizePreview(value) {
@@ -236,17 +316,17 @@ function normalizePreview(value) {
   return { beatmapId: id, artist, title, diff, author, beatmapsetId: Number.isFinite(beatmapsetId) ? beatmapsetId : null, starRating: Number.isFinite(starRating) ? starRating : null, totalSeconds };
 }
 
-function addMappool(value) {
+function addMappool(store, value) {
   const poolValue = normalizeConfig(value);
-  mappools.value.push(poolValue);
+  store.mappools.value.push(poolValue);
   return poolValue;
 }
-function updateMappool(id, value) {
-  const index = mappools.value.findIndex((item) => item.id === id);
-  if (index >= 0) mappools.value[index] = normalizeConfig({ ...mappools.value[index], ...value, id });
+function updateMappool(store, id, value) {
+  const index = store.mappools.value.findIndex((item) => item.id === id);
+  if (index >= 0) store.mappools.value[index] = normalizeConfig({ ...store.mappools.value[index], ...value, id });
 }
-function deleteMappool(id) {
-  mappools.value = mappools.value.filter((item) => item.id !== id);
+function deleteMappool(store, id) {
+  store.mappools.value = store.mappools.value.filter((item) => item.id !== id);
 }
 
 function normalizeCommands(value) {
@@ -271,90 +351,92 @@ function lobbyKey(lobbyId) {
   return String(lobbyId || "");
 }
 
-function ensureLobbyMapState(lobbyId) {
+function ensureLobbyMapState(store, lobbyId) {
   const key = lobbyKey(lobbyId);
   if (!key) return null;
-  if (!mapStatesByLobbyId.value[key]) {
-    mapStatesByLobbyId.value[key] = {};
+  if (!store.mapStatesByLobbyId.value[key]) {
+    store.mapStatesByLobbyId.value[key] = {};
   }
-  return mapStatesByLobbyId.value[key];
+  return store.mapStatesByLobbyId.value[key];
 }
 
-function getMapState(lobbyId, slot) {
-  const lobbyState = mapStatesByLobbyId.value[lobbyKey(lobbyId)];
+function getMapState(store, lobbyId, slot) {
+  const lobbyState = store.mapStatesByLobbyId.value[lobbyKey(lobbyId)];
   return lobbyState?.[slot] || {};
 }
 
-function setMapState(lobbyId, slot, patch) {
-  const lobbyState = ensureLobbyMapState(lobbyId);
+function setMapState(store, lobbyId, slot, patch) {
+  const lobbyState = ensureLobbyMapState(store, lobbyId);
   if (!lobbyState || !slot) return;
   lobbyState[slot] = {
-    ...getMapState(lobbyId, slot),
+    ...getMapState(store, lobbyId, slot),
     ...patch,
   };
 }
 
-function clearLobbyMapState(lobbyId) {
+function clearLobbyMapState(store, lobbyId) {
   const key = lobbyKey(lobbyId);
-  if (!key || !mapStatesByLobbyId.value[key]) return;
-  delete mapStatesByLobbyId.value[key];
+  if (!key || !store.mapStatesByLobbyId.value[key]) return;
+  delete store.mapStatesByLobbyId.value[key];
 }
 
-function clearAllMapStates() {
-  mapStatesByLobbyId.value = {};
+function clearAllMapStates(store) {
+  store.mapStatesByLobbyId.value = {};
 }
 
-function getQualificationMode(lobbyId) {
-  return qualificationModeByLobbyId.value[lobbyKey(lobbyId)] === true;
+function getQualificationMode(store, lobbyId) {
+  return store.qualificationModeByLobbyId.value[lobbyKey(lobbyId)] === true;
 }
 
-function hasQualificationMode(lobbyId) {
-  return Object.prototype.hasOwnProperty.call(qualificationModeByLobbyId.value, lobbyKey(lobbyId));
+function hasQualificationMode(store, lobbyId) {
+  return Object.prototype.hasOwnProperty.call(store.qualificationModeByLobbyId.value, lobbyKey(lobbyId));
 }
 
-function setQualificationMode(lobbyId, value) {
-  const key = lobbyKey(lobbyId);
-  if (!key) return;
-  qualificationModeByLobbyId.value[key] = value === true;
-}
-
-function clearLobbyState(lobbyId) {
+function setQualificationMode(store, lobbyId, value) {
   const key = lobbyKey(lobbyId);
   if (!key) return;
-  delete mapStatesByLobbyId.value[key];
-  delete activePoolByLobbyId.value[key];
-  delete qualificationModeByLobbyId.value[key];
+  store.qualificationModeByLobbyId.value[key] = value === true;
 }
 
-function getActivePool(lobbyId) {
-  const id = activePoolByLobbyId.value[lobbyKey(lobbyId)];
-  return mappools.value.find((item) => item.id === id) || null;
-}
-
-function setActivePool(lobbyId, poolId) {
+function clearLobbyState(store, lobbyId) {
   const key = lobbyKey(lobbyId);
   if (!key) return;
-  if (poolId) activePoolByLobbyId.value[key] = String(poolId);
-  else delete activePoolByLobbyId.value[key];
+  delete store.mapStatesByLobbyId.value[key];
+  delete store.activePoolByLobbyId.value[key];
+  delete store.qualificationModeByLobbyId.value[key];
 }
 
-export function useMappool() {
+function getActivePool(store, lobbyId) {
+  const id = store.activePoolByLobbyId.value[lobbyKey(lobbyId)];
+  return store.mappools.value.find((item) => item.id === id) || null;
+}
+
+function setActivePool(store, lobbyId, poolId) {
+  const key = lobbyKey(lobbyId);
+  if (!key) return;
+  if (poolId) store.activePoolByLobbyId.value[key] = String(poolId);
+  else delete store.activePoolByLobbyId.value[key];
+}
+
+export function useMappool(mode = "stable") {
+  const store = stores[mode] || stores.stable;
+  const { mappools, qualificationModeByLobbyId, mapStatesByLobbyId, activePoolByLobbyId } = store;
   return {
-    getQualificationMode,
-    hasQualificationMode,
-    setQualificationMode,
-    clearLobbyState,
-    getMapState,
-    setMapState,
-    clearLobbyMapState,
-    clearAllMapStates,
+    getQualificationMode: (lobbyId) => getQualificationMode(store, lobbyId),
+    hasQualificationMode: (lobbyId) => hasQualificationMode(store, lobbyId),
+    setQualificationMode: (lobbyId, value) => setQualificationMode(store, lobbyId, value),
+    clearLobbyState: (lobbyId) => clearLobbyState(store, lobbyId),
+    getMapState: (lobbyId, slot) => getMapState(store, lobbyId, slot),
+    setMapState: (lobbyId, slot, patch) => setMapState(store, lobbyId, slot, patch),
+    clearLobbyMapState: (lobbyId) => clearLobbyMapState(store, lobbyId),
+    clearAllMapStates: () => clearAllMapStates(store),
     mappools,
-    addMappool,
-    updateMappool,
-    deleteMappool,
+    addMappool: (value) => addMappool(store, value),
+    updateMappool: (id, value) => updateMappool(store, id, value),
+    deleteMappool: (id) => deleteMappool(store, id),
     WIN_CONDITION_TEMPLATES,
     winConditionSource,
-    getActivePool,
-    setActivePool,
+    getActivePool: (lobbyId) => getActivePool(store, lobbyId),
+    setActivePool: (lobbyId, poolId) => setActivePool(store, lobbyId, poolId),
   };
 }
