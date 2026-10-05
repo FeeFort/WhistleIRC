@@ -46,6 +46,7 @@ import { useNickColor } from "./composables/useNickColor";
 import { clearRememberedCredentials, loadRememberedCredentials, loadOsuAuthData, saveRememberedCredentials, saveOsuAuthData } from "./composables/useRememberedCredentials";
 import { getOsuRedirectUri, readOsuAuthorizationCallback, startOsuAuthorization } from "./composables/useOsuOAuth";
 import { useServerConnection } from "./composables/useServerConnection";
+import { clearLazerRoomResourceCache, getLazerCachedProfile, loadLazerCachedBeatmap, loadLazerCachedProfile } from "./composables/useLazerRoomResourceCache";
 import { formatLobbyTemplate, useLobbyMessages } from "./composables/useLobbyMessages";
 import { sortMappoolSlots, useMappool } from "./composables/useMappool";
 import { advanceMappoolChatContext, createMappoolChatContext } from "./composables/useMappoolChat";
@@ -530,7 +531,7 @@ watch(
 
     if (event?.type === "lazer_room_closed") {
       const id = lazerChatId(Number(event.roomId));
-      markLazerRoomClosed(id);
+      markLazerRoomClosed(id, { clearResources: true });
       lazerChatRoomsBeingLoaded.delete(Number(event.roomId));
       return;
     }
@@ -1309,28 +1310,30 @@ function appendLazerChatMessage(roomId, message, users = [], notify = true) {
   appendChatMessage(chatId, normalized, { notify: notify && normalized.author !== currentUser.value });
 }
 
-function loadLazerUserProfile(userId) {
+function loadLazerUserProfile(roomId, userId) {
   const id = Number(userId);
-  if (!Number.isInteger(id) || id <= 0 || lazerUserProfiles[id] || pendingLazerUserProfiles.has(id)) return;
-  pendingLazerUserProfiles.add(id);
-  void requestApi(`/users/${id}`)
+  const cacheKey = `${roomId}:${id}`;
+  if (!Number.isInteger(id) || id <= 0) return;
+  const cached = getLazerCachedProfile(roomId, id);
+  if (cached) {
+    lazerUserProfiles[id] = cached;
+    return;
+  }
+  if (lazerUserProfiles[id] || pendingLazerUserProfiles.has(cacheKey)) return;
+  pendingLazerUserProfiles.add(cacheKey);
+  void loadLazerCachedProfile(roomId, id, requestApi)
     .then((profile) => {
       if (!profile || typeof profile !== "object") return;
-      lazerUserProfiles[id] = {
-        userId: id,
-        username: String(profile.username || "").trim(),
-        avatarUrl: String(profile.avatar_url || "").trim(),
-        profileUrl: `https://osu.ppy.sh/users/${id}`,
-      };
+      lazerUserProfiles[id] = profile;
     })
     .catch(() => {})
-    .finally(() => pendingLazerUserProfiles.delete(id));
+    .finally(() => pendingLazerUserProfiles.delete(cacheKey));
 }
 
 function registerLazerRoom(room) {
   if (!room || !Number.isInteger(Number(room.room_id))) return null;
-  for (const player of room.players || []) loadLazerUserProfile(player.user_id);
-  for (const referee of room.referees || []) loadLazerUserProfile(referee.user_id);
+  for (const player of room.players || []) loadLazerUserProfile(room.room_id, player.user_id);
+  for (const referee of room.referees || []) loadLazerUserProfile(room.room_id, referee.user_id);
   const id = lazerChatId(Number(room.room_id));
   const previousState = lazerLobbyStates[id] || {};
   lazerRooms[id] = {
@@ -1427,12 +1430,13 @@ function syncLazerNowPlaying(room) {
     currentMap.rulesetId = playlistItem.ruleset_id;
     return;
   }
-  void loadLazerNowPlayingMap(chatId, playlistItem);
+  void loadLazerNowPlayingMap(chatId, room.room_id, playlistItem);
 }
 
-async function loadLazerNowPlayingMap(chatId, playlistItem) {
+async function loadLazerNowPlayingMap(chatId, roomId, playlistItem) {
   const beatmapId = Number(playlistItem?.beatmap_id);
-  if (!chatId || !Number.isInteger(beatmapId) || beatmapId <= 0) return;
+  const parsedRoomId = Number(roomId);
+  if (!chatId || !Number.isInteger(parsedRoomId) || parsedRoomId <= 0 || !Number.isInteger(beatmapId) || beatmapId <= 0) return;
 
   const requestId = `lazer-now-playing-${Date.now()}-${Math.random()}`;
   const loadingMap = {
@@ -1446,33 +1450,22 @@ async function loadLazerNowPlayingMap(chatId, playlistItem) {
   setNowPlaying(chatId, loadingMap);
 
   try {
-    const info = await requestApi(`/beatmaps/${beatmapId}`);
+    const info = await loadLazerCachedBeatmap(parsedRoomId, beatmapId, requestApi);
     if (nowPlayingByLobby[chatId]?.requestId !== requestId) return;
-
-    let mapperName = typeof info.creator === "string" ? info.creator : info.creator?.username || "";
-    if (!mapperName && info.user_id != null) {
-      try {
-        const mapper = await requestApi(`/users/${info.user_id}`);
-        mapperName = mapper.username || mapper.name || "";
-      } catch {
-        // The map can still be displayed when its mapper cannot be resolved.
-      }
-    }
-    if (nowPlayingByLobby[chatId]?.requestId !== requestId) return;
-
-    const beatmapsetId = Number(info.beatmapset_id ?? info.beatmapset?.id ?? info.beatmapsetId);
+    if (!info) throw new Error("Unable to load beatmap.");
+    const beatmapsetId = Number(info.beatmapsetId);
     const coverUrl = Number.isInteger(beatmapsetId) && beatmapsetId > 0 ? `https://assets.ppy.sh/beatmaps/${beatmapsetId}/covers/card@2x.jpg` : "";
     setNowPlaying(chatId, {
       id: beatmapId,
       beatmapId,
       playlistItemId: playlistItem.id,
       requestId,
-      title: info.title || info.beatmapset?.title || "Unknown title",
-      artist: info.artist || info.beatmapset?.artist || "Unknown artist",
-      diff: info.version || "",
-      mapperName,
-      starRating: info.difficulty_rating ?? null,
-      totalSeconds: info.total_length ?? null,
+      title: info.title,
+      artist: info.artist,
+      diff: info.diff,
+      mapperName: info.mapperName,
+      starRating: info.starRating,
+      totalSeconds: info.totalSeconds,
       beatmapsetId: Number.isInteger(beatmapsetId) && beatmapsetId > 0 ? beatmapsetId : null,
       coverUrl,
       rulesetId: playlistItem.ruleset_id,
@@ -2381,12 +2374,13 @@ function markRoomClosed(chatId) {
   });
 }
 
-function markLazerRoomClosed(chatId) {
+function markLazerRoomClosed(chatId, { clearResources = false } = {}) {
   const room = lazerRooms[chatId];
   if (!room || room.closed) return;
 
   room.closed = true;
   clearLazerCountdown(room.room_id);
+  if (clearResources) clearLazerRoomResourceCache(room.room_id);
   appendChatMessage(chatId, {
     id: nextId++,
     type: "system",

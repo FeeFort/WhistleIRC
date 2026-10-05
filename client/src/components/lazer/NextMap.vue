@@ -8,6 +8,7 @@ import ToggleSwitch from "primevue/toggleswitch";
 import { ArrowRightLeft, Gamepad2, ListMusic, Plus, RefreshCw, Trash2 } from "@lucide/vue";
 import { useServerConnection } from "../../composables/useServerConnection";
 import { beatmapCoverBackground } from "../../composables/useBeatmapCover";
+import { getLazerCachedBeatmap, loadLazerCachedBeatmap } from "../../composables/useLazerRoomResourceCache";
 import modsMetadata from "../../assets/mods/mods.json";
 import modHexRaw from "../../assets/mods/mod-icon.svg?raw";
 
@@ -151,18 +152,15 @@ function itemBackground(item) {
 async function loadBeatmap(item) {
   const id = Number(item?.beatmap_id);
   if (!Number.isInteger(id) || id <= 0 || beatmaps[id] || loadingBeatmapIds.has(id)) return;
+  const cached = getLazerCachedBeatmap(props.roomId, id);
+  if (cached) {
+    beatmaps[id] = cached;
+    return;
+  }
   loadingBeatmapIds.add(id);
   try {
-    const info = await requestApi(`/beatmaps/${id}`);
-    beatmaps[id] = {
-      artist: info.artist || info.beatmapset?.artist || "Unknown artist",
-      title: info.title || info.beatmapset?.title || "Unknown title",
-      diff: info.version || "",
-      beatmapsetId: info.beatmapset_id || info.beatmapset?.id || null,
-      mapperName: typeof info.creator === "string" ? info.creator : info.creator?.username || "",
-      starRating: info.difficulty_rating ?? null,
-      totalSeconds: info.total_length ?? null,
-    };
+    const beatmap = await loadLazerCachedBeatmap(props.roomId, id, requestApi);
+    if (beatmap) beatmaps[id] = beatmap;
   } catch {
     // Keep the beatmap ID as a readable fallback if the optional preview request fails.
   } finally {
