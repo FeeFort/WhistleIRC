@@ -145,7 +145,7 @@ const {
   setActiveWinCondition,
   makeLazerRoom,
   joinLazerRoom,
-  removeLazerPlaylistItem,
+  addLazerPlaylistItem,
   sendLazerChatMessage,
   rollLazer,
   leaveLazerRoom,
@@ -166,6 +166,7 @@ const { getActivePool, getMapState, setMapState, getQualificationMode, hasQualif
 const { soundEnabled, toastEnabled, ignoreBanchoBot, sound, soundTrigger, toastTrigger } = useNotifications();
 const { showNowPlaying, showProgressBar, showProgressTimeLabel } = useNowPlayingSettings();
 const nowPlayingByLobby = reactive({});
+const lazerNowPlayingFinishedTimeouts = new Map();
 const PLAYER_PROFILE_CACHE_KEY = "whistleirc-lobby-player-profiles";
 const primaryColorDraft = ref(primaryColor.value);
 const banchoBotColorDraft = ref(banchoBotColor.value);
@@ -187,7 +188,8 @@ function readPlayerProfileCache() {
 const playerProfilesByLobbyId = reactive(readPlayerProfileCache());
 const lazerUserProfiles = reactive({});
 const pendingLazerUserProfiles = new Set();
-const pendingLazerPlaylistRemovals = new Set();
+const pendingLazerPlaylistRestores = new Map();
+const lazerSinglePlaylistMatches = new Map();
 
 function cacheLobbyPlayers(chatId, players) {
   if (!chatId || !Array.isArray(players)) return;
@@ -456,12 +458,17 @@ watch(
         else history[historyIndex] = changedItem;
         room.playlistHistory = history;
         room.playlist = getActiveLazerPlaylist(history);
+        restoreLazerSinglePlaylistItem(room);
         syncLazerNowPlaying(room);
       } else if (lazerEvent.eventType === "MatchStarted") {
+        clearLazerNowPlayingFinished(lazerEventRoomId);
         clearLazerCountdown(lazerEventRoomId);
         clearLazerMatchStartCountdown(lazerEventRoomId);
         if (room) {
           room.current_playlist_item_id = Number(lazerEventPayload.playlist_item_id);
+          const currentItem = room.playlist.find((item) => Number(item.id) === Number(lazerEventPayload.playlist_item_id));
+          if (currentItem && room.playlist.length === 1) lazerSinglePlaylistMatches.set(lazerEventRoomId, { ...currentItem });
+          else lazerSinglePlaylistMatches.delete(lazerEventRoomId);
           syncLazerNowPlaying(room);
           const map = nowPlayingByLobby[lazerEventChatId];
           if (map) {
@@ -471,6 +478,20 @@ watch(
           }
         }
       } else if (lazerEvent.eventType === "MatchAborted") {
+        const abortedItem = lazerSinglePlaylistMatches.get(lazerEventRoomId);
+        lazerSinglePlaylistMatches.delete(lazerEventRoomId);
+        if (abortedItem) {
+          pendingLazerPlaylistRestores.set(lazerEventRoomId, {
+            beatmap_id: abortedItem.beatmap_id,
+            ruleset_id: abortedItem.ruleset_id,
+            required_mods: abortedItem.required_mods,
+            allowed_mods: abortedItem.allowed_mods,
+            freestyle: abortedItem.freestyle,
+            attempts: 0,
+            timeoutId: null,
+          });
+        }
+        clearLazerNowPlayingFinished(lazerEventRoomId);
         clearLazerMatchStartCountdown(lazerEventRoomId);
         const map = nowPlayingByLobby[lazerEventChatId];
         if (map) {
@@ -479,15 +500,36 @@ watch(
         }
       } else if (lazerEvent.eventType === "MatchCompleted") {
         const map = nowPlayingByLobby[lazerEventChatId];
+        const completedItem = lazerSinglePlaylistMatches.get(lazerEventRoomId);
+        lazerSinglePlaylistMatches.delete(lazerEventRoomId);
+        if (completedItem) {
+          pendingLazerPlaylistRestores.set(lazerEventRoomId, {
+            beatmap_id: completedItem.beatmap_id,
+            ruleset_id: completedItem.ruleset_id,
+            required_mods: completedItem.required_mods,
+            allowed_mods: completedItem.allowed_mods,
+            freestyle: completedItem.freestyle,
+            attempts: 0,
+            timeoutId: null,
+          });
+        }
         if (map) {
           map.status = "finished";
-          window.setTimeout(() => {
-            if (nowPlayingByLobby[lazerEventChatId]?.status === "finished") nowPlayingByLobby[lazerEventChatId] = null;
-          }, 3000);
+          clearLazerNowPlayingFinished(lazerEventRoomId);
+          const finishedMap = map;
+          const timeoutId = window.setTimeout(() => {
+            lazerNowPlayingFinishedTimeouts.delete(lazerEventRoomId);
+            if (nowPlayingByLobby[lazerEventChatId] === finishedMap) syncLazerNowPlaying(room, { force: true });
+          }, 2500);
+          lazerNowPlayingFinishedTimeouts.set(lazerEventRoomId, timeoutId);
         }
       } else if (lazerEvent.eventType === "CountdownStarted") {
         startLazerCountdown(lazerEventRoomId, Number(lazerEventPayload.seconds), Number(lazerEventPayload.countdown_id), lazerEventPayload.type);
       } else if (lazerEvent.eventType === "CountdownStopped") {
+        if (room && !pendingLazerPlaylistRestores.has(lazerEventRoomId) && room.playlist.length === 1) {
+          const currentItem = getLazerCurrentPlaylistItem(room) || room.playlist[0];
+          if (currentItem) queueLazerPlaylistRestore(lazerEventRoomId, currentItem);
+        }
         abortLazerCountdown(lazerEventRoomId, lazerEventPayload.type);
       }
     }
@@ -1261,6 +1303,12 @@ onBeforeUnmount(() => {
   for (const countdown of Object.values(lazerMatchStartCountdowns)) {
     if (countdown?.timeoutId) window.clearTimeout(countdown.timeoutId);
   }
+  for (const timeoutId of lazerNowPlayingFinishedTimeouts.values()) window.clearTimeout(timeoutId);
+  lazerNowPlayingFinishedTimeouts.clear();
+  for (const restore of pendingLazerPlaylistRestores.values()) {
+    if (restore.timeoutId) window.clearTimeout(restore.timeoutId);
+  }
+  pendingLazerPlaylistRestores.clear();
 });
 
 function openSettings() {
@@ -1368,11 +1416,13 @@ function registerLazerRoom(room) {
   for (const player of room.players || []) loadLazerUserProfile(room.room_id, player.user_id);
   for (const referee of room.referees || []) loadLazerUserProfile(room.room_id, referee.user_id);
   const id = lazerChatId(Number(room.room_id));
+  const previousRoom = lazerRooms[id];
+  const playlistHistory = mergeLazerPlaylistHistory(previousRoom?.playlistHistory, room.playlist);
   const previousState = lazerLobbyStates[id] || {};
   lazerRooms[id] = {
     ...room,
     playlist: getActiveLazerPlaylist(room.playlist),
-    playlistHistory: Array.isArray(room.playlist) ? room.playlist : [],
+    playlistHistory,
     id,
     label: room.name || `Lazer room #${room.room_id}`,
     source: "lazer",
@@ -1394,16 +1444,24 @@ function registerLazerRoom(room) {
   channelMessages[id] ||= [];
   unreadChats[id] ??= false;
   syncLazerNowPlaying(lazerRooms[id]);
-  reconcileLazerPlaylist(room);
   return lazerRooms[id];
+}
+
+function mergeLazerPlaylistHistory(previous, incoming) {
+  const items = new Map();
+  for (const item of Array.isArray(previous) ? previous : []) {
+    if (Number.isInteger(Number(item?.id))) items.set(Number(item.id), item);
+  }
+  for (const item of Array.isArray(incoming) ? incoming : []) {
+    if (Number.isInteger(Number(item?.id))) items.set(Number(item.id), item);
+  }
+  return [...items.values()].sort((left, right) => Number(left.order) - Number(right.order));
 }
 
 function getActiveLazerPlaylist(playlist) {
   const items = Array.isArray(playlist) ? playlist : [];
   const unplayedItems = items.filter((item) => !item?.was_played);
-  // Lazer removes played maps from the active playlist. Its sole map is the
-  // exception: that map becomes the next playable map again after completion.
-  const source = unplayedItems.length ? unplayedItems : items.length === 1 ? [{ ...items[0], was_played: false }] : [];
+  const source = unplayedItems;
   const seenBeatmaps = new Set();
   return source.filter((item) => {
     const beatmapId = Number(item?.beatmap_id);
@@ -1413,40 +1471,83 @@ function getActiveLazerPlaylist(playlist) {
   });
 }
 
-function reconcileLazerPlaylist(room) {
+function clearLazerPlaylistRestore(roomId) {
+  const restore = pendingLazerPlaylistRestores.get(Number(roomId));
+  if (restore?.timeoutId) window.clearTimeout(restore.timeoutId);
+  pendingLazerPlaylistRestores.delete(Number(roomId));
+}
+
+function queueLazerPlaylistRestore(roomId, item) {
+  if (!item || pendingLazerPlaylistRestores.has(Number(roomId))) return;
+  pendingLazerPlaylistRestores.set(Number(roomId), {
+    beatmap_id: item.beatmap_id,
+    ruleset_id: item.ruleset_id,
+    required_mods: item.required_mods,
+    allowed_mods: item.allowed_mods,
+    freestyle: item.freestyle,
+    attempts: 0,
+    timeoutId: null,
+  });
+}
+
+function restoreLazerSinglePlaylistItem(room) {
   const roomId = Number(room?.room_id);
-  const playlist = Array.isArray(room?.playlist) ? room.playlist : [];
-  if (!Number.isInteger(roomId) || roomId <= 0) return;
+  const restore = pendingLazerPlaylistRestores.get(roomId);
+  if (!Number.isInteger(roomId) || roomId <= 0 || !restore || room?.closed) return;
 
-  const playlistItemIds = new Set(playlist.map((item) => Number(item?.id)).filter((id) => Number.isInteger(id) && id > 0));
-  for (const key of pendingLazerPlaylistRemovals) {
-    const [pendingRoomId, pendingItemId] = key.split(":").map(Number);
-    if (pendingRoomId === roomId && !playlistItemIds.has(pendingItemId)) pendingLazerPlaylistRemovals.delete(key);
+  const items = Array.isArray(room.playlistHistory) ? room.playlistHistory : room.playlist;
+  if (!Array.isArray(items) || items.some((item) => !item?.was_played)) {
+    if (restore.timeoutId) window.clearTimeout(restore.timeoutId);
+    pendingLazerPlaylistRestores.delete(roomId);
+    return;
   }
 
-  const activeItemIds = new Set(getActiveLazerPlaylist(playlist).map((item) => Number(item.id)));
-  for (const item of playlist) {
-    const playlistItemId = Number(item?.id);
-    if (!Number.isInteger(playlistItemId) || playlistItemId <= 0 || activeItemIds.has(playlistItemId)) continue;
-    const key = `${roomId}:${playlistItemId}`;
-    if (pendingLazerPlaylistRemovals.has(key)) continue;
-    pendingLazerPlaylistRemovals.add(key);
-    if (!removeLazerPlaylistItem(roomId, playlistItemId)) pendingLazerPlaylistRemovals.delete(key);
+  if (restore.timeoutId) return;
+  if (restore.attempts >= 3) {
+    pendingLazerPlaylistRestores.delete(roomId);
+    return;
   }
+
+  restore.attempts += 1;
+  addLazerPlaylistItem(roomId, {
+    beatmap_id: restore.beatmap_id,
+    ruleset_id: restore.ruleset_id,
+    required_mods: restore.required_mods,
+    allowed_mods: restore.allowed_mods,
+    freestyle: restore.freestyle,
+  });
+
+  const retryDelay = restore.attempts === 1 ? 1000 : restore.attempts === 2 ? 2000 : null;
+  if (retryDelay === null) {
+    pendingLazerPlaylistRestores.delete(roomId);
+    return;
+  }
+
+  restore.timeoutId = window.setTimeout(() => {
+    restore.timeoutId = null;
+    const latestRoom = lazerRooms[lazerChatId(roomId)];
+    if (latestRoom) restoreLazerSinglePlaylistItem(latestRoom);
+  }, retryDelay);
 }
 
 function getLazerCurrentPlaylistItem(room) {
   const playlist = Array.isArray(room?.playlist) ? room.playlist : [];
   const currentPlaylistItemId = Number(room?.current_playlist_item_id ?? room?.playlist_item_id ?? room?.state?.playlist_item_id);
   return (
-    (Number.isInteger(currentPlaylistItemId) && playlist.find((item) => Number(item.id) === currentPlaylistItemId)) ||
+    (Number.isInteger(currentPlaylistItemId) && playlist.find((item) => Number(item.id) === currentPlaylistItemId && !item.was_played)) ||
     [...playlist].sort((left, right) => Number(left.order) - Number(right.order)).find((item) => !item.was_played) ||
-    playlist[0] ||
     null
   );
 }
 
-function syncLazerNowPlaying(room) {
+function clearLazerNowPlayingFinished(roomId) {
+  const id = Number(roomId);
+  const timeoutId = lazerNowPlayingFinishedTimeouts.get(id);
+  if (timeoutId) window.clearTimeout(timeoutId);
+  lazerNowPlayingFinishedTimeouts.delete(id);
+}
+
+function syncLazerNowPlaying(room, { force = false } = {}) {
   const chatId = room?.id;
   const playlistItem = getLazerCurrentPlaylistItem(room);
   if (!chatId) return;
@@ -1456,7 +1557,14 @@ function syncLazerNowPlaying(room) {
   }
 
   const currentMap = nowPlayingByLobby[chatId];
+  if (!force && currentMap?.status === "finished") return;
   if (Number(currentMap?.playlistItemId) === Number(playlistItem.id) && Number(currentMap?.beatmapId) === Number(playlistItem.beatmap_id)) {
+    if (force && currentMap.status === "finished") {
+      currentMap.status = "waiting";
+      currentMap.progressAborted = false;
+      currentMap.startTimestamp = null;
+      currentMap.error = null;
+    }
     currentMap.mods = (Array.isArray(playlistItem.required_mods) ? playlistItem.required_mods : [])
       .map((mod) => (typeof mod === "string" ? mod : mod?.acronym))
       .filter(Boolean);
@@ -2412,6 +2520,7 @@ function markLazerRoomClosed(chatId, { clearResources = false } = {}) {
   if (!room || room.closed) return;
 
   room.closed = true;
+  clearLazerPlaylistRestore(Number(room.room_id));
   clearLazerCountdown(room.room_id);
   if (clearResources) clearLazerRoomResourceCache(room.room_id);
   appendChatMessage(chatId, {
@@ -2508,6 +2617,7 @@ function closeActiveChat(chatId = activeChat.value) {
   const lazerRoom = lazerRooms[chatId];
   if (lazerRoom) {
     leaveLazerRoom(lazerRoom.room_id);
+    clearLazerPlaylistRestore(Number(lazerRoom.room_id));
     delete lazerRooms[chatId];
     delete lazerLobbyStates[chatId];
     delete channelMessages[chatId];
