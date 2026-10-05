@@ -8,6 +8,7 @@ import { LockOpen, Menu, RefreshCcw, UserRoundX, Whistle } from "@lucide/vue";
 import { useNickColor } from "../../composables/useNickColor";
 import { useChatSettings } from "../../composables/useChatSettings";
 import { useServerConnection } from "../../composables/useServerConnection";
+import { loadLazerCachedProfileByUsername } from "../../composables/useLazerRoomResourceCache";
 
 const props = defineProps({
   visible: { type: Boolean, default: false },
@@ -26,20 +27,36 @@ const pendingSlotMove = ref(null);
 const { nickColor } = useNickColor();
 const { redTeamColor, blueTeamColor } = useChatSettings();
 const toast = useToast();
-const { lastEvent, lazerInvitePlayer, moveLazerUser, kickLazerPlayer } = useServerConnection();
+const { lastEvent, lazerInvitePlayer, moveLazerUser, kickLazerPlayer, requestApi } = useServerConnection();
 const parsedUserId = computed(() => Number.parseInt(userId.value.trim(), 10));
+const inviteTarget = computed(() => userId.value.trim());
 const hasLimitedSlots = computed(() => props.players.some((player) => player.isSlot));
 const inviteValid = computed(
-  () => Number.isInteger(parsedUserId.value) && parsedUserId.value > 0 && Number.isInteger(props.roomId) && props.roomId > 0,
+  () => Boolean(inviteTarget.value) && Number.isInteger(props.roomId) && props.roomId > 0,
 );
 
 function close() {
   if (submittingInvite.value || submittingTeamUserId.value !== null) return;
   emit("update:visible", false);
 }
-function invite() {
+async function invite() {
   if (!inviteValid.value || submittingInvite.value) return;
-  submittingInvite.value = lazerInvitePlayer(props.roomId, parsedUserId.value);
+  submittingInvite.value = true;
+  let targetId = parsedUserId.value;
+  try {
+    if (!Number.isInteger(targetId) || targetId <= 0) {
+      const profile = await loadLazerCachedProfileByUsername(props.roomId, inviteTarget.value, requestApi);
+      targetId = Number(profile?.userId);
+    }
+  } catch {
+    targetId = null;
+  }
+  if (!Number.isInteger(targetId) || targetId <= 0) {
+    submittingInvite.value = false;
+    toast.add({ severity: "error", summary: "Invite failed", detail: "The osu! user could not be found.", life: 4000 });
+    return;
+  }
+  submittingInvite.value = lazerInvitePlayer(props.roomId, targetId);
   if (!submittingInvite.value) {
     toast.add({ severity: "error", summary: "Invite failed", detail: "The server connection is not available.", life: 4000 });
   }
@@ -173,7 +190,7 @@ watch(lastEvent, (event) => {
     @update:visible="(value) => (value ? null : close())"
   >
     <div class="players-dialog__invite">
-      <InputText v-model="userId" inputmode="numeric" placeholder="osu! user ID" :disabled="disabled || submittingInvite || submittingTeamUserId !== null" @keydown.enter="invite" />
+      <InputText v-model="userId" placeholder="osu! user ID or username" :disabled="disabled || submittingInvite || submittingTeamUserId !== null" @keydown.enter="invite" />
       <Button label="Invite" :loading="submittingInvite" :disabled="disabled || !inviteValid || submittingInvite || submittingTeamUserId !== null" @click="invite" />
     </div>
     <div class="players-dialog__list">

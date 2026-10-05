@@ -100,6 +100,8 @@ const lazerRooms = reactive({});
 const lazerLobbyStates = reactive({});
 const lazerCountdowns = reactive({});
 const lazerMatchStartCountdowns = reactive({});
+const lazerMatchPlaylistItems = reactive({});
+const lazerCompletedBeatmaps = reactive({});
 const lazerConnectionState = ref("disconnected");
 const lazerSyncState = ref("idle");
 const channelMessages = reactive({});
@@ -530,8 +532,10 @@ watch(
         clearLazerCountdown(lazerEventRoomId);
         clearLazerMatchStartCountdown(lazerEventRoomId);
         if (room) {
-          room.current_playlist_item_id = Number(lazerEventPayload.playlist_item_id);
-          const currentItem = room.playlist.find((item) => Number(item.id) === Number(lazerEventPayload.playlist_item_id));
+          const playlistItemId = Number(lazerEventPayload.playlist_item_id) || Number(getLazerCurrentPlaylistItem(room)?.id);
+          room.current_playlist_item_id = playlistItemId;
+          lazerMatchPlaylistItems[lazerEventRoomId] = playlistItemId;
+          const currentItem = room.playlist.find((item) => Number(item.id) === playlistItemId);
           if (currentItem && room.playlist.length === 1) lazerSinglePlaylistMatches.set(lazerEventRoomId, { ...currentItem });
           else lazerSinglePlaylistMatches.delete(lazerEventRoomId);
           syncLazerNowPlaying(room);
@@ -564,6 +568,14 @@ watch(
           map.progressAborted = true;
         }
       } else if (lazerEvent.eventType === "MatchCompleted") {
+        const completedPlaylistItemId = Number(lazerMatchPlaylistItems[lazerEventRoomId]) || Number(getLazerCurrentPlaylistItem(room)?.id);
+        const completedPlaylistItem = room?.playlistHistory?.find((item) => Number(item.id) === completedPlaylistItemId)
+          || room?.playlist?.find((item) => Number(item.id) === completedPlaylistItemId);
+        if (completedPlaylistItem?.beatmap_id) lazerCompletedBeatmaps[lazerEventRoomId] = Number(completedPlaylistItem.beatmap_id);
+        if (room && Number.isInteger(completedPlaylistItemId) && completedPlaylistItemId > 0) {
+          void loadLazerMatchResult(room, completedPlaylistItemId);
+        }
+        delete lazerMatchPlaylistItems[lazerEventRoomId];
         const map = nowPlayingByLobby[lazerEventChatId];
         const completedItem = lazerSinglePlaylistMatches.get(lazerEventRoomId);
         lazerSinglePlaylistMatches.delete(lazerEventRoomId);
@@ -1412,6 +1424,11 @@ function lazerChatId(roomId) {
   return `lazer:${roomId}`;
 }
 
+function parseLazerTeamNames(roomName) {
+  const match = String(roomName || "").match(/\(([^()]+)\)\s+vs\s+\(([^()]+)\)/i);
+  return match ? { teamAName: match[1].trim(), teamBName: match[2].trim() } : null;
+}
+
 function formatLazerWsError(message, fallback = "The server rejected the request.") {
   const text = String(message || "").trim();
   if (!text) return fallback;
@@ -1511,6 +1528,7 @@ function registerLazerRoom(room) {
   const previousRoom = lazerRooms[id];
   const playlistHistory = mergeLazerPlaylistHistory(previousRoom?.playlistHistory, room.playlist);
   const previousState = lazerLobbyStates[id] || {};
+  const parsedTeams = parseLazerTeamNames(room.name);
   lazerRooms[id] = {
     ...room,
     playlist: getActiveLazerPlaylist(room.playlist),
@@ -1524,10 +1542,11 @@ function registerLazerRoom(room) {
     ...previousState,
     id: Number(room.room_id),
     name: room.name || previousState.name || `Lazer room #${room.room_id}`,
-    teamAName: previousState.teamAName || "Team A",
-    teamBName: previousState.teamBName || "Team B",
+    teamAName: parsedTeams?.teamAName || previousState.teamAName || "Team A",
+    teamBName: parsedTeams?.teamBName || previousState.teamBName || "Team B",
     teamAScore: previousState.teamAScore ?? 0,
     teamBScore: previousState.teamBScore ?? 0,
+    lastPlay: previousState.lastPlay || { teamRedScore: null, teamBlueScore: null, scoreDifference: null, winnerTeam: null },
     qualificationMode: previousState.qualificationMode ?? false,
     bestOf: previousState.bestOf ?? null,
     nextPickTeam: previousState.nextPickTeam ?? null,
@@ -2634,6 +2653,7 @@ function markLazerRoomClosed(chatId, { clearResources = false, systemMessage = "
   if (!room || room.closed) return;
 
   room.closed = true;
+  delete lazerCompletedBeatmaps[Number(room.room_id)];
   delete lazerStyleChangedUsers[Number(room.room_id)];
   for (const key of Object.keys(lazerStyleBeatmaps)) {
     if (key.startsWith(`${room.room_id}:`)) delete lazerStyleBeatmaps[key];
@@ -3094,6 +3114,48 @@ function handleCreateLobby(payload) {
   handleCommand(payload.command);
 }
 
+async function loadLazerMatchResult(room, playlistItemId) {
+  const roomId = Number(room?.room_id);
+  const itemId = Number(playlistItemId);
+  if (!Number.isInteger(roomId) || roomId <= 0 || !Number.isInteger(itemId) || itemId <= 0) return;
+  try {
+    const response = await requestApi(`/rooms/${roomId}/playlist/${itemId}/scores`);
+    const scores = Array.isArray(response?.scores) ? response.scores : [];
+    if (!scores.length) return;
+
+    const playersById = new Map((room.players || []).map((player) => [Number(player.user_id), player]));
+    const teamScores = { red: 0, blue: 0 };
+    for (const score of scores) {
+      const player = playersById.get(Number(score.user_id));
+      const team = player?.team;
+      if (team !== "red" && team !== "blue") continue;
+      teamScores[team] += Number(score.total_score) || 0;
+    }
+
+    const redScore = teamScores.red;
+    const blueScore = teamScores.blue;
+    const winnerTeam = redScore === blueScore ? null : redScore > blueScore ? "red" : "blue";
+    const chatId = lazerChatId(roomId);
+    const state = lazerLobbyStates[chatId] || (lazerLobbyStates[chatId] = {});
+    const previousRedScore = Number(state.teamAScore) || 0;
+    const previousBlueScore = Number(state.teamBScore) || 0;
+    const winningScore = Number.isInteger(Number(state.bestOf)) && Number(state.bestOf) > 0 ? Math.ceil(Number(state.bestOf) / 2) : null;
+    const nextPickTeam = winnerTeam === "red" ? state.teamBName : winnerTeam === "blue" ? state.teamAName : state.nextPickTeam;
+
+    state.lastPlay = {
+      teamRedScore: redScore,
+      teamBlueScore: blueScore,
+      scoreDifference: Math.abs(redScore - blueScore),
+      winnerTeam,
+    };
+    state.nextPickTeam = nextPickTeam;
+    if (winnerTeam === "red" && (!winningScore || previousRedScore < winningScore)) state.teamAScore = previousRedScore + 1;
+    if (winnerTeam === "blue" && (!winningScore || previousBlueScore < winningScore)) state.teamBScore = previousBlueScore + 1;
+  } catch (error) {
+    toast.add({ severity: "error", summary: "Result loading failed", detail: formatLazerWsError(error?.message, "Unable to load the map result."), life: 5000 });
+  }
+}
+
 function getMatchStatus(lobby, teamRedName, teamBlueName) {
   const bestOf = Number(lobby.bestOf);
   const winningScore = Number.isInteger(bestOf) && bestOf > 0 ? Math.ceil(bestOf / 2) : null;
@@ -3265,8 +3327,10 @@ function handleLazerSendResult(result) {
       teamBlueScore: lobby.teamBScore,
       bestOf: lobby.bestOf,
       nextPickTeam: lobby.nextPickTeam,
-      lastPlay: {},
-      currentBeatmap: null,
+      lastPlay: lobby.lastPlay || {},
+      currentBeatmap: lazerCompletedBeatmaps[roomId]
+        ? { url: `https://osu.ppy.sh/b/${lazerCompletedBeatmaps[roomId]}` }
+        : null,
     },
     result,
   );

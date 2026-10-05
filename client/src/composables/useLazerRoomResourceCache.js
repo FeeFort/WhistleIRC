@@ -75,6 +75,29 @@ export async function loadLazerCachedProfile(roomId, userId, requestApi) {
   return profile;
 }
 
+export async function loadLazerCachedProfileByUsername(roomId, username, requestApi) {
+  const room = roomCache(roomId);
+  const normalized = String(username || "").trim().replace(/^@+/, "");
+  if (!room || !normalized) return null;
+  const cached = Object.values(room.profiles || {}).find((profile) => String(profile?.username || "").toLowerCase() === normalized.toLowerCase());
+  if (cached) return cached;
+  const cacheKey = normalized.toLowerCase();
+  return schedule(`profile-name:${roomId}:${cacheKey}`, async () => {
+    const response = await requestApi(`/users/@${encodeURIComponent(normalized)}`);
+    const id = validId(response?.id ?? response?.user_id);
+    if (!id) return null;
+    const value = {
+      userId: id,
+      username: String(response?.username || response?.name || normalized).trim(),
+      avatarUrl: String(response?.avatar_url || response?.avatarUrl || "").trim(),
+      profileUrl: `https://osu.ppy.sh/users/${id}`,
+    };
+    room.profiles[id] = value;
+    persist();
+    return value;
+  });
+}
+
 export function getLazerCachedBeatmap(roomId, beatmapId) {
   const id = validId(beatmapId);
   return id ? roomCache(roomId, false)?.beatmaps?.[id] || null : null;

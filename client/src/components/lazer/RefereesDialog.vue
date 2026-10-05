@@ -6,6 +6,7 @@ import InputText from "primevue/inputtext";
 import { UserRoundX, Whistle } from "@lucide/vue";
 import { useToast } from "primevue/usetoast";
 import { useServerConnection } from "../../composables/useServerConnection";
+import { loadLazerCachedProfileByUsername } from "../../composables/useLazerRoomResourceCache";
 
 const props = defineProps({
   visible: Boolean,
@@ -18,17 +19,33 @@ const emit = defineEmits(["update:visible"]);
 const userId = ref("");
 const pending = ref(null);
 const toast = useToast();
-const { addLazerReferee, removeLazerReferee, lastEvent } = useServerConnection();
+const { addLazerReferee, removeLazerReferee, lastEvent, requestApi } = useServerConnection();
 const parsedUserId = computed(() => Number.parseInt(userId.value.trim(), 10));
-const valid = computed(() => Number.isInteger(parsedUserId.value) && parsedUserId.value > 0 && Number.isInteger(props.roomId) && props.roomId > 0);
+const target = computed(() => userId.value.trim());
+const valid = computed(() => Boolean(target.value) && Number.isInteger(props.roomId) && props.roomId > 0);
 
 function close() {
   if (!pending.value) emit("update:visible", false);
 }
-function add() {
+async function add() {
   if (!valid.value || pending.value) return;
-  pending.value = { action: "add", userId: parsedUserId.value };
-  if (!addLazerReferee(props.roomId, parsedUserId.value)) {
+  pending.value = { action: "resolve", userId: null };
+  let targetId = parsedUserId.value;
+  try {
+    if (!Number.isInteger(targetId) || targetId <= 0) {
+      const profile = await loadLazerCachedProfileByUsername(props.roomId, target.value, requestApi);
+      targetId = Number(profile?.userId);
+    }
+  } catch {
+    targetId = null;
+  }
+  if (!Number.isInteger(targetId) || targetId <= 0) {
+    pending.value = null;
+    toast.add({ severity: "error", summary: "Add referee failed", detail: "The osu! user could not be found.", life: 4000 });
+    return;
+  }
+  pending.value = { action: "add", userId: targetId };
+  if (!addLazerReferee(props.roomId, targetId)) {
     pending.value = null;
     toast.add({ severity: "error", summary: "Add referee failed", detail: "The server connection is not available.", life: 4000 });
   }
@@ -59,7 +76,7 @@ watch(lastEvent, (event) => {
 <template>
   <Dialog :visible="visible" modal :dismissable-mask="!pending" :closable="!disabled && !pending" :close-on-escape="!pending" class="players-dialog referees-dialog" :pt="{ mask: { class: 'app-dialog-mask' } }" :style="{ width: '30rem' }" header="Lobby referees" @keydown.esc.stop.prevent="close" @update:visible="(value) => (value ? null : close())">
     <div class="players-dialog__invite">
-      <InputText v-model="userId" inputmode="numeric" placeholder="osu! user ID" :disabled="disabled || Boolean(pending)" @keydown.enter="add" />
+      <InputText v-model="userId" placeholder="osu! user ID or username" :disabled="disabled || Boolean(pending)" @keydown.enter="add" />
       <Button label="Add" :loading="pending?.action === 'add'" :disabled="disabled || !valid || Boolean(pending)" @click="add" />
     </div>
     <div class="players-dialog__list">
