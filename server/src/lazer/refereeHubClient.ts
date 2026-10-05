@@ -86,7 +86,7 @@ export function isHubPayload(eventType: HubEventType, value: unknown): value is 
     case "RollCompleted":
       return id(value.user_id) && id(value.max) && integer(value.result) && Number(value.result) <= Number(value.max);
     case "UserStatusChanged":
-      return id(value.user_id) && ["idle", "ready", "playing", "finished_play", "spectating"].includes(String(value.status));
+      return id(value.user_id) && typeof value.status === "string" && ["idle", "ready", "playing", "finished_play", "spectating"].includes(value.status);
     case "UserModsChanged":
       return id(value.user_id) && mods(value.mods);
     case "UserStyleChanged":
@@ -95,7 +95,12 @@ export function isHubPayload(eventType: HubEventType, value: unknown): value is 
       return id(value.user_id) && (value.team === null || team(value.team));
     case "CountdownStarted":
     case "CountdownStopped":
-      return integer(value.countdown_id) && ["match_start", "server_shutting_down"].includes(String(value.type)) && (eventType === "CountdownStopped" || integer(value.seconds));
+      return (
+        integer(value.countdown_id) &&
+        typeof value.type === "string" &&
+        ["match_start", "server_shutting_down"].includes(value.type) &&
+        (eventType === "CountdownStopped" || (typeof value.seconds === "number" && Number.isFinite(value.seconds) && value.seconds >= 0))
+      );
     case "MatchStarted":
       return (
         id(value.playlist_item_id) &&
@@ -104,6 +109,47 @@ export function isHubPayload(eventType: HubEventType, value: unknown): value is 
         (value.slots === null || (object(value.slots) && Object.entries(value.slots).every(([key, v]) => id(Number(key)) && integer(v))))
       );
   }
+}
+
+// Validate snapshots using the same nested contract as incoming hub events.
+export function isHubResponse(methodName: string, value: unknown): boolean {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const response = value as Record<string, unknown>;
+  const id = (v: unknown) => Number.isSafeInteger(v) && Number(v) > 0;
+  if (methodName === "ListRooms") {
+    return Array.isArray(response.room_ids) && response.room_ids.every(id) && new Set(response.room_ids).size === response.room_ids.length;
+  }
+  if (
+    !id(response.room_id) ||
+    !id(response.chat_channel_id) ||
+    typeof response.name !== "string" ||
+    typeof response.password !== "string" ||
+    !Number.isSafeInteger(response.max_participants) ||
+    Number(response.max_participants) < 0 ||
+    Number(response.max_participants) > 255 ||
+    !isHubPayload("MatchStateChanged", { room_id: response.room_id, state: response.state })
+  )
+    return false;
+  if (!Array.isArray(response.playlist) || !Array.isArray(response.players) || !Array.isArray(response.referees)) return false;
+  if (!response.playlist.every((item) => isHubPayload("PlaylistItemAdded", { room_id: response.room_id, playlist_item: item }))) return false;
+  if (!response.referees.every((referee) => referee && typeof referee === "object" && !Array.isArray(referee) && isHubPayload("RefereeAdded", { ...referee, room_id: response.room_id }))) return false;
+  if (
+    !response.players.every((player) => {
+      if (!player || typeof player !== "object" || Array.isArray(player) || !player.style || typeof player.style !== "object" || Array.isArray(player.style)) return false;
+      return (
+        isHubPayload("UserStatusChanged", { ...player, room_id: response.room_id }) &&
+        isHubPayload("UserModsChanged", { ...player, room_id: response.room_id }) &&
+        isHubPayload("UserTeamChanged", { ...player, room_id: response.room_id }) &&
+        isHubPayload("UserStyleChanged", { ...player.style, user_id: player.user_id, room_id: response.room_id })
+      );
+    })
+  )
+    return false;
+  return (
+    new Set(response.playlist.map((item) => item.id)).size === response.playlist.length &&
+    new Set(response.players.map((player) => player.user_id)).size === response.players.length &&
+    new Set(response.referees.map((referee) => referee.user_id)).size === response.referees.length
+  );
 }
 
 let connection: signalR.HubConnection | null = null;
@@ -223,6 +269,16 @@ export async function invokeHub<T = unknown>(methodName: string, ...args: unknow
       }),
     ]);
     if (generation !== connectionGeneration) throw new Error("SignalR session was replaced.");
+    if (["ListRooms", "JoinRoom", "MakeRoom"].includes(methodName)) {
+      if (!isHubResponse(methodName, result) || (methodName === "JoinRoom" && (result as { room_id: number }).room_id !== args[0])) {
+        // TODO: Retry safe snapshot reads through the shared exponential backoff policy.
+        // Do not repeat MakeRoom: an invalid response may follow successful creation.
+        throw Object.assign(new Error(`Invalid ${methodName} response from referee hub.`), {
+          code: "INVALID_RESPONSE",
+          outcomeUnknown: methodName === "MakeRoom",
+        });
+      }
+    }
     if (methodName === "ListRooms") {
       console.log(`[refereeHub] call=${invocationId} ${methodName} succeeded (${Date.now() - startedAt}ms): ${JSON.stringify(result)}`);
     } else {

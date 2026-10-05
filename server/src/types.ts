@@ -740,7 +740,7 @@ export type LazerStatusEvent = LazerConnectionStateEvent | LazerSyncStateEvent |
 export type LazerStatusHandler = (event: LazerStatusEvent) => void;
 
 export interface RequestFailure {
-  code: "REQUEST_TIMEOUT";
+  code: "REQUEST_TIMEOUT" | "INVALID_RESPONSE";
   outcomeUnknown: boolean;
 }
 

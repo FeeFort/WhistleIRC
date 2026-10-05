@@ -21,6 +21,7 @@ import type {
   RefereeAddedEvent,
   RefereeRemovedEvent,
   LazerPlayer,
+  LazerPlaylistItem,
   MatchUserStatus,
   ListRoomsResponse,
   LazerStatusHandler,
@@ -36,6 +37,8 @@ import { invokeHub } from "./refereeHubClient.js";
 class RoomManager {
   private excludedRooms = new Set<number>();
   private generation = 0;
+  private replayPlaylist: Map<number, LazerPlaylistItem> | null = null;
+  private replayPlayers: Map<number, LazerPlayer> | null = null;
   private rooms = new Map<number, RoomState>();
   private pendingJoins = new Map<number, PendingRoomJoin>();
   private pendingCreations = new Set<PendingRoomJoin>();
@@ -155,7 +158,11 @@ class RoomManager {
   private upsertPlayerStub(room: RoomState, userId: number): LazerPlayer {
     let player = this.findPlayer(room, userId);
     if (!player) {
-      player = { user_id: userId, status: "idle", style: { ruleset_id: null, beatmap_id: null }, mods: [], team: null };
+      // A Left/Joined pair may already be included in the snapshot. Restore the
+      // full snapshot entry rather than losing status, mods, style and team.
+      player = this.replayPlayers?.has(userId)
+        ? structuredClone(this.replayPlayers.get(userId)!)
+        : { user_id: userId, status: "idle", style: { ruleset_id: null, beatmap_id: null }, mods: [], team: null };
       room.players.push(player);
     }
     return player;
@@ -228,8 +235,7 @@ class RoomManager {
         const e = payload as unknown as PlaylistItemAddedEvent;
         // A refreshed snapshot may already contain an event buffered during JoinRoom.
         const index = room.playlist.findIndex((item) => item.id === e.playlist_item.id);
-        if (index === -1) room.playlist.push(e.playlist_item);
-        else room.playlist[index] = e.playlist_item;
+        if (index === -1) room.playlist.push(this.replayPlaylist?.has(e.playlist_item.id) ? structuredClone(this.replayPlaylist.get(e.playlist_item.id)!) : e.playlist_item);
         break;
       }
       case "PlaylistItemChanged": {
@@ -298,7 +304,7 @@ class RoomManager {
         return true;
     }
 
-    if (JSON.stringify(room) !== previousState) this.onRoomChanged?.(room);
+    if (!this.replayPlayers && JSON.stringify(room) !== previousState) this.onRoomChanged?.(room);
     return true;
   }
 
@@ -337,12 +343,22 @@ class RoomManager {
         this.pendingCreations.delete(pending);
         if (roomId !== null && this.pendingJoins.get(roomId) === pending) this.pendingJoins.delete(roomId);
         if (!pending.cancelled && roomId !== null && this.rooms.has(roomId)) {
-          for (const event of pending.events) {
-            if (event.payload.room_id === roomId) {
-              this.handleHubEvent(event.eventType, event.payload);
+          const room = this.rooms.get(roomId)!;
+          this.replayPlayers = new Map(room.players.map((player) => [player.user_id, structuredClone(player)]));
+          this.replayPlaylist = new Map(room.playlist.map((item) => [item.id, structuredClone(item)]));
+          try {
+            // The spectator copies the snapshot under its room lock, but releases
+            // that lock before sending the completion. Some buffered events can
+            // therefore be newer than the snapshot. Replay in delivery order.
+            // No wire revision exists; keep snapshot data for idempotent re-adds.
+            for (const event of pending.events) {
+              if (event.payload.room_id === roomId) this.handleHubEvent(event.eventType, event.payload);
             }
+          } finally {
+            this.replayPlayers = null;
+            this.replayPlaylist = null;
           }
-          this.onRoomChanged?.(this.rooms.get(roomId)!);
+          this.onRoomChanged?.(room);
           for (const event of pending.events) {
             if (event.deferred && event.payload.room_id === roomId) {
               this.onDeferredEvent?.({ type: "lazer_event", eventType: event.eventType, roomId, payload: event.payload } as LazerHubEvent);

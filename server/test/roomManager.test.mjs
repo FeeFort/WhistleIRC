@@ -404,6 +404,58 @@ await test("room synchronization", async (t) => {
     );
   });
 
+  await t.test("invalid snapshots never replace tracked state, and invalid room lists never remove rooms", async () => {
+    roomManager.trackRoom(snapshot(95, "Keep"));
+    invoke = async () => ({ room_ids: [95, "bad"] });
+    await assert.rejects(roomManager.resync(), (error) => error.code === "INVALID_RESPONSE");
+    assert.equal(roomManager.getRoom(95).name, "Keep");
+    invoke = async () => ({ ...snapshot(95), players: null });
+    await assert.rejects(roomManager.joinRoom(95), (error) => error.code === "INVALID_RESPONSE");
+    assert.equal(roomManager.getRoom(95).name, "Keep");
+    invoke = async () => snapshot(96);
+    await assert.rejects(roomManager.joinRoom(95), (error) => error.code === "INVALID_RESPONSE");
+    assert.equal(roomManager.getRoom(96), undefined);
+    invoke = async () => null;
+    await assert.rejects(roomManager.joinRoom(null, { name: "New", ruleset_id: 0, beatmap_id: 1 }), (error) => error.code === "INVALID_RESPONSE" && error.outcomeUnknown === true);
+    invoke = async () => snapshot(95, "Valid retry");
+    await roomManager.joinRoom(95);
+    assert.equal(roomManager.getRoom(95).name, "Valid retry");
+    roomManager.removeRoom(95);
+  });
+
+  await t.test("overlapping events preserve full snapshot players and publish one final state", async () => {
+    let resolveJoin;
+    invoke = () =>
+      new Promise((resolve) => {
+        resolveJoin = resolve;
+      });
+    const joining = roomManager.joinRoom(97);
+    const fullPlayer = { user_id: 42, status: "ready", style: { ruleset_id: 3, beatmap_id: 8 }, mods: [{ acronym: "HD" }], team: "red" };
+    const item = { id: 7, ruleset_id: 0, beatmap_id: 8, required_mods: [], allowed_mods: [], freestyle: false, was_played: true, order: 0 };
+    roomManager.handleHubEvent("UserLeft", { room_id: 97, user_id: 42 });
+    roomManager.handleHubEvent("UserJoined", { room_id: 97, user_id: 42 });
+    roomManager.handleHubEvent("PlaylistItemAdded", { room_id: 97, playlist_item: { ...item, was_played: false } });
+    roomManager.handleHubEvent("PlaylistItemChanged", { room_id: 97, playlist_item: { ...item, id: 9, beatmap_id: 10 } });
+    roomManager.handleHubEvent("PlaylistItemRemoved", { room_id: 97, playlist_item_id: 9 });
+    roomManager.handleHubEvent("RoomSettingsChanged", { room_id: 97, name: "After snapshot", password: "", type: "team_versus", playlist_item_id: 7, max_participants: 8 });
+    roomManager.handleHubEvent("RefereeAdded", { room_id: 97, user_id: 44 });
+    roomManager.handleHubEvent("RefereeRemoved", { room_id: 97, user_id: 44 });
+    const fresh = snapshot(97);
+    fresh.players = [fullPlayer];
+    fresh.playlist = [item, { ...item, id: 9 }];
+    updates.length = 0;
+    resolveJoin(fresh);
+    const room = await joining;
+    assert.deepEqual(room.players, [fullPlayer]);
+    assert.equal(room.playlist[0].was_played, true);
+    assert.equal(room.playlist.length, 1);
+    assert.equal(room.name, "After snapshot");
+    assert.equal(room.max_participants, 8);
+    assert.deepEqual(room.referees, []);
+    assert.equal(updates.length, 1);
+    roomManager.removeRoom(97);
+  });
+
   await t.test("session reset rejects old room snapshots and chat waits", async () => {
     let resolveJoin;
     invoke = () =>
