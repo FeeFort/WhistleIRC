@@ -67,7 +67,7 @@ function playerNameStyle(player) {
 }
 
 function modCode(mod) {
-  const value = String(mod || "").trim();
+  const value = String(typeof mod === "string" ? mod : mod?.acronym || "").trim();
   return MOD_CODES[value.toLowerCase()] || value.toUpperCase();
 }
 

@@ -314,6 +314,7 @@ html.app-light .app-dialog-mask {
 .add-channel-dialog,
 .lobby-settings-dialog,
 .lobby-setup-dialog,
+.playlist-dialog,
 .command-confirm-dialog,
 .update-dialog {
   overflow: hidden;
@@ -402,6 +403,9 @@ html.app-light .app-dialog-mask {
 .lobby-setup-dialog .p-dialog-header,
 .lobby-setup-dialog .p-dialog-content,
 .lobby-setup-dialog .p-dialog-footer,
+.playlist-dialog .p-dialog-header,
+.playlist-dialog .p-dialog-content,
+.playlist-dialog .p-dialog-footer,
 .update-dialog .p-dialog-header,
 .update-dialog .p-dialog-content,
 .update-dialog .p-dialog-footer {
@@ -416,6 +420,7 @@ html.app-light .app-dialog-mask {
 .add-channel-dialog .p-dialog-header,
 .lobby-settings-dialog .p-dialog-header,
 .lobby-setup-dialog .p-dialog-header,
+.playlist-dialog .p-dialog-header,
 .update-dialog .p-dialog-header {
   padding: 1.1rem 1.25rem 0.9rem !important;
   border-bottom: 1px solid var(--app-border) !important;
@@ -428,6 +433,7 @@ html.app-light .app-dialog-mask {
 .add-channel-dialog .p-dialog-title,
 .lobby-settings-dialog .p-dialog-title,
 .lobby-setup-dialog .p-dialog-title,
+.playlist-dialog .p-dialog-title,
 .update-dialog .p-dialog-title {
   color: var(--app-text) !important;
   font-size: 1rem;
@@ -441,6 +447,7 @@ html.app-light .app-dialog-mask {
 .add-channel-dialog .p-dialog-content,
 .lobby-settings-dialog .p-dialog-content,
 .lobby-setup-dialog .p-dialog-content,
+.playlist-dialog .p-dialog-content,
 .update-dialog .p-dialog-content {
   padding: 1.15rem 1.25rem !important;
 }
@@ -452,6 +459,7 @@ html.app-light .app-dialog-mask {
 .add-channel-dialog .p-dialog-footer,
 .lobby-settings-dialog .p-dialog-footer,
 .lobby-setup-dialog .p-dialog-footer,
+.playlist-dialog .p-dialog-footer,
 .update-dialog .p-dialog-footer {
   display: flex;
   gap: 0.55rem;
@@ -560,6 +568,7 @@ html.app-light .app-dialog-mask {
 .add-channel-dialog .p-dialog-close-button,
 .lobby-settings-dialog .p-dialog-close-button,
 .lobby-setup-dialog .p-dialog-close-button,
+.playlist-dialog .p-dialog-close-button,
 .update-dialog .p-dialog-close-button {
   color: var(--app-muted) !important;
   border-radius: 0.5rem !important;
@@ -573,6 +582,7 @@ html.app-light .app-dialog-mask {
 .add-channel-dialog .p-dialog-close-button:hover,
 .lobby-settings-dialog .p-dialog-close-button:hover,
 .lobby-setup-dialog .p-dialog-close-button:hover,
+.playlist-dialog .p-dialog-close-button:hover,
 .update-dialog .p-dialog-close-button:hover {
   color: var(--app-primary-bright) !important;
   background: rgba(var(--app-primary-rgb), 0.12) !important;
@@ -1048,6 +1058,15 @@ html.app-light .app-dialog-mask {
   opacity: 0;
   transition: opacity 130ms ease;
 }
+.app-tooltip strong, .app-tooltip > span, .app-tooltip small { display: block; }
+.app-tooltip > span { margin-top: 0.2rem; color: rgba(255, 255, 255, 0.78); }
+.app-tooltip small { margin-top: 0.35rem; color: rgba(255, 255, 255, 0.62); }
+.app-tooltip img { width: 1rem; height: 1rem; vertical-align: middle; }
+.app-tooltip { max-width: 22rem; max-height: 12rem; overflow: hidden; white-space: normal; }
+.app-tooltip > span { display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 5; }
+.app-tooltip__conflicts { display: flex; gap: 6px; margin-top: 8px; }
+.app-tooltip__conflict-icon { display: inline-flex; flex: 0 0 auto; width: 1.8rem; aspect-ratio: 100 / 70; }
+.app-tooltip__conflict-icon svg { display: block; width: 100%; height: 100%; }
 
 .app-tooltip--visible {
   opacity: 1;

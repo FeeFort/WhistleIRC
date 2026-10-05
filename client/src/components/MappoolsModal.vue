@@ -10,6 +10,7 @@ import TagInput from "./TagInput.vue";
 import WinConditionEditor from "./WinConditionEditor.vue";
 import BulkBeatmapImportDialog from "./BulkBeatmapImportDialog.vue";
 import { escapeRegExp } from "../composables/useMessageHighlighting";
+import { beatmapCoverBackground } from "../composables/useBeatmapCover";
 import { DEFAULT_WIN_CONDITION, WIN_CONDITION_TEMPLATES, defaultModsForCategory, serializeMappool, useMappool, winConditionSource } from "../composables/useMappool";
 import { useServerConnection } from "../composables/useServerConnection";
 const props = defineProps({ visible: Boolean });
@@ -729,7 +730,7 @@ watch(editing, (value) => {
                         :style="
                           slot.preview?.beatmapsetId
                             ? {
-                                backgroundImage: `linear-gradient(90deg, rgba(10, 12, 22, .94), rgba(10, 12, 22, .68)), url(https://assets.ppy.sh/beatmaps/${slot.preview.beatmapsetId}/covers/card@2x.jpg)`,
+                                backgroundImage: `linear-gradient(90deg, rgba(10, 12, 22, .94), rgba(10, 12, 22, .68)), ${beatmapCoverBackground(slot.preview.beatmapsetId)}`,
                               }
                             : undefined
                         "

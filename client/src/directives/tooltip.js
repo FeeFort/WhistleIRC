@@ -6,6 +6,10 @@ function contentFrom(binding) {
   return typeof binding.value === "object" && binding.value ? binding.value.value : binding.value;
 }
 
+function isHtmlContent(binding) {
+  return typeof binding.value === "object" && binding.value?.html;
+}
+
 function positionFrom(binding) {
   return Object.keys(binding.modifiers).find((modifier) => ["top", "bottom", "left", "right"].includes(modifier)) || "top";
 }
@@ -44,15 +48,18 @@ function removeTooltip(target) {
 
 function showTooltip(target) {
   const state = target.__appTooltip;
-  const content = String(contentFrom(state?.binding) || "").trim();
-  if (!state || !content || target.disabled) return;
+  const content = contentFrom(state?.binding);
+  const textContent = typeof content === "string" ? content.trim() : "";
+  const htmlContent = isHtmlContent(state?.binding) ? String(state.binding.value.html || "").trim() : "";
+  if (!state || (!textContent && !htmlContent) || target.disabled) return;
   window.clearTimeout(state.showTimer);
   state.showTimer = window.setTimeout(() => {
     if (state.element || target.disabled) return;
     const tooltip = document.createElement("div");
     tooltip.className = "app-tooltip";
     tooltip.setAttribute("role", "tooltip");
-    tooltip.textContent = content;
+    if (htmlContent) tooltip.innerHTML = htmlContent;
+    else tooltip.textContent = textContent;
     document.body.appendChild(tooltip);
     state.element = tooltip;
     placeTooltip(target, tooltip, positionFrom(state.binding));
@@ -72,7 +79,7 @@ export default {
   },
   updated(target, binding) {
     target.__appTooltip.binding = binding;
-    if (!contentFrom(binding)) removeTooltip(target);
+    if (!contentFrom(binding) && !isHtmlContent(binding)) removeTooltip(target);
   },
   unmounted(target) {
     const state = target.__appTooltip;

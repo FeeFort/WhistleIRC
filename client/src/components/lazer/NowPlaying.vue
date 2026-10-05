@@ -1,7 +1,8 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
-import { Check, Clock3, Play } from "@lucide/vue";
+import { Check, Clock3, Gamepad2, Play } from "@lucide/vue";
 import { useChatSettings } from "../../composables/useChatSettings";
+import { beatmapCoverBackground } from "../../composables/useBeatmapCover";
 
 const props = defineProps({
   map: { type: Object, default: null },
@@ -31,6 +32,7 @@ const mapDuration = computed(() => {
   const total = Number(props.map?.totalSeconds);
   return Number.isFinite(total) && total > 0 ? formatElapsed(total) : "";
 });
+const rulesetName = computed(() => ({ 0: "osu!", 1: "osu!taiko", 2: "osu!catch", 3: "osu!mania" }[Number(props.map?.rulesetId)] || "osu!"));
 
 function updateProgress() {
   const map = props.map;
@@ -86,7 +88,9 @@ const beatmapUrl = computed(() => {
   const beatmapId = props.map?.beatmapId ?? props.map?.id;
   return beatmapId ? `https://osu.ppy.sh/b/${beatmapId}` : "";
 });
-const backgroundImage = computed(() => (props.map?.beatmapsetId ? `url(https://assets.ppy.sh/beatmaps/${props.map.beatmapsetId}/covers/card@2x.jpg)` : ""));
+const backgroundImage = computed(() => {
+  return beatmapCoverBackground(props.map?.beatmapsetId);
+});
 const modLabels = Object.freeze({
   easy: "EZ",
   nofail: "NF",
@@ -116,14 +120,17 @@ const modLabels = Object.freeze({
   mirror: "MR",
   fadein: "FI",
 });
-const mods = computed(() =>
-  String(props.map?.mods || "")
-    .split(/\s*,\s*|\s+/)
+const mods = computed(() => {
+  const source = Array.isArray(props.map?.mods)
+    ? props.map.mods
+    : String(props.map?.mods || "").split(/\s*,\s*|\s+/);
+  return source
+    .map((mod) => (typeof mod === "string" ? mod : mod?.acronym))
     .filter(Boolean)
     .filter((mod) => !/^(?:enabled|disabled)$/i.test(mod))
     .map((mod) => modLabels[mod.toLowerCase()] || mod.toUpperCase())
-    .filter((mod, index, values) => values.indexOf(mod) === index),
-);
+    .filter((mod, index, values) => values.indexOf(mod) === index);
+});
 function normalizeTeamName(value) {
   return String(value || "")
     .trim()
@@ -170,11 +177,13 @@ const pickedByStyle = computed(() => {
             <span v-if="map.starRating != null">★ {{ Number(map.starRating).toFixed(2) }}</span>
             <span v-if="map.starRating != null && mapDuration" class="now-playing__separator">·</span>
             <span v-if="mapDuration">◷ {{ mapDuration }}</span>
-            <span v-if="mapDuration && map.pickedBy" class="now-playing__separator">·</span>
+            <span v-if="mapDuration" class="now-playing__separator">·</span>
+            <span class="now-playing__ruleset"><Gamepad2 :size="11" />{{ rulesetName }}</span>
+            <span v-if="map.pickedBy" class="now-playing__separator">·</span>
             <span v-if="map.pickedBy"
               >picked by <b class="now-playing__team" :class="`now-playing__team--${pickedByClass}`" :style="pickedByStyle">{{ map.pickedBy }}</b></span
             >
-            <span v-if="(map.starRating != null || mapDuration || map.pickedBy) && mods.length" class="now-playing__separator">·</span>
+            <span v-if="mods.length" class="now-playing__separator">·</span>
             <span v-for="mod in mods" :key="mod" class="now-playing__mod">{{ mod }}</span>
           </div>
         </div>
@@ -275,6 +284,7 @@ const pickedByStyle = computed(() => {
 .now-playing__separator {
   color: rgba(255, 255, 255, 0.35);
 }
+.now-playing__ruleset { display: inline-flex; align-items: center; gap: 0.18rem; }
 .now-playing__team--red {
   color: var(--app-red, #ff6d78);
 }

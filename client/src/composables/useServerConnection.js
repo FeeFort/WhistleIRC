@@ -87,6 +87,22 @@ function kickLazerPlayer(room_id, user_id) {
   return socket.value ? send(socket.value, { type: "lazer_kick_player", room_id, user_id }) : false;
 }
 
+function addLazerPlaylistItem(room_id, payload) {
+  return socket.value ? send(socket.value, { type: "lazer_add_playlist_item", room_id, ...payload }) : false;
+}
+
+function editLazerCurrentPlaylistItem(room_id, payload) {
+  return socket.value ? send(socket.value, { type: "lazer_edit_current_playlist_item", room_id, ...payload }) : false;
+}
+
+function editLazerPlaylistItem(room_id, playlist_item_id, payload) {
+  return socket.value ? send(socket.value, { type: "lazer_edit_playlist_item", room_id, playlist_item_id, ...payload }) : false;
+}
+
+function removeLazerPlaylistItem(room_id, playlist_item_id) {
+  return socket.value ? send(socket.value, { type: "lazer_remove_playlist_item", room_id, playlist_item_id }) : false;
+}
+
 function listLazerRooms() {
   return socket.value ? send(socket.value, { type: "lazer_list_rooms" }) : false;
 }
@@ -425,6 +441,10 @@ export function useServerConnection() {
     changeLazerRoomSettings,
     moveLazerUser,
     kickLazerPlayer,
+    addLazerPlaylistItem,
+    editLazerCurrentPlaylistItem,
+    editLazerPlaylistItem,
+    removeLazerPlaylistItem,
     listLazerRooms,
     lazerInvitePlayer: inviteLazerPlayer,
     sendLazerChatMessage,

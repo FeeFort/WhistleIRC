@@ -13,6 +13,7 @@ const props = defineProps({
   docked: { type: Boolean, default: false },
   disabled: { type: Boolean, default: false },
   roomId: { type: Number, default: null },
+  startCountdownSeconds: { type: Number, default: 0 },
 });
 
 const emit = defineEmits(["send-command", "start-timer", "abort-timer"]);
@@ -285,11 +286,14 @@ function handleSave(data) {
               text
               rounded
               class="command-bar__btn"
-              :disabled="disabled"
+              :disabled="disabled || (cmd.id === 'lazer-start' && startCountdownSeconds > 0)"
               :class="`command-bar__btn--${cmd.tone}`"
               @click="sendBuiltin(cmd)"
             >
-              <component :is="cmd.icon" :size="17" />
+              <span v-if="cmd.id === 'lazer-start' && startCountdownSeconds > 0" class="command-bar__countdown" aria-live="polite">
+                {{ startCountdownSeconds }}
+              </span>
+              <component v-else :is="cmd.icon" :size="17" />
             </Button>
           </div>
         </div>
@@ -510,6 +514,13 @@ function handleSave(data) {
   align-items: center;
   justify-content: center;
   cursor: pointer;
+}
+
+.command-bar__countdown {
+  font-size: 0.9rem;
+  font-weight: 800;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
 }
 
 .command-bar__btn {

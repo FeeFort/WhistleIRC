@@ -2,13 +2,14 @@
 import { ref, computed, nextTick, watch, onMounted, onBeforeUnmount } from "vue";
 import Button from "primevue/button";
 import Textarea from "primevue/textarea";
-import { Menu, Send, Hash, Timer, ClipboardCheck, Gamepad2, Link, ArrowDown, ArrowDownToLine, Ban, ShieldCheck, Crosshair } from "@lucide/vue";
+import { Menu, Send, Hash, Timer, ClipboardCheck, Link, ArrowDown, ArrowDownToLine, Ban, ShieldCheck, Crosshair } from "@lucide/vue";
 import { useNickColor } from "../../composables/useNickColor";
 import { useChatSettings } from "../../composables/useChatSettings";
 import { escapeRegExp, highlightTextStyle, messageHasHighlight, normalizeTeamHighlights, teamTextStyle } from "../../composables/useMessageHighlighting";
 import CommandBar from "./CommandBar.vue";
 import { useDarkMode } from "../../composables/useDarkMode";
 import NowPlaying from "./NowPlaying.vue";
+import NextMap from "./NextMap.vue";
 import { parseMappoolMessage } from "../../composables/useMappoolChat";
 
 const { nickColor: baseNickColor } = useNickColor();
@@ -54,11 +55,14 @@ const props = defineProps({
   roomSize: { type: [Number, String], default: 16 },
   timerActive: { type: Boolean, default: false },
   timerSeconds: { type: Number, default: 0 },
+  matchStartCountdownSeconds: { type: Number, default: 0 },
   format: { type: String, default: "HeadToHead" },
-  mode: { type: String, default: "osu!" },
   roomId: { type: Number, default: null },
   roomClosed: { type: Boolean, default: false },
   nowPlaying: { type: Object, default: null },
+  playlistItems: { type: Array, default: () => [] },
+  playlistHistory: { type: Array, default: () => [] },
+  currentPlaylistItemId: { type: Number, default: null },
   showProgressBar: { type: Boolean, default: true },
   showProgressTimeLabel: { type: Boolean, default: true },
   teamRedName: { type: String, default: "" },
@@ -606,8 +610,6 @@ function forwardCommand(command) {
             <span class="chat-subtitle__item"><Timer :size="12" />{{ timerLabel }}</span>
             <span class="chat-subtitle__dot">·</span>
             <span class="chat-subtitle__item"><ClipboardCheck :size="12" />{{ format }}</span>
-            <span class="chat-subtitle__dot">·</span>
-            <span class="chat-subtitle__item"><Gamepad2 :size="12" />{{ mode }}</span>
           </div>
         </div>
       </div>
@@ -625,6 +627,7 @@ function forwardCommand(command) {
     </div>
 
     <NowPlaying :map="nowPlaying" :team-red-name="teamRedName" :team-blue-name="teamBlueName" :show-progress-bar="showProgressBar" :show-progress-time-label="showProgressTimeLabel" />
+    <NextMap :room-id="roomId" :items="playlistItems" :history-items="playlistHistory" :current-item-id="currentPlaylistItemId" :disabled="roomClosed" />
 
     <div ref="listEl" class="chat-log" @scroll="onScroll" @wheel="onWheel">
       <div class="chat-log__inner">
@@ -696,7 +699,15 @@ function forwardCommand(command) {
       </Transition>
     </div>
 
-    <CommandBar docked :disabled="roomClosed" :room-id="roomId" @send-command="forwardCommand" @start-timer="emit('start-timer', $event)" @abort-timer="emit('abort-timer')" />
+    <CommandBar
+      docked
+      :disabled="roomClosed"
+      :room-id="roomId"
+      :start-countdown-seconds="matchStartCountdownSeconds"
+      @send-command="forwardCommand"
+      @start-timer="emit('start-timer', $event)"
+      @abort-timer="emit('abort-timer')"
+    />
 
     <div class="chat-input">
       <Textarea ref="chatInput" v-model="draft" placeholder="Write a message" rows="1" autoResize class="chat-input__field" :disabled="roomClosed" @input="handleDraftInput" @keydown="onKeydown" />

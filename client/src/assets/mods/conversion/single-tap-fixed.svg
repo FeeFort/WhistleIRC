@@ -1,0 +1,18 @@
+<svg width="120" height="84" viewBox="0 0 120 84" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <g clip-path="url(#clip0_single_tap_fixed)">
+    <g clip-path="url(#clip1_single_tap_fixed)">
+      <path d="M81.573 64.729H53.973V73.129H81.573V64.729Z" stroke="white" stroke-width="6" stroke-linejoin="round"/>
+      <!-- Smoothed finger and palm contour. -->
+      <path d="M53.576 64.7289C48.1806 58.5165 43.6679 52.9287 39.2954 48.1198C37.4591 45.8398 38.2303 43.2647 42.8268 43.2647C47.4232 43.2647 50.0739 50.3528 53.576 50.3528V23.1578C53.576 20.9319 55.2845 19.1289 57.3988 19.1289C59.5131 19.1289 61.2228 20.9319 61.2228 23.1578V34.0208C65.151 34.8165 70.7839 36.0239 74.0045 36.5642C79.0325 37.3609 81.6398 41.1704 81.5721 47.2936V64.7289" stroke="white" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M45.9423 13.609L43.3577 10.729M43.3577 25.129H40.7731M69.2038 13.609L71.7885 10.729M71.7885 22.249H74.3731" stroke="white" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+    </g>
+  </g>
+  <defs>
+    <clipPath id="clip0_single_tap_fixed">
+      <rect width="120" height="84" fill="white"/>
+    </clipPath>
+    <clipPath id="clip1_single_tap_fixed">
+      <rect width="120" height="120" fill="white" transform="translate(0 -18)"/>
+    </clipPath>
+  </defs>
+</svg>
