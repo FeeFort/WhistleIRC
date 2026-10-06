@@ -4025,11 +4025,11 @@ function handleLazerSendResult(result) {
             lazer-mode
             :room-link="activeLazerRoom ? `https://osu.ppy.sh/multiplayer/rooms/${activeLazerRoom.room_id}` : ''"
             :disabled="Boolean(activeLazerRoom?.closed)"
+            :referees="activeLazerRoom?.referees || []"
+            :referees-visible="lazerRefereesDialogOpen"
             @send-result="handleLazerSendResult"
             @update-settings="updateActiveLazerSettings"
             @configure-lobby="openLobbySetup"
-            :referees="activeLazerRoom?.referees || []"
-            :referees-visible="lazerRefereesDialogOpen"
             @manage-referees="lazerRefereesDialogOpen = true"
           />
         </SidebarSectionCard>
@@ -4060,11 +4060,11 @@ function handleLazerSendResult(result) {
             :show-qualification-toggle="!activeChannel?.createdViaCreateLobby"
             :disabled="Boolean(roomClosedByChat[activeChat])"
             :mp-link="activeLobbyState?.id ? `https://osu.ppy.sh/mp/${activeLobbyState.id}` : ''"
+            :referees-visible="refereesDialogOpen"
             @send-result="handleSendResult"
             @update-settings="updateActiveLobbySettings"
             @configure-lobby="openLobbySetup"
             @manage-referees="refereesDialogOpen = true"
-            :referees-visible="refereesDialogOpen"
           />
         </SidebarSectionCard>
         <PlayerListCard :players="activeLobbyDisplayPlayers" :current-user="currentUser" :disabled="Boolean(roomClosedByChat[activeChat])" @open-players="playersDialogOpen = true" />

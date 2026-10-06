@@ -279,7 +279,7 @@ function handleSave(data) {
               <span v-if="cmd.id === 'lazer-start' && startCountdownSeconds > 0" class="command-bar__countdown" aria-live="polite">
                 {{ startCountdownSeconds }}
               </span>
-              <component v-else :is="cmd.icon" :size="17" />
+              <component :is="cmd.icon" v-else :size="17" />
             </Button>
           </div>
         </div>
