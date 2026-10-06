@@ -4,7 +4,9 @@ import Button from "primevue/button";
 import Dialog from "primevue/dialog";
 import InputNumber from "primevue/inputnumber";
 import InputText from "primevue/inputtext";
+import Select from "primevue/select";
 import SelectButton from "primevue/selectbutton";
+import Slider from "primevue/slider";
 import ToggleSwitch from "primevue/toggleswitch";
 
 const props = defineProps({
@@ -15,6 +17,12 @@ const emit = defineEmits(["update:visible", "create"]);
 const lobbyModes = [
   { label: "Stable", value: "stable" },
   { label: "Lazer", value: "lazer" },
+];
+const rulesetOptions = [
+  { label: "osu!", value: 0 },
+  { label: "osu!taiko", value: 1 },
+  { label: "osu!catch", value: 2 },
+  { label: "osu!mania", value: 3 },
 ];
 const mode = ref("stable");
 const acronym = ref("");
@@ -29,6 +37,7 @@ const beatmapId = ref(null);
 const maxParticipants = ref(16);
 
 const isLazer = computed(() => mode.value === "lazer");
+const maxParticipantsLabel = computed(() => (maxParticipants.value >= 17 ? "∞" : String(maxParticipants.value)));
 
 const command = computed(() => {
   const name = acronym.value.trim() || "ACRONYM";
@@ -44,15 +53,20 @@ const command = computed(() => {
   return `!mp make ${name}: ${wrap(red)} vs ${wrap(blue)}`;
 });
 
-const isValid = computed(() => {
-  if (isLazer.value) {
-    return (
-      Boolean(acronym.value.trim()) && Number.isInteger(Number(beatmapId.value)) && Number(beatmapId.value) > 0 && Number.isInteger(Number(maxParticipants.value)) && Number(maxParticipants.value) > 0
-    );
-  }
+const lobbyName = computed(() => command.value.replace(/^!mp\s+make\s+/i, ""));
+const commonLobbyIsValid = computed(() => {
   if (!acronym.value.trim()) return false;
   if (qualifiers.value) return Boolean(qualifiersLobby.value.trim());
   return Boolean(teamRed.value.trim() && teamBlue.value.trim());
+});
+
+const isValid = computed(() => {
+  if (isLazer.value) {
+    return (
+      commonLobbyIsValid.value && Number.isInteger(Number(beatmapId.value)) && Number(beatmapId.value) > 0 && Number.isInteger(Number(maxParticipants.value)) && Number(maxParticipants.value) > 0
+    );
+  }
+  return commonLobbyIsValid.value;
 });
 
 function close() {
@@ -68,22 +82,28 @@ function create() {
       lazer: {
         ruleset_id: Number(rulesetId.value),
         beatmap_id: Number(beatmapId.value),
-        name: acronym.value.trim(),
-        max_participants: Number(maxParticipants.value),
+        name: lobbyName.value,
+        max_participants: maxParticipants.value >= 17 ? 0 : Number(maxParticipants.value),
+      },
+      lobby: {
+        name: lobbyName.value,
+        qualificationMode: qualifiers.value,
+        teamRed: qualifiers.value ? "Qualifiers" : teamRed.value.trim(),
+        teamBlue: qualifiers.value ? `Lobby ${qualifiersLobby.value.trim()}` : teamBlue.value.trim(),
+        bestOf: bestOf.value,
       },
     });
     close();
     return;
   }
 
-  const name = command.value.replace(/^!mp\s+make\s+/i, "");
   const teamRedValue = qualifiers.value ? "Qualifiers" : teamRed.value.trim();
   const teamBlueValue = qualifiers.value ? `Lobby ${qualifiersLobby.value.trim()}` : teamBlue.value.trim();
   emit("create", {
     mode: "stable",
     command: command.value,
     lobby: {
-      name,
+      name: lobbyName.value,
       qualifiers: qualifiers.value,
       qualificationMode: qualifiers.value,
       teamRed: teamRedValue,
@@ -133,14 +153,60 @@ watch(
       </div>
 
       <label class="create-lobby-dialog__field">
-        <span>{{ isLazer ? "Lobby name" : "Tournament acronym" }}</span>
-        <InputText v-model="acronym" :placeholder="isLazer ? 'e.g. Tournament lobby' : 'e.g. OPTC2'" autofocus />
+        <span>Tournament acronym</span>
+        <InputText v-model="acronym" placeholder="e.g. OPTC2" autofocus />
       </label>
+
+      <label class="create-lobby-dialog__field">
+        <span>Best of</span>
+        <InputNumber v-model="bestOf" :min="1" :max="99" :use-grouping="false" inputId="create-lobby-best-of" />
+      </label>
+
+      <div class="create-lobby-dialog__toggle-row">
+        <div>
+          <strong>Qualifications</strong>
+          <span>Use a qualifications lobby instead of two teams.</span>
+        </div>
+        <ToggleSwitch v-model="qualifiers" class="app-solid-switch" />
+      </div>
+
+      <template v-if="!qualifiers">
+        <label class="create-lobby-dialog__field">
+          <span>Red team name</span>
+          <InputText v-model="teamRed" placeholder="e.g. Team Red" />
+        </label>
+
+        <label class="create-lobby-dialog__field">
+          <span>Blue team name</span>
+          <InputText v-model="teamBlue" placeholder="e.g. Team Blue" />
+        </label>
+      </template>
+
+      <label v-else class="create-lobby-dialog__field">
+        <span>Qualifiers lobby ID</span>
+        <InputText v-model="qualifiersLobby" placeholder="e.g. 12345678" />
+      </label>
+
+      <div class="create-lobby-dialog__toggle-row">
+        <div>
+          <strong>Include names in parentheses</strong>
+          <span>Wrap teams and lobby labels in parentheses.</span>
+        </div>
+        <ToggleSwitch v-model="includeParentheses" class="app-solid-switch" />
+      </div>
 
       <template v-if="isLazer">
         <label class="create-lobby-dialog__field">
           <span>Ruleset</span>
-          <InputNumber v-model="rulesetId" :min="0" :max="3" :use-grouping="false" inputId="create-lobby-ruleset" />
+          <Select
+            v-model="rulesetId"
+            :options="rulesetOptions"
+            optionLabel="label"
+            optionValue="value"
+            inputId="create-lobby-ruleset"
+            aria-label="Ruleset"
+            :pt="{ overlay: { class: 'create-lobby-ruleset-overlay' } }"
+          />
         </label>
 
         <label class="create-lobby-dialog__field">
@@ -148,54 +214,20 @@ watch(
           <InputNumber v-model="beatmapId" :min="1" :use-grouping="false" inputId="create-lobby-beatmap" />
         </label>
 
-        <label class="create-lobby-dialog__field">
-          <span>Max participants</span>
-          <InputNumber v-model="maxParticipants" :min="1" :max="16" :use-grouping="false" inputId="create-lobby-max-participants" />
-        </label>
-      </template>
-
-      <template v-else>
-        <label class="create-lobby-dialog__field">
-          <span>Best of</span>
-          <InputNumber v-model="bestOf" :min="1" :max="99" :use-grouping="false" inputId="create-lobby-best-of" />
-        </label>
-
-        <div class="create-lobby-dialog__toggle-row">
-          <div>
-            <strong>Qualifications</strong>
-            <span>Use a qualifications lobby instead of two teams.</span>
+        <div class="create-lobby-dialog__field">
+          <div class="create-lobby-dialog__slider-label">
+            <span>Max participants</span><strong>{{ maxParticipantsLabel }}</strong>
           </div>
-          <ToggleSwitch v-model="qualifiers" class="app-solid-switch" />
-        </div>
-
-        <label v-if="!qualifiers" class="create-lobby-dialog__field">
-          <span>Red team name</span>
-          <InputText v-model="teamRed" placeholder="e.g. Team Red" />
-        </label>
-
-        <label v-if="!qualifiers" class="create-lobby-dialog__field">
-          <span>Blue team name</span>
-          <InputText v-model="teamBlue" placeholder="e.g. Team Blue" />
-        </label>
-
-        <label v-else class="create-lobby-dialog__field">
-          <span>Qualifiers lobby ID</span>
-          <InputText v-model="qualifiersLobby" placeholder="e.g. 12345678" />
-        </label>
-
-        <div class="create-lobby-dialog__toggle-row">
-          <div>
-            <strong>Include names in parentheses</strong>
-            <span>Wrap teams and lobby labels in parentheses.</span>
+          <div class="create-lobby-dialog__slider-wrap">
+            <Slider v-model="maxParticipants" :min="1" :max="17" :step="1" aria-label="Max participants" />
           </div>
-          <ToggleSwitch v-model="includeParentheses" class="app-solid-switch" />
+          <div class="create-lobby-dialog__slider-range"><span>1</span><span>∞</span></div>
         </div>
       </template>
 
       <div class="create-lobby-dialog__preview">
         <span>Lobby preview</span>
-        <code v-if="isLazer">{{ acronym || "Lobby name" }} · ruleset {{ rulesetId }} · beatmap {{ beatmapId || "—" }} · max {{ maxParticipants }}</code>
-        <code v-else>{{ command }}</code>
+        <code>{{ lobbyName }}</code>
       </div>
     </div>
 
@@ -270,8 +302,98 @@ watch(
   font-weight: 700;
 }
 
+.create-lobby-dialog__slider-label > span {
+  color: var(--app-muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
 .create-lobby-dialog__field :deep(.p-inputtext) {
   width: 100%;
+}
+
+.create-lobby-dialog__field :deep(.p-select) {
+  width: 100%;
+  height: 2.625rem !important;
+  min-height: 0 !important;
+  border-color: var(--app-border) !important;
+  border-radius: 0.6rem !important;
+  background: var(--app-control) !important;
+  color: var(--app-text) !important;
+  box-shadow: none !important;
+}
+
+.create-lobby-dialog__field :deep(.p-select:hover),
+.create-lobby-dialog__field :deep(.p-select.p-focus) {
+  border-color: rgba(var(--app-primary-rgb), 0.6) !important;
+  box-shadow: 0 0 0 1px rgba(var(--app-primary-rgb), 0.18) !important;
+}
+
+.create-lobby-dialog__field :deep(.p-select-label) {
+  display: flex;
+  align-items: center;
+  height: 100%;
+  min-height: 0;
+  padding: 0 0.78rem !important;
+  color: var(--app-text) !important;
+  font-size: 0.82rem !important;
+}
+
+.create-lobby-dialog__field :deep(.p-select-dropdown) {
+  width: 2.5rem;
+  color: var(--app-muted);
+}
+
+.create-lobby-dialog__slider-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.create-lobby-dialog__slider-label strong {
+  min-width: 2rem;
+  padding: 0.12rem 0.45rem;
+  border-radius: 0.35rem;
+  background: rgba(var(--app-primary-rgb), 0.14);
+  color: var(--app-primary-bright);
+  font-size: 0.78rem;
+  text-align: center;
+}
+
+.create-lobby-dialog__slider-wrap {
+  padding: 0.5rem 0;
+}
+
+.create-lobby-dialog__slider-wrap :deep(.p-slider) {
+  height: 0.3rem;
+  border-radius: 999px;
+  background: var(--app-surface-hover);
+}
+
+.create-lobby-dialog__slider-wrap :deep(.p-slider-range) {
+  border-radius: 999px;
+  background: var(--app-primary);
+}
+
+.create-lobby-dialog__slider-wrap :deep(.p-slider-handle) {
+  width: 1rem;
+  height: 1rem;
+  border: 2px solid var(--app-primary-bright);
+  background: var(--app-primary);
+  box-shadow: none;
+}
+
+.create-lobby-dialog__slider-wrap :deep(.p-slider-handle::before) {
+  width: 0;
+  height: 0;
+  box-shadow: none;
+}
+
+.create-lobby-dialog__slider-range {
+  display: flex;
+  justify-content: space-between;
+  color: var(--app-muted);
+  font-size: 0.68rem;
 }
 
 .create-lobby-dialog__toggle-row {
@@ -303,5 +425,37 @@ watch(
   color: var(--app-primary-bright);
   font-family: ui-monospace, Consolas, monospace;
   font-size: 0.73rem;
+}
+
+:global(.p-select-overlay.create-lobby-ruleset-overlay) {
+  border: 1px solid var(--app-border) !important;
+  border-radius: 0.55rem !important;
+  overflow: hidden;
+  background: var(--app-surface-raised) !important;
+  box-shadow: 0 0.75rem 1.6rem rgba(0, 0, 0, 0.28) !important;
+}
+
+:global(.p-select-overlay.create-lobby-ruleset-overlay .p-select-list) {
+  padding: 0.25rem !important;
+  background: var(--app-surface-raised) !important;
+}
+
+:global(.p-select-overlay.create-lobby-ruleset-overlay .p-select-list-container) {
+  background: var(--app-surface-raised) !important;
+}
+
+:global(.p-select-overlay.create-lobby-ruleset-overlay .p-select-option) {
+  margin: 0 !important;
+  border-radius: 0.35rem !important;
+  background: transparent !important;
+  color: var(--app-text) !important;
+  font-size: 0.78rem !important;
+}
+
+:global(.p-select-overlay.create-lobby-ruleset-overlay .p-select-option:hover),
+:global(.p-select-overlay.create-lobby-ruleset-overlay .p-select-option.p-focus),
+:global(.p-select-overlay.create-lobby-ruleset-overlay .p-select-option.p-select-option-selected) {
+  background: rgba(var(--app-primary-rgb), 0.14) !important;
+  color: var(--app-primary-bright) !important;
 }
 </style>

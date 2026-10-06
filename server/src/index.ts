@@ -1104,8 +1104,8 @@ function validateMessage(message: unknown): string | null {
       if (!Number.isSafeInteger(message.ruleset_id) || (message.ruleset_id as number) < 0 || (message.ruleset_id as number) > 3) return "ruleset_id must be an integer from 0 to 3.";
       if (!Number.isSafeInteger(message.beatmap_id) || (message.beatmap_id as number) <= 0) return "beatmap_id must be a positive integer.";
       if (!isNonEmptyString(message.name)) return "name must be a non-empty string.";
-      if (message.max_participants !== undefined && (!Number.isSafeInteger(message.max_participants) || (message.max_participants as number) <= 0))
-        return "max_participants must be a positive integer.";
+      if (message.max_participants !== undefined && (!Number.isSafeInteger(message.max_participants) || (message.max_participants as number) < 0))
+        return "max_participants must be a non-negative integer.";
       return null;
     },
     lazer_load_chat: () => validateLazerRoomId(message),
