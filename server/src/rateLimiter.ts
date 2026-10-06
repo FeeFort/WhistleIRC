@@ -32,6 +32,7 @@ export class TokenBucket {
   }
 
   acquire(signal?: AbortSignal): Promise<() => void> {
+    log.trace("Acquire requested", { queue: this.label, pending: this.queue.length, active: this.active });
     this.drain();
     if (signal?.aborted) return Promise.reject(rateLimitError("REQUEST_CANCELLED", "Request cancelled before it was sent."));
     if (this.queue.length >= this.settings.maxQueue) return Promise.reject(rateLimitError("RATE_LIMIT_QUEUE_FULL", "Too many pending requests. Please try again later."));
@@ -42,6 +43,7 @@ export class TokenBucket {
         signal,
         expiresAt: performance.now() + this.settings.maxWaitMs,
         cancel: () => {
+          log.trace("Queued request cancelled", { queue: this.label });
           this.remove(entry);
           reject(rateLimitError("REQUEST_CANCELLED", "Request cancelled before it was sent."));
           this.drain();
@@ -49,6 +51,7 @@ export class TokenBucket {
       };
       signal?.addEventListener("abort", entry.cancel, { once: true });
       this.queue.push(entry);
+      log.trace("Request queued", { queue: this.label, pending: this.queue.length });
       this.drain();
     });
   }
@@ -77,17 +80,20 @@ export class TokenBucket {
       this.remove(entry);
       this.tokens -= 1;
       this.active++;
+      log.trace("Request dispatched", { queue: this.label, active: this.active, pending: this.queue.length });
       let released = false;
       entry.resolve(() => {
         if (released) return;
         released = true;
         this.active--;
+        log.trace("Request released", { queue: this.label, active: this.active });
         this.drain();
       });
     }
     if (this.queue.length) {
       const expiry = Math.min(...this.queue.map((entry) => entry.expiresAt)) - now;
       const available = this.active < this.settings.concurrency ? Math.max(this.pausedUntil - now, ((1 - this.tokens) * 1000) / this.settings.tokensPerSecond, 1) : expiry;
+      log.trace("Queue wakeup scheduled", { queue: this.label, delayMs: Math.max(1, Math.ceil(Math.min(expiry, available))) });
       this.timer = setTimeout(() => this.drain(), Math.max(1, Math.ceil(Math.min(expiry, available))));
     }
   }

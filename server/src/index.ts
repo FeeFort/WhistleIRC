@@ -334,6 +334,7 @@ class BanchoConnection {
   }
 
   setState(state: ConnectionState, detail: string | null = null): void {
+    ircLog.log(state === "error" ? "WARN" : "INFO", "Connection state changed", { previous: this.state, state, detail });
     this.state = state;
     this.sendStatus(null, detail);
   }
@@ -804,7 +805,6 @@ class BanchoConnection {
       const pong = payload ? `PONG ${payload}` : "PONG";
       try {
         this.sendRaw(pong);
-        ircLog.traceOut(pong);
       } catch (error) {
         ircLog.warn("PONG failed", { error });
       }
@@ -856,7 +856,7 @@ class BanchoConnection {
     if (["JOIN", "PART"].includes(message.command) && message.params[0]) {
       const channel = message.params[0].replace(/^:/, "");
       const nick = getNick(message.prefix);
-      ircLog.info(message.command === "JOIN" ? "User joined channel" : "User left channel", { channel, nick });
+      ircLog.debug(message.command === "JOIN" ? "User joined channel" : "User left channel", { channel, nick });
       if (isMultiplayerChannel(channel) && this.isOwnNick(nick)) {
         if (message.command === "JOIN") {
           this.getLobbyState(channel, true);
@@ -882,6 +882,7 @@ class BanchoConnection {
     if (!this.socket || this.socket.destroyed) {
       throw new Error("IRC connection is not open.");
     }
+    ircLog.traceOut(line.replace(/^(PASS )[^\r\n]*/i, "$1[redacted]").replace(/(!mp password) .*/i, "$1 [redacted]"));
     this.socket.write(`${line}\r\n`, "utf8");
   }
 
@@ -1417,6 +1418,7 @@ function handleSetLobbySettings(client: WebSocket, message: ClientMessage): void
 function handleClientMessage(client: WebSocket, rawMessage: unknown): void {
   const validationError = validateMessage(rawMessage);
   if (validationError) {
+    wsLog.warn("Invalid client message", { error: validationError });
     sendJson(client, {
       type: "error",
       ...(isRecord(rawMessage) && isNonEmptyString(rawMessage.type) ? { request: rawMessage.type } : {}),
@@ -1429,7 +1431,7 @@ function handleClientMessage(client: WebSocket, rawMessage: unknown): void {
 
   const message = rawMessage as ClientMessage;
 
-  wsLog.traceIn(message.type, () => {
+  wsLog.debug(`< ${message.type}`, () => {
     const logMessage: Record<string, unknown> = { ...message };
     delete logMessage.password;
     delete logMessage.clientSecret;
@@ -1501,6 +1503,7 @@ webSocketServer.on("connection", (client) => {
     try {
       message = JSON.parse(data.toString());
     } catch {
+      wsLog.warn("Client sent invalid JSON");
       sendJson(client, {
         type: "error",
         message: "Message must be valid JSON.",

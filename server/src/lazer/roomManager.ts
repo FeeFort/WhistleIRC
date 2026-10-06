@@ -63,6 +63,7 @@ class RoomManager {
   }
 
   reset(): void {
+    log.debug("Resetting room tracking", { rooms: this.rooms.size, pendingJoins: this.pendingJoins.size });
     this.currentUserId = null;
     ++this.generation;
     this.excludedRooms.clear();
@@ -82,6 +83,7 @@ class RoomManager {
   }
 
   trackRoom(room: RoomState): void {
+    log.debug("Tracking room snapshot", { roomId: room.room_id, players: room.players.length, playlist: room.playlist.length });
     this.rooms.set(room.room_id, room);
     this.onRoomChanged?.(room);
   }
@@ -103,12 +105,14 @@ class RoomManager {
   }
 
   markChatChannelJoined(channelId: number): void {
+    log.trace("Chat channel joined", { channelId });
     this.joinedChatChannels.add(channelId);
     for (const resolve of this.chatWaiters.get(channelId) ?? []) resolve();
     this.chatWaiters.delete(channelId);
   }
 
   async waitForChatChannel(channelId: number, timeoutMs = 10_000): Promise<void> {
+    log.trace("Waiting for chat channel", { channelId, timeoutMs });
     if (this.joinedChatChannels.has(channelId)) return;
     await new Promise<void>((resolve, reject) => {
       const timer = setTimeout(() => {
@@ -131,8 +135,12 @@ class RoomManager {
   }
 
   loadChat(roomId: number): Promise<ChatMessage[]> {
+    log.debug("Loading room chat", { roomId });
     const existing = this.pendingChatLoads.get(roomId);
-    if (existing) return existing.promise;
+    if (existing) {
+      log.trace("Sharing pending chat load", { roomId });
+      return existing.promise;
+    }
     const room = this.rooms.get(roomId);
     if (!room) return Promise.reject(Object.assign(new Error(`Room ${roomId} is not tracked.`), { stage: "channel" }));
     const generation = this.generation;
@@ -146,8 +154,10 @@ class RoomManager {
         stage = "history";
         const history = await fetchChatMessages(room.chat_channel_id);
         if (pending.cancelled || generation !== this.generation) throw new Error("osu! session or room ended.");
+        log.debug("Room chat loaded", { roomId, count: history.length });
         return history;
       } catch (error) {
+        log.warn("Room chat load failed", { roomId, stage, error });
         // TODO: Retry chat initialization with the shared exponential backoff policy.
         throw Object.assign(error instanceof Error ? error : new Error(String(error)), {
           stage,
@@ -178,6 +188,7 @@ class RoomManager {
   }
 
   handleHubEvent(eventType: HubEventType, payload: HubEventPayloads[HubEventType]): boolean {
+    log.trace("Applying hub event", { eventType });
     const roomId = payload.room_id;
     if (typeof roomId !== "number") {
       log.warn("Event has no room ID, ignoring", { eventType });
@@ -323,6 +334,7 @@ class RoomManager {
   }
 
   removeRoom(roomId: number, excludeFromResync = false): void {
+    log.debug("Removing room", { roomId, excludeFromResync });
     if (excludeFromResync) this.excludedRooms.add(roomId);
     const chatLoad = this.pendingChatLoads.get(roomId);
     if (chatLoad) chatLoad.cancelled = true;
@@ -335,6 +347,7 @@ class RoomManager {
   }
 
   async joinRoom(roomId: number | null, request?: MakeRoomRequest): Promise<RoomState> {
+    log.debug(roomId === null ? "Creating room" : "Joining room", { roomId });
     const generation = this.generation;
     const existing = roomId === null ? undefined : this.pendingJoins.get(roomId);
     if (existing) {

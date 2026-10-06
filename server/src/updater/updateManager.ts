@@ -1,3 +1,4 @@
+import { logger } from "../logger.js";
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import fs from "node:fs";
@@ -10,6 +11,8 @@ import semver from "semver";
 import { GithubAsset, GithubRelease, UpdateCheckResult, UpdateInfo, UpdateProgressSender, UpdaterState } from "../types.js";
 
 declare const __APP_VERSION__: string;
+
+const log = logger.child("core", "updater");
 
 const GITHUB_OWNER = "FeeFort";
 const GITHUB_REPO = "WhistleIRC";
@@ -68,6 +71,7 @@ export class UpdateManager {
       throw new UpdateError("UPDATE_IN_PROGRESS", "An update operation is already in progress.");
     }
 
+    log.debug("Checking for updates");
     this.#state = "checking";
     try {
       const response = await fetch(`https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases/latest`, {
@@ -85,6 +89,7 @@ export class UpdateManager {
       const version = currentVersion();
       if (!semver.valid(version)) throw new UpdateError("INVALID_CURRENT_VERSION", "The current application version is invalid.");
       if (!semver.gt(latestVersion, version)) {
+        log.debug("Application is up to date", { version });
         this.#target = null;
         this.#state = "idle";
         return { type: "update_check_result", available: false, currentVersion: version };
@@ -93,6 +98,7 @@ export class UpdateManager {
       const asset = findAsset(release.assets || []);
       checksumFromDigest(asset.digest);
       this.#target = { version: latestVersion, asset, releaseNotesUrl: release.html_url, publishedAt: release.published_at };
+      log.info("Update available", { version: latestVersion });
       this.#state = "available";
       return {
         type: "update_check_result",
@@ -114,6 +120,7 @@ export class UpdateManager {
       throw new UpdateError("INVALID_UPDATE_STATE", "Check for an available update before downloading it.");
     }
 
+    log.info("Downloading update", { version: this.#target.version, asset: this.#target.asset.name });
     this.#state = "downloading";
     this.#abortController = new AbortController();
     try {
@@ -128,6 +135,7 @@ export class UpdateManager {
       const progress = new Transform({
         transform(chunk, _encoding, callback) {
           downloadedBytes += chunk.length;
+          log.trace("Update download progress", { totalBytes, downloadedBytes });
           hash.update(chunk);
           send({ type: "update_progress", stage: "downloading", totalBytes, downloadedBytes });
           callback(null, chunk);
@@ -135,6 +143,7 @@ export class UpdateManager {
       });
       await pipeline(Readable.fromWeb(response.body as never), progress, fs.createWriteStream(this.#downloadPath));
 
+      log.debug("Verifying update integrity");
       send({ type: "update_progress", stage: "verifying" });
       if (downloadedBytes !== this.#target.asset.size || hash.digest("hex") !== checksumFromDigest(this.#target.asset.digest)) {
         throw new UpdateError("VERIFY_FAILED", "The downloaded update did not pass integrity verification.");
@@ -153,6 +162,7 @@ export class UpdateManager {
   }
 
   async cancel(): Promise<void> {
+    log.debug("Cancelling update download");
     if (this.#state !== "downloading" || !this.#abortController) {
       throw new UpdateError("INVALID_UPDATE_STATE", "There is no active update download to cancel.");
     }
@@ -160,6 +170,7 @@ export class UpdateManager {
   }
 
   install(send: UpdateProgressSender): void {
+    log.debug("Update installation requested", { state: this.#state });
     if (this.#state !== "ready_to_install" || !this.#downloadPath) {
       throw new UpdateError("INVALID_UPDATE_STATE", "Download and verify an update before installing it.");
     }

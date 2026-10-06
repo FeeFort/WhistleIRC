@@ -156,6 +156,9 @@ function formatRecord(record: LogRecord, options: LogFormatOptions): string {
     lines
       .map((line, index) => {
         let content = paint(line, record.kind === "separator" ? `1;${levelColors[record.level]}` : levelColors[record.level], colors);
+        if (record.kind === "separator" && options.isTTY && index === 0 && line.startsWith("── ")) {
+          content = paint("── ", "90", colors) + paint(line.slice(3), `1;${levelColors[record.level]}`, colors);
+        }
         if (record.kind === "separator" && available !== undefined && index === lines.length - 1) {
           const remaining = available - stringWidth(line);
           if (remaining > 1) content += paint(` ${"─".repeat(remaining - 1)}`, "90", colors);
