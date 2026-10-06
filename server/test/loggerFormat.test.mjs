@@ -107,16 +107,25 @@ test("oversized words wrap without breaking graphemes", () => {
   for (const part of parts) assert.ok(!part.startsWith("\u200d") && !part.startsWith("\u0301"));
 });
 
-test("critical frames fill the terminal and wrap content inside borders", () => {
+test("critical frames fit content and wrap within the terminal", () => {
   for (const columns of [30, 80, 140]) {
     const lines = render({ level: "CRITICAL", message: "HTTP server failed to start " + "long message ".repeat(30) }, { columns })
-      .trimEnd()
+      .trim()
       .split("\n");
     assert.ok(lines[0].startsWith("┏"));
     assert.ok(lines.at(-1).endsWith("┛"));
-    for (const line of lines) assert.equal(stringWidth(line), columns);
+    const frameWidth = stringWidth(lines[0]);
+    assert.ok(frameWidth <= columns);
+    for (const line of lines) assert.equal(stringWidth(line), frameWidth);
     for (const line of lines.slice(1, -1)) assert.ok(line.startsWith("┃ ") && line.endsWith(" ┃"));
   }
+});
+
+test("short critical frames use only the width required by their content", () => {
+  const lines = render({ level: "CRITICAL", message: "Failed" }, { columns: 140 }).trim().split("\n");
+  const contentWidth = Math.max(...lines.slice(1, -1).map((line) => stringWidth(line.slice(2, -2).trimEnd())));
+  assert.equal(stringWidth(lines[0]), contentWidth + 4);
+  assert.ok(stringWidth(lines[0]) < 140);
 });
 
 test("small terminals shorten prefixes and omit critical frames", () => {
@@ -131,7 +140,7 @@ test("non-TTY output has no colors, automatic wrapping or frames", () => {
   const message = "long message ".repeat(50);
   const output = render({ level: "CRITICAL", message }, { isTTY: false, colors: true, columns: 30 });
   assert.equal(output, stripVTControlCharacters(output));
-  assert.equal(output.split("\n").length, 2);
+  assert.equal(output.split("\n").length, 3);
   assert.ok(output.includes(message));
   assert.ok(!output.includes("┏"));
 });

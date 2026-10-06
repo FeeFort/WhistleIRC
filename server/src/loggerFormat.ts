@@ -116,6 +116,10 @@ function formatBanner(info: StartupBannerInfo, options: LogFormatOptions): strin
 }
 
 export function formatLogRecord(record: LogRecord, options: LogFormatOptions): string {
+  return (record.level === "CRITICAL" ? "\n" : "") + formatRecord(record, options);
+}
+
+function formatRecord(record: LogRecord, options: LogFormatOptions): string {
   if (record.kind === "banner" && record.banner && options.isTTY) return formatBanner(record.banner, options);
   const colors = options.colors && options.isTTY;
   const time = `${record.timestamp.toTimeString().slice(0, 8)}.${String(record.timestamp.getMilliseconds()).padStart(3, "0")}`;
@@ -133,9 +137,9 @@ export function formatLogRecord(record: LogRecord, options: LogFormatOptions): s
     );
 
   if (record.level === "CRITICAL" && columns !== undefined && columns >= 30) {
-    const width = columns - 4;
-    const content = [...wrap(`[${time}] ${level} · ${scope} · ${component}`, width), ...wrap(text, width)];
-    const lines = [`┏${"━".repeat(columns - 2)}┓`, ...content.map((line) => `┃ ${pad(line, width)} ┃`), `┗${"━".repeat(columns - 2)}┛`];
+    const content = [...wrap(`[${time}] ${level} · ${scope} · ${component}`, columns - 4), ...wrap(text, columns - 4)];
+    const width = Math.max(...content.map((line) => stringWidth(line)));
+    const lines = [`┏${"━".repeat(width + 2)}┓`, ...content.map((line) => `┃ ${pad(line, width)} ┃`), `┗${"━".repeat(width + 2)}┛`];
     return lines.map((line) => paint(line, levelColors.CRITICAL, colors)).join("\n") + "\n";
   }
 
