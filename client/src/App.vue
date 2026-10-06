@@ -101,6 +101,9 @@ const lazerLobbyStates = reactive({});
 const lazerCountdowns = reactive({});
 const lazerMatchStartCountdowns = reactive({});
 const lazerMatchPlaylistItems = reactive({});
+const lazerMatchTeams = new Map();
+const pendingLazerMappoolSlots = new Map();
+const lazerMatchMappoolSlots = new Map();
 const lazerCompletedBeatmaps = reactive({});
 const lazerConnectionState = ref("disconnected");
 const lazerSyncState = ref("idle");
@@ -536,7 +539,17 @@ watch(
           const playlistItemId = Number(lazerEventPayload.playlist_item_id) || Number(getLazerCurrentPlaylistItem(room)?.id);
           room.current_playlist_item_id = playlistItemId;
           lazerMatchPlaylistItems[lazerEventRoomId] = playlistItemId;
+          const pendingSlot = pendingLazerMappoolSlots.get(lazerEventRoomId);
+          if (pendingSlot) lazerMatchMappoolSlots.set(lazerEventRoomId, pendingSlot);
+          pendingLazerMappoolSlots.delete(lazerEventRoomId);
           const currentItem = room.playlist.find((item) => Number(item.id) === playlistItemId);
+          const matchTeams = lazerEventPayload.teams;
+          lazerMatchTeams.set(
+            lazerEventRoomId,
+            matchTeams && typeof matchTeams === "object"
+              ? new Map(Object.entries(matchTeams).map(([userId, team]) => [Number(userId), team]))
+              : new Map(),
+          );
           if (currentItem && room.playlist.length === 1) lazerSinglePlaylistMatches.set(lazerEventRoomId, { ...currentItem });
           else lazerSinglePlaylistMatches.delete(lazerEventRoomId);
           syncLazerNowPlaying(room);
@@ -573,8 +586,10 @@ watch(
         const completedPlaylistItem = room?.playlistHistory?.find((item) => Number(item.id) === completedPlaylistItemId) || room?.playlist?.find((item) => Number(item.id) === completedPlaylistItemId);
         if (completedPlaylistItem?.beatmap_id) lazerCompletedBeatmaps[lazerEventRoomId] = Number(completedPlaylistItem.beatmap_id);
         if (room && Number.isInteger(completedPlaylistItemId) && completedPlaylistItemId > 0) {
-          void loadLazerMatchResult(room, completedPlaylistItemId);
+          void loadLazerMatchResult(room, completedPlaylistItemId, lazerMatchTeams.get(lazerEventRoomId), lazerMatchMappoolSlots.get(lazerEventRoomId));
         }
+        lazerMatchTeams.delete(lazerEventRoomId);
+        lazerMatchMappoolSlots.delete(lazerEventRoomId);
         delete lazerMatchPlaylistItems[lazerEventRoomId];
         const map = nowPlayingByLobby[lazerEventChatId];
         const completedItem = lazerSinglePlaylistMatches.get(lazerEventRoomId);
@@ -3111,7 +3126,7 @@ function handleCreateLobby(payload) {
   handleCommand(payload.command);
 }
 
-async function loadLazerMatchResult(room, playlistItemId) {
+async function loadLazerMatchResult(room, playlistItemId, matchTeams = new Map(), mappoolSlotId = null) {
   const roomId = Number(room?.room_id);
   const itemId = Number(playlistItemId);
   if (!Number.isInteger(roomId) || roomId <= 0 || !Number.isInteger(itemId) || itemId <= 0) return;
@@ -3121,18 +3136,10 @@ async function loadLazerMatchResult(room, playlistItemId) {
     if (!scores.length) return;
 
     const playersById = new Map((room.players || []).map((player) => [Number(player.user_id), player]));
-    const teamScores = { red: 0, blue: 0 };
-    for (const score of scores) {
-      const player = playersById.get(Number(score.user_id));
-      const team = player?.team;
-      if (team !== "red" && team !== "blue") continue;
-      teamScores[team] += Number(score.total_score) || 0;
-    }
-
     const teamPlayers = { red: [], blue: [] };
     for (const score of scores) {
       const player = playersById.get(Number(score.user_id));
-      const team = player?.team;
+      const team = matchTeams.get(Number(score.user_id)) || player?.team;
       if (team !== "red" && team !== "blue") continue;
       teamPlayers[team].push({
         userId: Number(score.user_id),
@@ -3160,9 +3167,16 @@ async function loadLazerMatchResult(room, playlistItemId) {
     let blueScore = baseBlueScore;
     let winnerTeam = redScore === blueScore ? null : redScore > blueScore ? "red" : "blue";
     const pool = getLazerActivePool(lazerChatId(roomId));
-    const completedBeatmapId = Number(room?.playlistHistory?.find((item) => Number(item.id) === itemId)?.beatmap_id);
-    const condition = pool?.slots?.find((slot) => Number(slot.beatmapId) === completedBeatmapId)?.winCondition;
-    const calculated = await evaluateLazerWinCondition(condition?.source, resultRoom);
+    const completedBeatmapId = Number(room?.playlistHistory?.find((item) => Number(item.id) === itemId)?.beatmap_id) || Number(scores[0]?.beatmap_id);
+    const slot = pool?.slots?.find((item) => item.slotId === mappoolSlotId)
+      || pool?.slots?.find((item) => Number(item.beatmapId) === completedBeatmapId);
+    const condition = slot?.winCondition;
+    const conditionTemplate = String(condition?.template || "score").trim().toLowerCase();
+    // Built-in conditions read directly from the Lazer /scores response.
+    // Only a Custom condition evaluates user-provided code.
+    const calculated = conditionTemplate === "custom"
+      ? await evaluateLazerWinCondition(condition?.source, resultRoom)
+      : calculateLazerApiResult(conditionTemplate, resultRoom, condition?.reverse === true, pool?.freeModMultipliers || {});
     if (calculated?.result) {
       redScore = calculated.result.red;
       blueScore = calculated.result.blue;
@@ -3180,6 +3194,7 @@ async function loadLazerMatchResult(room, playlistItemId) {
       teamBlueScore: blueScore,
       scoreDifference: Math.abs(redScore - blueScore),
       winnerTeam,
+      metric: conditionTemplate,
     };
     state.nextPickTeam = nextPickTeam;
     if (winnerTeam === "red" && (!winningScore || previousRedScore < winningScore)) state.teamAScore = previousRedScore + 1;
@@ -3187,6 +3202,35 @@ async function loadLazerMatchResult(room, playlistItemId) {
   } catch (error) {
     toast.add({ severity: "error", summary: "Result loading failed", detail: formatLazerWsError(error?.message, "Unable to load the map result."), life: 5000 });
   }
+}
+
+function calculateLazerApiResult(template, room, reverse = false, multipliers = {}) {
+  if (template === "freemod") {
+    const normalizedMultipliers = Object.entries(multipliers || {}).map(([mods, value]) => ({
+      mods: String(mods).toUpperCase().split(/[+\s]+/).filter(Boolean),
+      value: Number(value) || 1,
+    })).sort((left, right) => right.mods.length - left.mods.length);
+    const total = (team) => team.players.reduce((sum, player) => {
+      const playerMods = new Set((player.mods || []).map((mod) => String(mod).toUpperCase()));
+      const multiplier = normalizedMultipliers.find((entry) => entry.mods.every((mod) => playerMods.has(mod)))?.value || 1;
+      return sum + player.score * multiplier;
+    }, 0);
+    return makeLazerCalculatedResult(total(room.teamRed), total(room.teamBlue), reverse);
+  }
+  if (template === "accuracy") return makeLazerCalculatedResult(room.teamRed.accuracy, room.teamBlue.accuracy, reverse);
+  if (template === "combo") return makeLazerCalculatedResult(room.teamRed.combo, room.teamBlue.combo, reverse);
+  return makeLazerCalculatedResult(room.teamRed.score, room.teamBlue.score, reverse);
+}
+
+function makeLazerCalculatedResult(red, blue, reverse = false) {
+  const redValue = Number(red);
+  const blueValue = Number(blue);
+  if (!Number.isFinite(redValue) || !Number.isFinite(blueValue)) return null;
+  return {
+    winner: redValue === blueValue ? "tie" : (reverse ? redValue < blueValue : redValue > blueValue) ? "red" : "blue",
+    systemMessages: [],
+    result: { red: redValue, blue: blueValue },
+  };
 }
 
 async function evaluateLazerWinCondition(source, room) {
@@ -3252,8 +3296,9 @@ function getLobbyTemplateValues(lobby, result = {}) {
   const rawBeatmapTeamBlueScore = Number.isFinite(result.beatmapTeamBlueScore) ? result.beatmapTeamBlueScore : hasLastPlay ? lastPlay.teamBlueScore : "—";
   const explicitWinner = result.beatmapWinner === "red" ? teamRedName : result.beatmapWinner === "blue" ? teamBlueName : result.beatmapWinner === "tie" ? "Draw" : result.beatmapWinner;
   const beatmapWinner = resolveBeatmapWinner(teamRedName, teamBlueName, rawBeatmapTeamRedScore, rawBeatmapTeamBlueScore, explicitWinner);
+  const accuracyMultiplier = result.accuracy === "fraction" ? 100 : 1;
   const accuracySuffix = result.accuracy ? "%" : "";
-  const roundAccuracy = (score) => Math.round((score + Number.EPSILON) * 100) / 100;
+  const roundAccuracy = (score) => Math.round((score * accuracyMultiplier + Number.EPSILON) * 100) / 100;
   const formatBeatmapScore = (score) => (accuracySuffix && Number.isFinite(score) ? `${roundAccuracy(score)}%` : score);
   const beatmapTeamRedScore = formatBeatmapScore(rawBeatmapTeamRedScore);
   const beatmapTeamBlueScore = formatBeatmapScore(rawBeatmapTeamBlueScore);
@@ -3317,6 +3362,12 @@ function handleMappoolPick(map) {
   };
   setNowPlaying(activeChat.value, nextMap);
   refreshNowPlayingMapAttributes(activeChat.value, nextMap);
+}
+
+function handleLazerMappoolPick(slot) {
+  const roomId = Number(activeLazerRoom.value?.room_id);
+  if (!Number.isInteger(roomId) || roomId <= 0 || !slot?.slotId) return;
+  pendingLazerMappoolSlots.set(roomId, String(slot.slotId));
 }
 
 function rulesetNumber(ruleset) {
@@ -3386,7 +3437,7 @@ function handleLazerSendResult(result) {
       lastPlay: lobby.lastPlay || {},
       currentBeatmap: lazerCompletedBeatmaps[roomId] ? { url: `https://osu.ppy.sh/b/${lazerCompletedBeatmaps[roomId]}` } : null,
     },
-    result,
+    { ...result, accuracy: lobby.lastPlay?.metric === "accuracy" ? "fraction" : result.accuracy },
   );
 
   const outgoingMessages = activePreset.value?.messages.filter((message) => message.enabled && message.content.trim()) || [
@@ -4041,6 +4092,7 @@ function handleLazerSendResult(result) {
             :room-id="activeLazerRoom?.room_id"
             :qualification-mode="activeLazerQualificationMode"
             @send-command="handleCommand"
+            @pick-map="handleLazerMappoolPick"
           />
         </SidebarSectionCard>
       </div>
