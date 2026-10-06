@@ -7,6 +7,15 @@ import { formatLogRecord } from "../src/loggerFormat.ts";
 const record = { timestamp: new Date(2026, 9, 6, 12, 35, 10, 87), level: "DEBUG", scope: "stable", component: "irc", message: "Connected", fields: {} };
 const render = (changes = {}, options = {}) => formatLogRecord({ ...record, ...changes }, { colors: false, isTTY: true, columns: 80, ...options });
 
+test("operation output includes boundaries, shared ID, outcome and duration", () => {
+  const start = render({ level: "TRACE", message: "MakeRoom", operation: { id: 18, phase: "start" }, fields: { beatmapId: 123 } }, { isTTY: false });
+  const end = render({ level: "TRACE", message: "MakeRoom", operation: { id: 18, phase: "end", durationMs: 86 }, fields: { roomId: 987654 } }, { isTTY: false });
+  const failure = render({ level: "WARN", message: "MakeRoom", operation: { id: 18, phase: "failed", durationMs: 86 } }, { isTTY: false });
+  assert.ok(start.includes("┌─> #18 MakeRoom  beatmapId=123"));
+  assert.ok(end.includes("└─< #18 MakeRoom OK  roomId=987654 duration=86ms"));
+  assert.ok(failure.includes("└─< #18 MakeRoom FAILED duration=86ms"));
+});
+
 test("banner includes runtime details and brand colors without changing layout", () => {
   const banner = { version: "0.4.0-alpha", url: "http://localhost:3000", nodeVersion: "v24.0.0", os: "Linux 6.10", arch: "x64", level: "WARN" };
   const plain = render({ kind: "banner", banner });

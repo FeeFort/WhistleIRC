@@ -410,7 +410,13 @@ await test("room synchronization", async (t) => {
 
   await t.test("SignalR diagnostics redact passwords in request logs", async (t) => {
     const logs = [];
-    t.mock.method(console, "log", (message) => logs.push(message));
+    const previousLevel = logger.level;
+    logger.setLevel("TRACE");
+    t.after(() => logger.setLevel(previousLevel));
+    t.mock.method(process.stderr, "write", (message) => {
+      logs.push(message);
+      return true;
+    });
     invoke = async () => undefined;
     await invokeHub("ChangeRoomSettings", 1, { name: "Room", password: "do-not-log-this" });
     assert.ok(logs.some((message) => message.includes("ChangeRoomSettings")));
@@ -629,3 +635,4 @@ await test("room synchronization", async (t) => {
     assert.equal(statuses.at(-1).state, "disconnected");
   });
 });
+import { logger } from "../src/logger.ts";

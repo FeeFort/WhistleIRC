@@ -62,7 +62,11 @@ function messageText(record: LogRecord): string {
     const formatted = typeof value === "string" ? value : inspect(value, { colors: false, compact: true, breakLength: Infinity });
     return `${key}=${formatted}`;
   });
-  return clean(record.message + (fields.length ? `  ${fields.join(" ")}` : ""));
+  const operation = record.operation;
+  const prefix = operation ? `${operation.phase === "start" ? "┌─>" : "└─<"} #${operation.id} ` : "";
+  const outcome = operation && operation.phase !== "start" ? (operation.phase === "failed" ? " FAILED" : " OK") : "";
+  const duration = operation?.durationMs === undefined ? "" : ` duration=${operation.durationMs}ms`;
+  return clean(prefix + record.message + outcome + (fields.length ? `  ${fields.join(" ")}` : "") + duration);
 }
 
 function formatBanner(info: StartupBannerInfo, options: LogFormatOptions): string {

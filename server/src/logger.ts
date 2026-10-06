@@ -1,5 +1,5 @@
 import { formatLogRecord } from "./loggerFormat.js";
-import type { LogFieldsInput, LogLevel, LoggerOptions, LoggerRuntimeOptions, LoggerState, LogScope, StartupBannerInfo } from "./types.js";
+import type { LogFieldsInput, LogLevel, LoggerOptions, LoggerRuntimeOptions, LoggerState, LogScope, StartupBannerInfo, TraceOperation, TraceOperationDetails } from "./types.js";
 
 // Levels go from most severe to most detailed
 export const LOG_LEVELS = ["CRITICAL", "ERROR", "WARN", "INFO", "DEBUG", "TRACE"] as const;
@@ -23,11 +23,13 @@ export class Logger {
   constructor(options: LoggerOptions = {}, scope: LogScope = "core", component = "server") {
     const colors = options.colors ?? resolveLoggerOptions([]).colors;
     this.state = {
+      operationSequence: 0,
       bannerShown: false,
       level: options.level ?? "WARN",
       colors,
       sink: options.sink ?? ((record) => process.stderr.write(formatLogRecord(record, { colors, isTTY: Boolean(process.stderr.isTTY), columns: process.stderr.columns }))),
       now: options.now ?? (() => new Date()),
+      monotonicNow: options.monotonicNow ?? (() => performance.now()),
     };
     this.scope = scope;
     this.component = component;
@@ -57,8 +59,45 @@ export class Logger {
   }
 
   log(level: LogLevel, message: string, fields: LogFieldsInput = {}): void {
+    this.emit(level, message, fields);
+  }
+
+  private emit(level: LogLevel, message: string, fields: LogFieldsInput = {}, operation?: TraceOperationDetails): void {
     if (!this.isEnabled(level)) return;
-    this.state.sink({ timestamp: this.state.now(), level, scope: this.scope, component: this.component, message, fields: typeof fields === "function" ? fields() : fields });
+    this.state.sink({
+      timestamp: this.state.now(),
+      level,
+      scope: this.scope,
+      component: this.component,
+      message,
+      fields: typeof fields === "function" ? fields() : fields,
+      ...(operation ? { operation } : {}),
+    });
+  }
+
+  traceStart(message: string, fields?: LogFieldsInput): TraceOperation {
+    const id = ++this.state.operationSequence;
+    const startedAt = this.state.monotonicNow();
+    let finished = false;
+    this.emit("TRACE", message, fields, { id, phase: "start" });
+    const finish = (phase: "end" | "failed", level: LogLevel, details?: LogFieldsInput) => {
+      if (finished) return;
+      finished = true;
+      this.emit(level, message, details, { id, phase, durationMs: Math.max(0, Math.round(this.state.monotonicNow() - startedAt)) });
+    };
+    return {
+      id,
+      end: (details) => finish("end", "TRACE", details),
+      fail: (error, level = "WARN", details) => finish("failed", level, () => ({ ...(typeof details === "function" ? details() : details), error })),
+    };
+  }
+
+  traceIn(message: string, fields?: LogFieldsInput): void {
+    this.trace(`← ${message}`, fields);
+  }
+
+  traceOut(message: string, fields?: LogFieldsInput): void {
+    this.trace(`→ ${message}`, fields);
   }
 
   separator(message: string, level: LogLevel = "INFO"): void {

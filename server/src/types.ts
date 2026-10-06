@@ -7,6 +7,7 @@ export type LogFields = Readonly<Record<string, unknown>>;
 export type LogFieldsInput = LogFields | (() => LogFields);
 
 export interface LogRecord {
+  readonly operation?: TraceOperationDetails;
   readonly kind?: "separator" | "banner";
   readonly banner?: StartupBannerInfo;
   readonly timestamp: Date;
@@ -15,6 +16,18 @@ export interface LogRecord {
   readonly component: string;
   readonly message: string;
   readonly fields: LogFields;
+}
+
+export interface TraceOperationDetails {
+  readonly id: number;
+  readonly phase: "start" | "end" | "failed";
+  readonly durationMs?: number;
+}
+
+export interface TraceOperation {
+  readonly id: number;
+  end(fields?: LogFieldsInput): void;
+  fail(error: unknown, level?: LogLevel, fields?: LogFieldsInput): void;
 }
 
 export interface StartupBannerInfo {
@@ -39,6 +52,7 @@ export interface LoggerOptions {
   colors?: boolean;
   sink?: LogSink;
   now?: () => Date;
+  monotonicNow?: () => number;
 }
 
 export interface LoggerRuntimeOptions {
@@ -47,11 +61,13 @@ export interface LoggerRuntimeOptions {
 }
 
 export interface LoggerState {
+  operationSequence: number;
   bannerShown: boolean;
   level: LogLevel;
   colors: boolean;
   sink: LogSink;
   now: () => Date;
+  monotonicNow: () => number;
 }
 
 // Raw types, basically how osu! api responds

@@ -158,7 +158,6 @@ export function isHubResponse(methodName: string, value: unknown): boolean {
 
 let connection: signalR.HubConnection | null = null;
 let connectionGeneration = 0;
-let invocationSequence = 0;
 let sessionAbort = new AbortController();
 let statusHandler: LazerStatusHandler | undefined;
 
@@ -251,14 +250,14 @@ export async function connectToRefereeHub(onEvent: HubEventHandler, onResync: Re
 }
 
 export async function invokeHub<T = unknown>(methodName: string, ...args: unknown[]): Promise<T> {
-  const invocationId = ++invocationSequence;
-  const startedAt = Date.now();
-  console.log(
-    `[refereeHub] call=${invocationId} session=${connectionGeneration} invoke ${methodName}: ${JSON.stringify(args, (key, value) => (/password|token|secret|authorization/i.test(key) ? "[redacted]" : value))}`,
-  );
+  const operation = log.traceStart(methodName, () => ({
+    session: connectionGeneration,
+    args: JSON.stringify(args, (key, value) => (/password|token|secret|authorization/i.test(key) ? "[redacted]" : value)),
+  }));
   if (!connection || connection.state !== signalR.HubConnectionState.Connected) {
-    console.warn(`[refereeHub] call=${invocationId} rejected: connection state=${connection?.state ?? "absent"}`);
-    throw new Error(`Cannot invoke ${methodName}: referee hub is not connected.`);
+    const error = new Error(`Cannot invoke ${methodName}: referee hub is not connected.`);
+    operation.fail(error, "WARN", { state: connection?.state ?? "absent" });
+    throw error;
   }
   const generation = connectionGeneration;
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -296,14 +295,9 @@ export async function invokeHub<T = unknown>(methodName: string, ...args: unknow
         });
       }
     }
-    if (methodName === "ListRooms") {
-      console.log(`[refereeHub] call=${invocationId} ${methodName} succeeded (${Date.now() - startedAt}ms): ${JSON.stringify(result)}`);
-    } else {
-      const roomId = typeof result === "object" && result !== null && "room_id" in result ? result.room_id : undefined;
-      console.log(`[refereeHub] call=${invocationId} ${methodName} succeeded (${Date.now() - startedAt}ms)${roomId === undefined ? "" : `, room=${roomId}`}`);
-    }
+    operation.end(() => ({ result: JSON.stringify(result, (key, value) => (/password|token|secret|authorization/i.test(key) ? "[redacted]" : value)) }));
   } catch (error) {
-    console.error(`[refereeHub] call=${invocationId} session=${generation} ${methodName} failed (${Date.now() - startedAt}ms): ${error instanceof Error ? error.message : String(error)}`);
+    operation.fail(error, "WARN", { session: generation });
     throw error;
   } finally {
     if (timer !== undefined) clearTimeout(timer);

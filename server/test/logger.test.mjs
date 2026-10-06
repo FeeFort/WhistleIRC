@@ -2,6 +2,82 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { Logger, LOG_LEVELS, resolveLoggerOptions } from "../src/logger.ts";
 
+test("interleaved operations keep distinct IDs and monotonic durations", () => {
+  const records = [];
+  let time = 100;
+  const root = new Logger({ level: "TRACE", sink: (record) => records.push(record), monotonicNow: () => time });
+  const first = root.child("lazer", "refereeHub").traceStart("MakeRoom", { beatmapId: 123 });
+  time = 110;
+  const second = root.child("stable", "irc").traceStart("Settings");
+  time = 125;
+  second.end({ roomId: 456 });
+  time = 180;
+  first.end({ roomId: 123 });
+  assert.notEqual(first.id, second.id);
+  assert.deepEqual(
+    records.map((record) => record.operation),
+    [
+      { id: first.id, phase: "start" },
+      { id: second.id, phase: "start" },
+      { id: second.id, phase: "end", durationMs: 15 },
+      { id: first.id, phase: "end", durationMs: 80 },
+    ],
+  );
+  assert.equal(records[2].scope, "stable");
+  assert.equal(records[3].scope, "lazer");
+});
+
+test("operation failures are visible at WARN without evaluating disabled payloads", () => {
+  const records = [];
+  let evaluations = 0;
+  const log = new Logger({ sink: (record) => records.push(record), monotonicNow: () => 0 });
+  const details = () => {
+    evaluations++;
+    return { payload: "details" };
+  };
+  const success = log.traceStart("Successful request", details);
+  success.end(details);
+  assert.equal(records.length, 0);
+  assert.equal(evaluations, 0);
+  const failure = log.traceStart("Failed request", details);
+  const error = new Error("Disconnected");
+  failure.fail(error);
+  assert.equal(records.length, 1);
+  assert.equal(records[0].level, "WARN");
+  assert.equal(records[0].operation.id, failure.id);
+  assert.equal(records[0].fields.error, error);
+  assert.equal(evaluations, 0);
+});
+
+test("operations finish once and ignore payloads from duplicate completions", () => {
+  const records = [];
+  const log = new Logger({ level: "TRACE", sink: (record) => records.push(record) });
+  for (const failFirst of [false, true]) {
+    const operation = log.traceStart("Request");
+    if (failFirst) operation.fail(new Error("Failed"), "ERROR");
+    else operation.end();
+    const details = () => {
+      throw new Error("Duplicate completion evaluated");
+    };
+    operation.end(details);
+    operation.fail(new Error("Late failure"), "WARN", details);
+  }
+  assert.equal(records.length, 4);
+  assert.equal(records[3].level, "ERROR");
+});
+
+test("network directions are separate from operation boundaries", () => {
+  const records = [];
+  const log = new Logger({ level: "TRACE", sink: (record) => records.push(record) });
+  log.traceIn("PING");
+  log.traceOut("PONG");
+  assert.deepEqual(
+    records.map((record) => record.message),
+    ["← PING", "→ PONG"],
+  );
+  assert.ok(records.every((record) => record.operation === undefined));
+});
+
 test("separators respect thresholds and retain structured context", () => {
   const records = [];
   const log = new Logger({ sink: (record) => records.push(record) }).child("lazer", "session");
