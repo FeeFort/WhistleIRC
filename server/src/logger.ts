@@ -1,0 +1,88 @@
+import { inspect } from "node:util";
+import type { LogFieldsInput, LogLevel, LoggerOptions, LoggerRuntimeOptions, LoggerState, LogRecord, LogScope } from "./types.js";
+
+// Levels go from most severe to most detailed
+export const LOG_LEVELS = ["CRITICAL", "ERROR", "WARN", "INFO", "DEBUG", "TRACE"] as const;
+
+export function resolveLoggerOptions(
+  args: readonly string[] = process.argv.slice(2),
+  environment: Readonly<Record<string, string | undefined>> = process.env,
+  isTTY = Boolean(process.stderr.isTTY),
+): LoggerRuntimeOptions {
+  const separator = args.indexOf("--");
+  const flags = new Set((separator === -1 ? args : args.slice(0, separator)).flatMap((arg) => (/^-[vdt]+$/.test(arg) ? [...arg.slice(1)].map((flag) => `-${flag}`) : [arg])));
+  const level = flags.has("--trace") || flags.has("-t") ? "TRACE" : flags.has("--debug") || flags.has("-d") ? "DEBUG" : flags.has("--verbose") || flags.has("-v") ? "INFO" : "WARN";
+  return { level, colors: isTTY && environment.NO_COLOR === undefined && !flags.has("--no-color") };
+}
+
+// Write plain text until the terminal formatter is added
+function writePlainRecord(record: LogRecord): void {
+  const fields = Object.keys(record.fields).length ? ` ${inspect(record.fields, { colors: false, compact: true, breakLength: Infinity })}` : "";
+  process.stderr.write(`[${record.timestamp.toISOString()}] ${record.level} ${record.scope}/${record.component} ${record.message}${fields}\n`);
+}
+
+export class Logger {
+  private state: LoggerState;
+  readonly scope: LogScope;
+  readonly component: string;
+
+  constructor(options: LoggerOptions = {}, scope: LogScope = "core", component = "server") {
+    this.state = { level: options.level ?? "WARN", colors: options.colors ?? resolveLoggerOptions([]).colors, sink: options.sink ?? writePlainRecord, now: options.now ?? (() => new Date()) };
+    this.scope = scope;
+    this.component = component;
+  }
+
+  // Children share the output and level settings
+  child(scope: LogScope, component: string): Logger {
+    const child = new Logger({}, scope, component);
+    child.state = this.state;
+    return child;
+  }
+
+  get level(): LogLevel {
+    return this.state.level;
+  }
+
+  get colors(): boolean {
+    return this.state.colors;
+  }
+
+  setLevel(level: LogLevel): void {
+    this.state.level = level;
+  }
+
+  isEnabled(level: LogLevel): boolean {
+    return LOG_LEVELS.indexOf(level) <= LOG_LEVELS.indexOf(this.state.level);
+  }
+
+  log(level: LogLevel, message: string, fields: LogFieldsInput = {}): void {
+    if (!this.isEnabled(level)) return;
+    this.state.sink({ timestamp: this.state.now(), level, scope: this.scope, component: this.component, message, fields: typeof fields === "function" ? fields() : fields });
+  }
+
+  critical(message: string, fields?: LogFieldsInput): void {
+    this.log("CRITICAL", message, fields);
+  }
+
+  error(message: string, fields?: LogFieldsInput): void {
+    this.log("ERROR", message, fields);
+  }
+
+  warn(message: string, fields?: LogFieldsInput): void {
+    this.log("WARN", message, fields);
+  }
+
+  info(message: string, fields?: LogFieldsInput): void {
+    this.log("INFO", message, fields);
+  }
+
+  debug(message: string, fields?: LogFieldsInput): void {
+    this.log("DEBUG", message, fields);
+  }
+
+  trace(message: string, fields?: LogFieldsInput): void {
+    this.log("TRACE", message, fields);
+  }
+}
+
+export const logger = new Logger(resolveLoggerOptions());

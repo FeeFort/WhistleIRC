@@ -1,3 +1,41 @@
+import type { LOG_LEVELS } from "./logger.js";
+
+// Logger types
+export type LogLevel = (typeof LOG_LEVELS)[number];
+export type LogScope = "core" | "stable" | "lazer";
+export type LogFields = Readonly<Record<string, unknown>>;
+export type LogFieldsInput = LogFields | (() => LogFields);
+
+export interface LogRecord {
+  readonly timestamp: Date;
+  readonly level: LogLevel;
+  readonly scope: LogScope;
+  readonly component: string;
+  readonly message: string;
+  readonly fields: LogFields;
+}
+
+export type LogSink = (record: LogRecord) => void;
+
+export interface LoggerOptions {
+  level?: LogLevel;
+  colors?: boolean;
+  sink?: LogSink;
+  now?: () => Date;
+}
+
+export interface LoggerRuntimeOptions {
+  level: LogLevel;
+  colors: boolean;
+}
+
+export interface LoggerState {
+  level: LogLevel;
+  colors: boolean;
+  sink: LogSink;
+  now: () => Date;
+}
+
 // Raw types, basically how osu! api responds
 export interface OsuTokenResponse {
   access_token: string;
