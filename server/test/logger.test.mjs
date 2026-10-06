@@ -2,6 +2,51 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { Logger, LOG_LEVELS, resolveLoggerOptions } from "../src/logger.ts";
 
+test("separators respect thresholds and retain structured context", () => {
+  const records = [];
+  const log = new Logger({ sink: (record) => records.push(record) }).child("lazer", "session");
+  log.separator("Starting session");
+  assert.equal(records.length, 0);
+  log.separator("Reconnecting", "WARN");
+  assert.equal(records[0].kind, "separator");
+  assert.equal(records[0].scope, "lazer");
+  assert.equal(records[0].message, "Reconnecting");
+});
+
+test("TTY banner appears once even at WARN and across children", (t) => {
+  const descriptor = Object.getOwnPropertyDescriptor(process.stderr, "isTTY");
+  Object.defineProperty(process.stderr, "isTTY", { configurable: true, value: true });
+  t.after(() => {
+    if (descriptor) Object.defineProperty(process.stderr, "isTTY", descriptor);
+    else delete process.stderr.isTTY;
+  });
+  const records = [];
+  const log = new Logger({ sink: (record) => records.push(record) });
+  const info = { version: "1.2.3", url: "http://localhost:3000", nodeVersion: "v24.0.0", os: "Linux", arch: "x64" };
+  log.startupBanner(info);
+  log.child("core", "server").startupBanner(info);
+  assert.equal(records.length, 1);
+  assert.equal(records[0].kind, "banner");
+  assert.deepEqual(records[0].banner, { ...info, level: "WARN" });
+});
+
+test("non-TTY startup uses an INFO record and respects filtering", (t) => {
+  const descriptor = Object.getOwnPropertyDescriptor(process.stderr, "isTTY");
+  Object.defineProperty(process.stderr, "isTTY", { configurable: true, value: false });
+  t.after(() => {
+    if (descriptor) Object.defineProperty(process.stderr, "isTTY", descriptor);
+    else delete process.stderr.isTTY;
+  });
+  const records = [];
+  const info = { version: "1.2.3", url: "http://localhost:3000", nodeVersion: "v24.0.0", os: "Linux", arch: "x64" };
+  new Logger({ sink: (record) => records.push(record) }).startupBanner(info);
+  assert.equal(records.length, 0);
+  new Logger({ level: "INFO", sink: (record) => records.push(record) }).startupBanner(info);
+  assert.equal(records.length, 1);
+  assert.equal(records[0].kind, undefined);
+  assert.equal(records[0].fields.os, "Linux");
+});
+
 test("logging flags select the most detailed level regardless of order", () => {
   const cases = [
     [[], "WARN"],

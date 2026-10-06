@@ -2,7 +2,10 @@ import { hubRateLimiter, rateLimitError } from "../rateLimiter.js";
 import * as signalR from "@microsoft/signalr";
 import { getAccessToken } from "../auth/auth.js";
 import { config } from "../config.js";
+import { logger } from "../logger.js";
 import { HubEventHandler, ResyncHandler, HubEventType, LazerHubEvent, HubEventPayloads, LazerStatusHandler } from "../types.js";
+
+const log = logger.child("lazer", "refereeHub");
 
 // Full list of referee hub events that can be invoked by the server
 const CLIENT_EVENTS = [
@@ -210,14 +213,14 @@ export async function connectToRefereeHub(onEvent: HubEventHandler, onResync: Re
     sessionAbort.abort();
     sessionAbort = new AbortController();
     onStatus?.({ type: "lazer_connection_state", state: "reconnecting", ...(error ? { reason: error.message } : {}) });
-    console.warn(`[refereeHub] Reconnecting: ${error?.message ?? "unknown reason"}`);
+    log.separator(`Reconnecting: ${error?.message ?? "unknown reason"}`, "WARN");
   });
 
   hub.onreconnected(async () => {
     if (generation !== connectionGeneration) return;
     sessionAbort = new AbortController();
     onStatus?.({ type: "lazer_connection_state", state: "connected" });
-    console.log("[refereeHub] Reconnected — syncing rooms list");
+    log.separator("Connection restored");
     try {
       await onResync();
     } catch (error) {

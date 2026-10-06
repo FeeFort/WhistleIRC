@@ -1,6 +1,9 @@
 import http from "node:http";
 import net from "node:net";
 import path from "node:path";
+import os from "node:os";
+import packageInfo from "../package.json" with { type: "json" };
+import { logger } from "./logger.js";
 import express, { Request, Response } from "express";
 import { WebSocket, WebSocketServer } from "ws";
 import { parseBanchoBotMessage, parseLobbyCommand } from "./banchoBotParser.js";
@@ -22,6 +25,7 @@ import type { LazerConnectionStateEvent, LazerSyncStateEvent, LazerRoomsEvent } 
 import { ChatSocket } from "./lazer/chatSocket.js";
 
 const launchedAfterUpdate = process.argv.includes("--updated");
+const sessionLog = logger.child("lazer", "session");
 let chatSocket: ChatSocket | null = null;
 
 function startChatSocket(): void {
@@ -241,16 +245,19 @@ let lazerSyncState: LazerSyncStateEvent = { type: "lazer_sync_state", state: "id
 let osuSessionTransition: Promise<void> = Promise.resolve();
 
 async function stopLazerSession(): Promise<void> {
+  sessionLog.separator("Stopping session");
   chatSocket?.close();
   chatSocket = null;
   roomManager.reset();
   await disconnectFromRefereeHub();
+  sessionLog.separator("Session stopped");
 }
 
 async function startLazerSession(): Promise<void> {
   if (shuttingDown) return;
   const auth = getState();
   if (auth.status !== "authenticated") return;
+  sessionLog.separator("Starting session");
   roomManager.setCurrentUserId(auth.user.id);
   roomManager.setListeners(
     (room) => broadcast({ type: "lazer_room_state", room }),
@@ -288,6 +295,7 @@ async function startLazerSession(): Promise<void> {
   // Initial hub connection must discover rooms without a frontend request.
   try {
     await roomManager.resync();
+    sessionLog.separator("Session ready");
   } catch (error) {
     console.error(`[lazer] Initial room sync failed: ${(error as Error).message}`);
     // TODO: Use the shared API exponential backoff policy for sync retries.
@@ -1498,8 +1506,8 @@ webSocketServer.on("connection", (client) => {
 });
 
 httpServer.listen(config.httpPort, config.httpHost, () => {
-  console.log(`[${formatLogTime()}] WhistleIRC server listening on http://${config.httpHost}:${config.httpPort}`);
-  console.log(`[${formatLogTime()}] WebSocket endpoint: ws://${config.httpHost}:${config.httpPort}/ws`);
+  logger.startupBanner({ version: packageInfo.version, url: `http://localhost:${config.httpPort}`, nodeVersion: process.version, os: `${os.type()} ${os.release()}`, arch: process.arch });
+  logger.info("WebSocket endpoint ready", { url: `ws://${config.httpHost}:${config.httpPort}/ws` });
 
   const browserUrl = `http://localhost:${config.httpPort}${launchedAfterUpdate ? "?updated=1" : ""}`;
 
@@ -1530,7 +1538,7 @@ function shutdown(signal?: string): void {
   if (process.stdin.isTTY && typeof process.stdin.setRawMode === "function") {
     process.stdin.setRawMode(false);
   }
-  console.log(`[${formatLogTime()}] Shutting down${signal ? ` (${signal})` : ""}...`);
+  logger.separator(`Shutting down${signal ? ` (${signal})` : ""}`);
   banchoConnection.logout();
 
   for (const client of webSocketServer.clients) {

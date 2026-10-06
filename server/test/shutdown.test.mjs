@@ -16,6 +16,7 @@ for (const failed of [false, true]) {
       shuttingDown: false,
       process: { stdin: { isTTY: false }, exit: (code) => exitCodes.push(code) },
       console: { log() {}, warn() {}, error() {} },
+      logger: { separator() {} },
       formatLogTime: () => "test",
       banchoConnection: { logout() {} },
       webSocketServer: { clients: [], close: (callback) => closures.push(callback) },

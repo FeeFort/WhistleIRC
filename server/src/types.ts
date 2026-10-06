@@ -7,6 +7,8 @@ export type LogFields = Readonly<Record<string, unknown>>;
 export type LogFieldsInput = LogFields | (() => LogFields);
 
 export interface LogRecord {
+  readonly kind?: "separator" | "banner";
+  readonly banner?: StartupBannerInfo;
   readonly timestamp: Date;
   readonly level: LogLevel;
   readonly scope: LogScope;
@@ -15,7 +17,22 @@ export interface LogRecord {
   readonly fields: LogFields;
 }
 
+export interface StartupBannerInfo {
+  version: string;
+  url: string;
+  nodeVersion: string;
+  os: string;
+  arch: string;
+  level: LogLevel;
+}
+
 export type LogSink = (record: LogRecord) => void;
+
+export interface LogFormatOptions {
+  colors: boolean;
+  isTTY: boolean;
+  columns?: number;
+}
 
 export interface LoggerOptions {
   level?: LogLevel;
@@ -30,6 +47,7 @@ export interface LoggerRuntimeOptions {
 }
 
 export interface LoggerState {
+  bannerShown: boolean;
   level: LogLevel;
   colors: boolean;
   sink: LogSink;

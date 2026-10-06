@@ -1,0 +1,140 @@
+import { inspect, stripVTControlCharacters } from "node:util";
+import stringWidth from "string-width";
+import type { LogFormatOptions, LogLevel, LogRecord, StartupBannerInfo } from "./types.js";
+
+const icons: Record<LogLevel, string> = { CRITICAL: "‼", ERROR: "✖", WARN: "▲", INFO: "ℹ", DEBUG: "■", TRACE: "❯" };
+const levelColors: Record<LogLevel, string> = { CRITICAL: "1;37;41", ERROR: "31", WARN: "38;5;208", INFO: "34", DEBUG: "38;5;153", TRACE: "37" };
+const segmenter = new Intl.Segmenter("en", { granularity: "grapheme" });
+
+// Remove terminal controls before measuring or coloring text
+function clean(text: string): string {
+  return stripVTControlCharacters(text)
+    .replace(/\r\n?/g, "\n")
+    .replace(/\t/g, "    ")
+    .replace(/[\p{Cc}\p{Cf}]/gu, (character) => (character === "\n" || character === "\u200d" ? character : ""));
+}
+
+function paint(text: string, code: string, enabled: boolean): string {
+  return enabled ? `\u001b[${code}m${text}\u001b[0m` : text;
+}
+
+function pad(text: string, width: number): string {
+  return text + " ".repeat(Math.max(0, width - stringWidth(text)));
+}
+
+// Split oversized words without splitting Unicode graphemes
+function splitWord(word: string, width: number): string[] {
+  const parts: string[] = [];
+  let part = "";
+  for (const { segment } of segmenter.segment(word)) {
+    if (part && stringWidth(part + segment) > width) {
+      parts.push(part);
+      part = "";
+    }
+    part += segment;
+  }
+  if (part) parts.push(part);
+  return parts;
+}
+
+function wrap(text: string, width: number): string[] {
+  return text.split("\n").flatMap((line) => {
+    if (stringWidth(line) <= width) return [line];
+    const lines: string[] = [];
+    let current = "";
+    for (const word of line.trim().split(/ +/)) {
+      if (current && stringWidth(`${current} ${word}`) <= width) {
+        current += ` ${word}`;
+        continue;
+      }
+      if (current) lines.push(current);
+      const parts = splitWord(word, width);
+      current = parts.pop() ?? "";
+      lines.push(...parts);
+    }
+    lines.push(current);
+    return lines;
+  });
+}
+
+function messageText(record: LogRecord): string {
+  const fields = Object.entries(record.fields).map(([key, value]) => {
+    const formatted = typeof value === "string" ? value : inspect(value, { colors: false, compact: true, breakLength: Infinity });
+    return `${key}=${formatted}`;
+  });
+  return clean(record.message + (fields.length ? `  ${fields.join(" ")}` : ""));
+}
+
+function formatBanner(info: StartupBannerInfo, options: LogFormatOptions): string {
+  const colors = options.colors && options.isTTY;
+  const columns = Math.max(1, Math.floor(options.columns || 80));
+  const prefix = columns >= 4 ? `${paint("┃", "38;5;135", colors)} ` : "";
+  const width = Math.max(1, columns - stringWidth(prefix));
+  const purpleGradient = [183, 177, 171, 165, 135, 99, 63];
+  const brand = [..."Whistle"].map((letter, index) => paint(letter, `1;38;5;${purpleGradient[index]}`, colors)).join("") + paint("IRC", "1;37", colors);
+  const rows = [`WhistleIRC v${info.version}`, `Web UI  ${info.url}`, `Node.js ${info.nodeVersion}`, `OS      ${info.os} / ${info.arch}`, `Logging ${info.level}`];
+  return (
+    rows
+      .flatMap((row, index) =>
+        wrap(clean(row), width).map((line) => {
+          if (index === 0 && line.includes("WhistleIRC")) {
+            const [before, after] = line.split("WhistleIRC");
+            return prefix + paint(before, "90", colors) + brand + paint(after, "90", colors);
+          }
+          const labelLength = index === 0 ? 0 : [0, 8, 8, 8, 8][index];
+          const label = line.slice(0, labelLength);
+          const value = line.slice(labelLength);
+          if (index === 2) return prefix + paint(line, "32", colors);
+          return prefix + paint(label, "90", colors) + paint(value, index === 1 ? "34" : index === 4 ? levelColors[info.level] : "90", colors);
+        }),
+      )
+      .join("\n") + "\n"
+  );
+}
+
+export function formatLogRecord(record: LogRecord, options: LogFormatOptions): string {
+  if (record.kind === "banner" && record.banner && options.isTTY) return formatBanner(record.banner, options);
+  const colors = options.colors && options.isTTY;
+  const time = `${record.timestamp.toTimeString().slice(0, 8)}.${String(record.timestamp.getMilliseconds()).padStart(3, "0")}`;
+  const scope = clean(record.scope);
+  const component = clean(record.component).replace(/\n/g, " ");
+  const text = (record.kind === "separator" && options.isTTY ? "── " : "") + messageText(record);
+  const columns = options.isTTY ? Math.max(1, Math.floor(options.columns || 80)) : undefined;
+  const level = `${icons[record.level]} ${record.level}`;
+
+  if (columns !== undefined && columns < 4)
+    return (
+      wrap(`${record.level} ${text}`, columns)
+        .map((line) => paint(line, levelColors[record.level], colors))
+        .join("\n") + "\n"
+    );
+
+  if (record.level === "CRITICAL" && columns !== undefined && columns >= 30) {
+    const width = columns - 4;
+    const content = [...wrap(`[${time}] ${level} · ${scope} · ${component}`, width), ...wrap(text, width)];
+    const lines = [`┏${"━".repeat(columns - 2)}┓`, ...content.map((line) => `┃ ${pad(line, width)} ┃`), `┗${"━".repeat(columns - 2)}┛`];
+    return lines.map((line) => paint(line, levelColors.CRITICAL, colors)).join("\n") + "\n";
+  }
+
+  const scopeColor = scope === "lazer" ? "95" : scope === "stable" ? "38;5;208" : "90";
+  const context = `${scope}/${component}`;
+  let prefix = `${paint(`[${time}]`, "90", colors)} ${paint(pad(level, 10), `1;${levelColors[record.level]}`, colors)} ${paint(scope, scopeColor, colors)}${paint(`/${component}`, "90", colors)}${" ".repeat(Math.max(0, 16 - stringWidth(context)))} `;
+  // Shorten the prefix when little space remains for the message
+  if (columns !== undefined && columns - stringWidth(prefix) - 2 < 12) prefix = `${paint(level, `1;${levelColors[record.level]}`, colors)} ${paint(scope, scopeColor, colors)} `;
+  if (columns !== undefined && columns - stringWidth(prefix) - 2 < 4) prefix = "";
+  const continuation = " ".repeat(stringWidth(prefix));
+  const available = columns === undefined ? undefined : Math.max(2, columns - stringWidth(prefix) - 2);
+  const lines = available === undefined ? text.split("\n") : wrap(text, available);
+  return (
+    lines
+      .map((line, index) => {
+        let content = paint(line, record.kind === "separator" ? `1;${levelColors[record.level]}` : levelColors[record.level], colors);
+        if (record.kind === "separator" && available !== undefined && index === lines.length - 1) {
+          const remaining = available - stringWidth(line);
+          if (remaining > 1) content += paint(` ${"─".repeat(remaining - 1)}`, "90", colors);
+        }
+        return `${index === 0 ? prefix : continuation}${paint("┃", "90", colors)} ${content}`;
+      })
+      .join("\n") + "\n"
+  );
+}

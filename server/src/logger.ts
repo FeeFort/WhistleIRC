@@ -1,5 +1,5 @@
-import { inspect } from "node:util";
-import type { LogFieldsInput, LogLevel, LoggerOptions, LoggerRuntimeOptions, LoggerState, LogRecord, LogScope } from "./types.js";
+import { formatLogRecord } from "./loggerFormat.js";
+import type { LogFieldsInput, LogLevel, LoggerOptions, LoggerRuntimeOptions, LoggerState, LogScope, StartupBannerInfo } from "./types.js";
 
 // Levels go from most severe to most detailed
 export const LOG_LEVELS = ["CRITICAL", "ERROR", "WARN", "INFO", "DEBUG", "TRACE"] as const;
@@ -15,19 +15,20 @@ export function resolveLoggerOptions(
   return { level, colors: isTTY && environment.NO_COLOR === undefined && !flags.has("--no-color") };
 }
 
-// Write plain text until the terminal formatter is added
-function writePlainRecord(record: LogRecord): void {
-  const fields = Object.keys(record.fields).length ? ` ${inspect(record.fields, { colors: false, compact: true, breakLength: Infinity })}` : "";
-  process.stderr.write(`[${record.timestamp.toISOString()}] ${record.level} ${record.scope}/${record.component} ${record.message}${fields}\n`);
-}
-
 export class Logger {
   private state: LoggerState;
   readonly scope: LogScope;
   readonly component: string;
 
   constructor(options: LoggerOptions = {}, scope: LogScope = "core", component = "server") {
-    this.state = { level: options.level ?? "WARN", colors: options.colors ?? resolveLoggerOptions([]).colors, sink: options.sink ?? writePlainRecord, now: options.now ?? (() => new Date()) };
+    const colors = options.colors ?? resolveLoggerOptions([]).colors;
+    this.state = {
+      bannerShown: false,
+      level: options.level ?? "WARN",
+      colors,
+      sink: options.sink ?? ((record) => process.stderr.write(formatLogRecord(record, { colors, isTTY: Boolean(process.stderr.isTTY), columns: process.stderr.columns }))),
+      now: options.now ?? (() => new Date()),
+    };
     this.scope = scope;
     this.component = component;
   }
@@ -58,6 +59,22 @@ export class Logger {
   log(level: LogLevel, message: string, fields: LogFieldsInput = {}): void {
     if (!this.isEnabled(level)) return;
     this.state.sink({ timestamp: this.state.now(), level, scope: this.scope, component: this.component, message, fields: typeof fields === "function" ? fields() : fields });
+  }
+
+  separator(message: string, level: LogLevel = "INFO"): void {
+    if (!this.isEnabled(level)) return;
+    this.state.sink({ kind: "separator", timestamp: this.state.now(), level, scope: this.scope, component: this.component, message, fields: {} });
+  }
+
+  startupBanner(info: Omit<StartupBannerInfo, "level">): void {
+    if (this.state.bannerShown) return;
+    this.state.bannerShown = true;
+    const banner = { ...info, level: this.level };
+    if (!process.stderr.isTTY) {
+      this.info("WhistleIRC server started", banner);
+      return;
+    }
+    this.state.sink({ kind: "banner", banner, timestamp: this.state.now(), level: "INFO", scope: this.scope, component: this.component, message: "WhistleIRC server started", fields: {} });
   }
 
   critical(message: string, fields?: LogFieldsInput): void {
