@@ -1,9 +1,14 @@
 const SHOW_DELAY = 350;
 const FADE_DURATION = 130;
+const HIDE_DELAY = 450;
 const GAP = 9;
 
 function contentFrom(binding) {
   return typeof binding.value === "object" && binding.value ? binding.value.value : binding.value;
+}
+
+function isHtmlContent(binding) {
+  return typeof binding.value === "object" && binding.value?.html;
 }
 
 function positionFrom(binding) {
@@ -35,6 +40,7 @@ function removeTooltip(target) {
   const state = target.__appTooltip;
   if (!state) return;
   window.clearTimeout(state.showTimer);
+  window.clearTimeout(state.hideTimer);
   const tooltip = state.element;
   state.element = null;
   if (!tooltip) return;
@@ -42,17 +48,39 @@ function removeTooltip(target) {
   window.setTimeout(() => tooltip.remove(), FADE_DURATION);
 }
 
+function scheduleRemoveTooltip(target) {
+  const state = target.__appTooltip;
+  if (!state) return;
+  window.clearTimeout(state.hideTimer);
+  state.hideTimer = window.setTimeout(() => {
+    state.hideTimer = null;
+    if (!state.overTarget && !state.overTooltip && !state.focused) removeTooltip(target);
+  }, HIDE_DELAY);
+}
+
 function showTooltip(target) {
   const state = target.__appTooltip;
-  const content = String(contentFrom(state?.binding) || "").trim();
-  if (!state || !content || target.disabled) return;
+  const content = contentFrom(state?.binding);
+  const textContent = typeof content === "string" ? content.trim() : "";
+  const htmlContent = isHtmlContent(state?.binding) ? String(state.binding.value.html || "").trim() : "";
+  if (!state || (!textContent && !htmlContent) || target.disabled) return;
   window.clearTimeout(state.showTimer);
+  window.clearTimeout(state.hideTimer);
   state.showTimer = window.setTimeout(() => {
     if (state.element || target.disabled) return;
     const tooltip = document.createElement("div");
     tooltip.className = "app-tooltip";
     tooltip.setAttribute("role", "tooltip");
-    tooltip.textContent = content;
+    if (htmlContent) tooltip.innerHTML = htmlContent;
+    else tooltip.textContent = textContent;
+    tooltip.addEventListener("mouseenter", () => {
+      state.overTooltip = true;
+      window.clearTimeout(state.hideTimer);
+    });
+    tooltip.addEventListener("mouseleave", () => {
+      state.overTooltip = false;
+      scheduleRemoveTooltip(target);
+    });
     document.body.appendChild(tooltip);
     state.element = tooltip;
     placeTooltip(target, tooltip, positionFrom(state.binding));
@@ -62,25 +90,44 @@ function showTooltip(target) {
 
 export default {
   mounted(target, binding) {
-    const show = () => showTooltip(target);
-    const hide = () => removeTooltip(target);
-    target.__appTooltip = { element: null, showTimer: null, show, hide, binding };
-    target.addEventListener("mouseenter", show);
-    target.addEventListener("mouseleave", hide);
-    target.addEventListener("focus", show);
-    target.addEventListener("blur", hide);
+    const state = { element: null, showTimer: null, hideTimer: null, binding, overTarget: false, overTooltip: false, focused: false };
+    const enter = () => {
+      state.overTarget = true;
+      showTooltip(target);
+    };
+    const leave = () => {
+      state.overTarget = false;
+      scheduleRemoveTooltip(target);
+    };
+    const focus = () => {
+      state.focused = true;
+      showTooltip(target);
+    };
+    const blur = () => {
+      state.focused = false;
+      scheduleRemoveTooltip(target);
+    };
+    state.enter = enter;
+    state.leave = leave;
+    state.focus = focus;
+    state.blur = blur;
+    target.__appTooltip = state;
+    target.addEventListener("mouseenter", enter);
+    target.addEventListener("mouseleave", leave);
+    target.addEventListener("focus", focus);
+    target.addEventListener("blur", blur);
   },
   updated(target, binding) {
     target.__appTooltip.binding = binding;
-    if (!contentFrom(binding)) removeTooltip(target);
+    if (!contentFrom(binding) && !isHtmlContent(binding)) removeTooltip(target);
   },
   unmounted(target) {
     const state = target.__appTooltip;
     if (!state) return;
-    target.removeEventListener("mouseenter", state.show);
-    target.removeEventListener("mouseleave", state.hide);
-    target.removeEventListener("focus", state.show);
-    target.removeEventListener("blur", state.hide);
+    target.removeEventListener("mouseenter", state.enter);
+    target.removeEventListener("mouseleave", state.leave);
+    target.removeEventListener("focus", state.focus);
+    target.removeEventListener("blur", state.blur);
     removeTooltip(target);
     delete target.__appTooltip;
   },

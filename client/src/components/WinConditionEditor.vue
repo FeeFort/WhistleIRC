@@ -4,7 +4,7 @@ import InputNumber from "primevue/inputnumber";
 import Button from "primevue/button";
 import { DEFAULT_WIN_CONDITION } from "../composables/useMappool";
 import MonacoEditor from "./MonakoEditor.vue";
-const props = defineProps({ modelValue: { type: String, default: "" }, slotId: { type: String, default: "" } });
+const props = defineProps({ modelValue: { type: String, default: "" }, slotId: { type: String, default: "" }, lazerMode: { type: Boolean, default: false } });
 const emit = defineEmits(["update:modelValue", "test"]);
 const redScore = ref(1);
 const blueScore = ref(0);
@@ -45,12 +45,16 @@ defineExpose({ applyTestResult });
 <template>
   <div class="win-editor">
     <MonacoEditor :model-value="modelValue || DEFAULT_WIN_CONDITION" @update:model-value="(value) => emit('update:modelValue', value)" />
-    <small
+    <small v-if="!lazerMode"
       >Call <code>await parseRoom()</code> to get { teamRed, teamBlue: { score, combo, misses, accuracy } }. Call <code>system.sendMessage(text)</code> for a referee-only note. Call
       <code>calculateWinner({'{ red, blue }'}, { '{ reverse, onTie }' })</code> to pick the winner — this also fills the beatmapWinner / beatmapTeamRedScore / beatmapTeamBlueScore / scoreDifference
       result variables. Decimal comma is supported.</small
     >
-    <div class="win-editor__test">
+    <small v-else
+      >The match result is already available as <code>room</code> with <code>room.teamRed</code> and <code>room.teamBlue</code>. Call <code>system.sendMessage(text)</code> for a referee-only note,
+      then use <code>calculateWinner({'{ red, blue }'}, { '{ reverse, onTie }' })</code> to choose the winner.</small
+    >
+    <div v-if="!lazerMode" class="win-editor__test">
       <InputNumber v-model="redScore" :min="0" placeholder="Red score" />
       <InputNumber v-model="blueScore" :min="0" placeholder="Blue score" />
       <Button v-tooltip.top="'Test script'" text aria-label="Test script" @click="test">Test</Button>

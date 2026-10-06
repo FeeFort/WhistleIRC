@@ -188,7 +188,9 @@ export type IrcLine = {
 export type ConnectionState = "disconnected" | "connecting" | "authenticating" | "ready" | "error";
 
 //WS message type
-export type ClientMessage =
+export type ClientMessage = ClientCommand & { requestId?: string };
+
+export type ClientCommand =
   | { type: "login"; login: string; password: string }
   | { type: "logout" }
   | { type: "osu_login"; clientId: string; clientSecret: string; code: string; redirectUri: string }
@@ -208,6 +210,7 @@ export type ClientMessage =
   | { type: "confirm_install" }
   | { type: "test_win_condition"; slotId: string; source: string; sampleContext: Record<string, unknown> }
   | ({ type: "lazer_make_room" } & MakeRoomRequest)
+  | { type: "lazer_load_chat"; room_id: number }
   | { type: "lazer_join_room"; room_id: number }
   | { type: "lazer_leave_room"; room_id: number }
   | { type: "lazer_close_room"; room_id: number }
@@ -226,7 +229,8 @@ export type ClientMessage =
   | ({ type: "lazer_set_lock_state"; room_id: number } & SetLockStateRequest)
   | ({ type: "lazer_start_match"; room_id: number } & StartGameplayRequest)
   | { type: "lazer_stop_match_countdown"; room_id: number }
-  | { type: "lazer_abort_match"; room_id: number };
+  | { type: "lazer_abort_match"; room_id: number }
+  | { type: "lazer_send_chat_message"; room_id: number; message: string; is_action?: boolean };
 
 export interface PersistedSession {
   clientId: string;
@@ -236,6 +240,20 @@ export interface PersistedSession {
 }
 
 export type AllowedMethods = "GET" | "POST";
+export type InternalApiMethod = AllowedMethods | "DELETE";
+
+export type ChatNotification = {
+  event: string;
+  data: unknown;
+};
+
+export type ChatMessage = Record<string, unknown>;
+
+export type ChatSocketOptions = {
+  accessToken: string | (() => Promise<string>);
+  onNotification: (notification: ChatNotification) => void;
+  onError?: (error: Error) => void;
+};
 
 //Updater
 
@@ -417,8 +435,8 @@ export interface WinConditionOutcome {
 
 // SignalR API types
 
-export type HubEventHandler = (eventType: string, payload: unknown) => void;
-export type ResyncHandler = (rooms: unknown) => void;
+export type HubEventHandler = (event: LazerHubEvent) => void;
+export type ResyncHandler = () => Promise<void>;
 
 export interface RoomState {
   roomId: number;
@@ -657,4 +675,105 @@ export interface UserBannedEvent {
   room_id: number;
   banned_user_id: number;
   banning_user_id: number;
+}
+
+// Payloads and WebSocket envelope for incoming referee hub events.
+export interface HubEventPayloads {
+  UserJoined: UserJoinedEvent;
+  UserLeft: UserLeftEvent;
+  UserKicked: UserKickedEvent;
+  UserBanned: UserBannedEvent;
+  RefereeAdded: RefereeAddedEvent;
+  RefereeRemoved: RefereeRemovedEvent;
+  RefereeInvited: RefereeInvitedEvent;
+  RoomSettingsChanged: RoomSettingsChangedEvent;
+  MatchStateChanged: MatchStateChangedEvent;
+  PlaylistItemAdded: PlaylistItemAddedEvent;
+  PlaylistItemChanged: PlaylistItemChangedEvent;
+  PlaylistItemRemoved: PlaylistItemRemovedEvent;
+  RollCompleted: RollCompletedEvent;
+  UserStatusChanged: UserStatusChangedEvent;
+  UserModsChanged: UserModsChangedEvent;
+  UserStyleChanged: UserStyleChangedEvent;
+  UserTeamChanged: UserTeamChangedEvent;
+  CountdownStarted: CountdownStartedEvent;
+  CountdownStopped: CountdownStoppedEvent;
+  MatchStarted: MatchStartedEvent;
+  MatchAborted: MatchAbortedEvent;
+  MatchCompleted: MatchCompletedEvent;
+}
+
+export type HubEventType = keyof HubEventPayloads;
+
+export type LazerHubEvent = {
+  [K in HubEventType]: {
+    type: "lazer_event";
+    eventType: K;
+    roomId: number;
+    payload: HubEventPayloads[K];
+  };
+}[HubEventType];
+
+export interface PendingRoomJoin {
+  cancelled: boolean;
+  startedAt: number;
+  events: Array<{ eventType: HubEventType; payload: HubEventPayloads[HubEventType]; deferred?: boolean }>;
+  promise: Promise<void>;
+}
+
+export interface LazerConnectionStateEvent {
+  type: "lazer_connection_state";
+  state: "connecting" | "connected" | "reconnecting" | "disconnected";
+  reason?: string;
+}
+
+export type LazerSyncStateEvent =
+  { type: "lazer_sync_state"; state: "idle" | "syncing" | "synced" } | { type: "lazer_sync_state"; state: "failed"; message: string; failedRoomIds: number[]; scope: "all" | "partial" };
+
+export interface LazerRoomErrorEvent {
+  type: "lazer_room_error";
+  roomId: number;
+  operation: "join";
+  message: string;
+}
+
+export type LazerStatusEvent = LazerConnectionStateEvent | LazerSyncStateEvent | LazerRoomErrorEvent;
+export type LazerStatusHandler = (event: LazerStatusEvent) => void;
+
+export interface RequestFailure {
+  code: "REQUEST_TIMEOUT" | "INVALID_RESPONSE" | "RATE_LIMIT_QUEUE_FULL" | "RATE_LIMIT_WAIT_TIMEOUT" | "REQUEST_CANCELLED" | "RATE_LIMITED";
+  retryAfterMs?: number;
+  outcomeUnknown: boolean;
+}
+
+export type LazerChatStateEvent = {
+  type: "lazer_chat_state";
+  roomId: number;
+  requestId?: string;
+} & ({ state: "loading" | "ready" } | { state: "failed"; stage: "channel" | "history"; message: string; code?: string });
+
+export interface PendingChatLoad {
+  cancelled: boolean;
+  promise: Promise<ChatMessage[]>;
+}
+
+export interface LazerRoomsEvent {
+  type: "lazer_rooms";
+  roomIds: number[];
+}
+
+export interface RateLimitConfig {
+  tokensPerSecond: number;
+  capacity: number;
+  concurrency: number;
+  maxQueue: number;
+  maxWaitMs: number;
+}
+
+export interface RateLimitEntry {
+  resolve: (release: () => void) => void;
+  reject: (error: Error) => void;
+  expiresAt: number;
+  signal?: AbortSignal;
+  cancel: () => void;
 }

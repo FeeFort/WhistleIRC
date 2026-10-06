@@ -35,6 +35,90 @@ function testWinCondition(slotId, source, sampleContext) {
   return socket.value ? send(socket.value, { type: "test_win_condition", slotId, source, sampleContext }) : false;
 }
 
+function makeLazerRoom(payload) {
+  return socket.value ? send(socket.value, { type: "lazer_make_room", ...payload }) : false;
+}
+
+function inviteLazerPlayer(room_id, user_id) {
+  return socket.value ? send(socket.value, { type: "lazer_invite_player", room_id, user_id }) : false;
+}
+
+function sendLazerChatMessage(room_id, message, is_action = false) {
+  return socket.value ? send(socket.value, { type: "lazer_send_chat_message", room_id, message, is_action }) : false;
+}
+
+function rollLazer(room_id, max = 100) {
+  return socket.value ? send(socket.value, { type: "lazer_roll", room_id, max }) : false;
+}
+
+function joinLazerRoom(room_id) {
+  return socket.value ? send(socket.value, { type: "lazer_join_room", room_id }) : false;
+}
+
+function leaveLazerRoom(room_id) {
+  return socket.value ? send(socket.value, { type: "lazer_leave_room", room_id }) : false;
+}
+
+function closeLazerRoom(room_id) {
+  return socket.value ? send(socket.value, { type: "lazer_close_room", room_id }) : false;
+}
+
+function startLazerMatch(room_id, countdown) {
+  return socket.value ? send(socket.value, { type: "lazer_start_match", room_id, countdown }) : false;
+}
+
+function abortLazerMatch(room_id) {
+  return socket.value ? send(socket.value, { type: "lazer_abort_match", room_id }) : false;
+}
+
+function setLazerLockState(room_id, locked) {
+  return socket.value ? send(socket.value, { type: "lazer_set_lock_state", room_id, locked }) : false;
+}
+
+function changeLazerRoomSettings(room_id, settings) {
+  return socket.value ? send(socket.value, { type: "lazer_change_room_settings", room_id, ...settings }) : false;
+}
+
+function moveLazerUser(room_id, user_id, { slot = null, team = null } = {}) {
+  return socket.value ? send(socket.value, { type: "lazer_move_user", room_id, user_id, slot, team }) : false;
+}
+
+function kickLazerPlayer(room_id, user_id) {
+  return socket.value ? send(socket.value, { type: "lazer_kick_player", room_id, user_id }) : false;
+}
+
+function addLazerReferee(room_id, user_id) {
+  return socket.value ? send(socket.value, { type: "lazer_add_referee", room_id, user_id }) : false;
+}
+
+function removeLazerReferee(room_id, user_id) {
+  return socket.value ? send(socket.value, { type: "lazer_remove_referee", room_id, user_id }) : false;
+}
+
+function stopLazerMatchCountdown(room_id) {
+  return socket.value ? send(socket.value, { type: "lazer_stop_match_countdown", room_id }) : false;
+}
+
+function addLazerPlaylistItem(room_id, payload) {
+  return socket.value ? send(socket.value, { type: "lazer_add_playlist_item", room_id, ...payload }) : false;
+}
+
+function editLazerCurrentPlaylistItem(room_id, payload) {
+  return socket.value ? send(socket.value, { type: "lazer_edit_current_playlist_item", room_id, ...payload }) : false;
+}
+
+function editLazerPlaylistItem(room_id, playlist_item_id, payload) {
+  return socket.value ? send(socket.value, { type: "lazer_edit_playlist_item", room_id, playlist_item_id, ...payload }) : false;
+}
+
+function removeLazerPlaylistItem(room_id, playlist_item_id) {
+  return socket.value ? send(socket.value, { type: "lazer_remove_playlist_item", room_id, playlist_item_id }) : false;
+}
+
+function loadLazerChat(room_id) {
+  return socket.value ? send(socket.value, { type: "lazer_load_chat", room_id }) : false;
+}
+
 function getRequestSocket() {
   const existingSocket = socket.value;
   if (existingSocket && [WebSocket.OPEN, WebSocket.CONNECTING].includes(existingSocket.readyState)) {
@@ -359,6 +443,27 @@ export function useServerConnection() {
     refreshLobbyTitle,
     setActiveWinCondition,
     testWinCondition,
+    makeLazerRoom,
+    joinLazerRoom,
+    leaveLazerRoom,
+    closeLazerRoom,
+    startLazerMatch,
+    abortLazerMatch,
+    setLazerLockState,
+    changeLazerRoomSettings,
+    moveLazerUser,
+    kickLazerPlayer,
+    addLazerReferee,
+    removeLazerReferee,
+    stopLazerMatchCountdown,
+    addLazerPlaylistItem,
+    editLazerCurrentPlaylistItem,
+    editLazerPlaylistItem,
+    removeLazerPlaylistItem,
+    loadLazerChat,
+    lazerInvitePlayer: inviteLazerPlayer,
+    sendLazerChatMessage,
+    rollLazer,
     checkUpdate: requestUpdateCheck,
     startUpdate: () => sendUpdateCommand("start_update"),
     cancelUpdate: () => sendUpdateCommand("cancel_update"),

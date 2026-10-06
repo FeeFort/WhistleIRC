@@ -1,0 +1,527 @@
+<script setup>
+import { computed } from "vue";
+import { ArrowLeftRight, Ban, Binoculars, CircleArrowUp, CircleCheck, CircleMinus, CirclePlay, LockOpen, Settings, Users, Whistle } from "@lucide/vue";
+import { useNickColor } from "../../composables/useNickColor";
+import { useChatSettings } from "../../composables/useChatSettings";
+import SvgMarkup from "../SvgMarkup.vue";
+import modsMetadata from "../../assets/mods/mods.json";
+import modHexRaw from "../../assets/mods/mod-icon.svg?raw";
+import moreModsRaw from "../../assets/mods/more-mods.svg?raw";
+
+const modIconSources = import.meta.glob("../../assets/mods/*/*.svg", { eager: true, query: "?raw", import: "default" });
+
+function svgBody(raw) {
+  return String(raw || "")
+    .replace(/<defs>[\s\S]*?<\/defs>/g, "")
+    .replace(/\sclip-path="[^"]*"/g, "")
+    .replace(/^[\s\S]*?<svg[^>]*>/, "")
+    .replace(/<\/svg>\s*$/, "");
+}
+
+const hexBody = svgBody(modHexRaw);
+const moreModsBody = svgBody(moreModsRaw);
+
+const props = defineProps({
+  players: {
+    type: Array,
+    default: () => [],
+    // each: { name, profileUrl, isHost, isReady, avatarUrl, mods }
+    // mods is an optional array of mod acronyms, e.g. ['HD', 'DT'] -
+    // rendered as small icons once mod art is wired in
+  },
+  currentUser: { type: String, default: "" },
+  disabled: { type: Boolean, default: false },
+});
+const emit = defineEmits(["open-players"]);
+
+const { nickColor } = useNickColor();
+const { redTeamColor, blueTeamColor } = useChatSettings();
+
+const MOD_CODES = Object.freeze({
+  easy: "EZ",
+  nofail: "NF",
+  halftime: "HF",
+  hardrock: "HR",
+  suddendeath: "SD",
+  doubletime: "DT",
+  hidden: "HD",
+  flashlight: "FL",
+  relax: "RX",
+  relax2: "AP",
+  spunout: "SO",
+  key1: "1K",
+  key2: "2K",
+  key3: "3K",
+  key4: "4K",
+  key5: "5K",
+  key6: "6K",
+  key7: "7K",
+  key8: "8K",
+  key9: "9K",
+  keycoop: "CO",
+  mirror: "MR",
+  fadein: "FI",
+});
+
+const visiblePlayers = computed(() => props.players);
+const realPlayerCount = computed(() => visiblePlayers.value.filter((player) => !player.isSlot && !player.isReferee).length);
+
+function colorFor(player) {
+  if (player.team === "red") return redTeamColor.value;
+  if (player.team === "blue") return blueTeamColor.value;
+  return nickColor(player.name, props.currentUser);
+}
+
+function initials(name) {
+  return name.slice(0, 2).toUpperCase();
+}
+
+function playerNameStyle(player) {
+  if (player.isSlot) return { color: "#8b93a6" };
+  if (player.team === "red") return { color: redTeamColor.value };
+  if (player.team === "blue") return { color: blueTeamColor.value };
+  return { color: nickColor(player.name, props.currentUser) };
+}
+
+const rulesetNames = Object.freeze({ 0: "osu!", 1: "osu!taiko", 2: "osu!catch", 3: "osu!mania" });
+
+function styleDifficulty(style) {
+  return style?.beatmap?.diff || (Number(style?.beatmapId) > 0 ? `Beatmap #${style.beatmapId}` : "—");
+}
+
+function styleChangeTooltip(change) {
+  if (!change) return "";
+  const rulesetChanged = Number(change.before?.rulesetId) !== Number(change.after?.rulesetId);
+  const difficultyChanged = Number(change.before?.beatmapId) !== Number(change.after?.beatmapId);
+  if (!rulesetChanged && !difficultyChanged) return "";
+  const row = (label, before, after) => `<div class="app-tooltip__style-row"><small>${label}</small><span><em>${escapeHtml(before)}</em><b>→</b><strong>${escapeHtml(after)}</strong></span></div>`;
+  const rows = [];
+  if (rulesetChanged) rows.push(row("Ruleset", rulesetNames[change.before?.rulesetId] || "—", rulesetNames[change.after?.rulesetId] || "—"));
+  if (difficultyChanged) rows.push(row("Difficulty", styleDifficulty(change.before), styleDifficulty(change.after)));
+  return { html: `<div class="app-tooltip__style-change">${rows.join("")}</div>` };
+}
+
+function modCode(mod) {
+  const value = String(typeof mod === "string" ? mod : mod?.acronym || "").trim();
+  return MOD_CODES[value.toLowerCase()] || value.toUpperCase();
+}
+
+function playerMods(player) {
+  return (player.mods || []).map(modCode).filter((mod, index, mods) => mods.indexOf(mod) === index);
+}
+
+const categoryColors = Object.freeze({
+  DifficultyReduction: ["#b3ff66", "#3c591e"],
+  DifficultyIncrease: ["#ff6666", "#591e1e"],
+  Automation: ["#66ccff", "#1e4659"],
+  Conversion: ["#8c66ff", "#2d1e59"],
+  Fun: ["#ff66ab", "#591e39"],
+  System: ["#ffcc22", "#594605"],
+});
+
+function modIconSvg(player, acronym) {
+  const rulesetMods = modsMetadata.find((entry) => Number(entry.RulesetID) === Number(player.rulesetId))?.Mods || [];
+  const mod = rulesetMods.find((entry) => String(entry.Acronym).toUpperCase() === String(acronym).toUpperCase());
+  if (!mod) return "";
+  const folder = String(mod.Type || "")
+    .replace(/([a-z])([A-Z])/g, "$1-$2")
+    .toLowerCase();
+  const slug = String(mod.Name || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+  const raw = modIconSources[`../../assets/mods/${folder}/${slug}.svg`];
+  const colors = categoryColors[mod.Type];
+  if (!raw || !colors) return "";
+  const hex = hexBody.replace(/fill="white"/g, `fill="${colors[0]}"`);
+  const glyph = svgBody(raw).replace(/(fill|stroke)="white"/g, `$1="${colors[1]}"`);
+  return `<svg viewBox="10 7 100 70" fill="none" aria-hidden="true"><g transform="translate(10 7)">${hex}</g><g transform="translate(60 42) scale(.85) translate(-60 -42)">${glyph}</g></svg>`;
+}
+
+function modInfo(player, acronym) {
+  const rulesetMods = modsMetadata.find((entry) => Number(entry.RulesetID) === Number(player.rulesetId))?.Mods || [];
+  return rulesetMods.find((entry) => String(entry.Acronym).toUpperCase() === String(acronym).toUpperCase()) || null;
+}
+
+function moreModsIconSvg() {
+  const hex = hexBody.replace(/fill="white"/g, 'fill="#ffcc22"');
+  const glyph = `<g fill="#594605"><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/><circle cx="5" cy="12" r="1.8"/></g>`;
+  return `<svg viewBox="10 7 100 70" fill="none" aria-hidden="true"><g transform="translate(10 7)">${hex}</g><g transform="translate(60 42) scale(3.7) translate(-12 -12)">${glyph}</g></svg>`;
+}
+
+function moreModsTooltip(player, mods) {
+  const rows = mods
+    .slice(3)
+    .map((acronym) => {
+      const info = modInfo(player, acronym);
+      const name = info?.Name || modCode(acronym);
+      const icon = modIconSvg(player, acronym);
+      return `<span class="app-tooltip__more-mod-row"><span class="app-tooltip__more-mod-icon">${icon || escapeHtml(modCode(acronym))}</span><span>${escapeHtml(name)}</span></span>`;
+    })
+    .join("");
+  return { html: `<div class="app-tooltip__more-mods">${rows}</div>` };
+}
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+</script>
+
+<template>
+  <div class="player-list">
+    <div class="player-list__header">
+      <span class="player-list__heading"><Users :size="18" /> Players</span>
+      <span class="player-list__header-actions">
+        <span class="player-list__count">{{ realPlayerCount }}</span>
+        <button v-tooltip.top="'Manage players'" type="button" class="player-list__settings" :disabled="disabled" aria-label="Manage players" @click="emit('open-players')">
+          <Settings :size="14" />
+        </button>
+      </span>
+    </div>
+
+    <ul class="player-list__items" :class="{ 'player-list__items--scrollable': visiblePlayers.length > 5 }">
+      <li v-for="player in visiblePlayers" :key="player.name" class="player-row">
+        <span v-if="player.isSlot" class="player-row__avatar player-row__avatar--slot" aria-hidden="true"><LockOpen :size="13" /></span>
+        <span v-else-if="player.avatarUrl" class="player-row__avatar" :style="{ backgroundImage: `url(${player.avatarUrl})` }" />
+        <span v-else class="player-row__avatar player-row__avatar--placeholder" :style="{ background: colorFor(player) }">{{ initials(player.name) }}</span>
+
+        <span class="player-row__identity">
+          <a v-if="player.profileUrl" class="player-row__name player-row__name--link" :style="playerNameStyle(player)" :href="player.profileUrl" target="_blank" rel="noopener noreferrer">
+            {{ player.name }}
+          </a>
+          <span v-else class="player-row__name" :style="playerNameStyle(player)">
+            {{ player.name }}
+          </span>
+          <Whistle v-if="player.isReferee" v-tooltip.top="'Referee'" class="player-row__referee" :size="14" aria-label="Referee" />
+          <ArrowLeftRight v-if="styleChangeTooltip(player.styleChange)" v-tooltip.top="styleChangeTooltip(player.styleChange)" class="player-row__style-change" :size="14" aria-hidden="true" />
+          <svg v-if="player.isHost" class="player-row__host" width="13" height="13" viewBox="0 0 24 24" fill="currentColor" role="img" aria-label="Host">
+            <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+            <path
+              d="M19 19h-14c-.5 0 -.9 -.3 -1 -.8l-2 -10c0 -.4 .1 -.8 .5 -1.1c.4 -.2 .8 -.2 1.1 0l4.1 3.3l3.4 -5.1c.4 -.6 1.3 -.6 1.7 0l3.4 5.1l4.1 -3.3c.3 -.3 .8 -.3 1.1 0c.4 .2 .5 .6 .5 1.1l-2 10c0 .5 -.5 .8 -1 .8z"
+            />
+          </svg>
+        </span>
+        <span v-if="playerMods(player).length" class="player-row__mods" :class="{ 'player-row__mods--overlapped': playerMods(player).length > 3 }">
+          <span
+            v-for="mod in playerMods(player).slice(0, 3)"
+            :key="mod"
+            v-tooltip.top="modInfo(player, mod)?.Name || modCode(mod)"
+            class="player-row__mod"
+            :aria-label="modInfo(player, mod)?.Name || modCode(mod)"
+          >
+            <SvgMarkup v-if="modIconSvg(player, mod)" :svg="modIconSvg(player, mod)" />
+            <span v-else class="player-row__mod-fallback">{{ modCode(mod) }}</span>
+          </span>
+          <span v-if="playerMods(player).length > 3" v-tooltip.top="moreModsTooltip(player, playerMods(player))" class="player-row__mod player-row__mod--more" aria-label="More mods"
+            ><SvgMarkup :svg="moreModsIconSvg()"
+          /></span>
+        </span>
+
+        <span v-if="!player.isSlot && player.noMap" v-tooltip.top="'No Map'" class="player-row__no-map">
+          <Ban :size="14" />
+        </span>
+        <span v-else-if="!player.isSlot && !player.isReferee" class="player-row__status" :data-status="player.status || (player.isReady ? 'ready' : 'idle')">
+          <CirclePlay v-if="player.status === 'playing'" v-tooltip.top="'Playing'" :size="14" />
+          <Binoculars v-else-if="player.status === 'spectating'" v-tooltip.top="'Spectating'" :size="14" />
+          <CircleArrowUp v-else-if="player.status === 'finished_play'" v-tooltip.top="'Finished play'" :size="14" />
+          <CircleCheck v-else-if="player.status === 'ready' || player.isReady" v-tooltip.top="'Ready'" :size="14" />
+          <CircleMinus v-else v-tooltip.top="'Idle'" :size="14" />
+        </span>
+      </li>
+
+      <li v-if="!visiblePlayers.length" class="player-list__empty">No players yet</li>
+    </ul>
+  </div>
+</template>
+
+<style scoped>
+.player-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+  padding: 1.1rem 1.2rem;
+  border: 1px solid var(--app-border);
+  border-radius: 0.85rem;
+  background: var(--app-panel-gradient);
+}
+
+.player-list__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.player-list__heading {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  color: var(--app-text);
+  font-size: 0.82rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.player-list__heading svg {
+  color: var(--app-purple-bright);
+}
+
+.player-list__count {
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  background: var(--app-surface-hover);
+  font-size: 0.72rem;
+  color: var(--app-text);
+}
+
+.player-list__header-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.player-list__settings {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.7rem;
+  height: 1.7rem;
+  padding: 0;
+  border: 0;
+  border-radius: 0.45rem;
+  background: transparent;
+  color: var(--app-muted);
+  cursor: pointer;
+  transition:
+    color 140ms ease,
+    background 140ms ease;
+}
+
+.player-list__settings:hover {
+  background: var(--app-surface-hover);
+  color: var(--app-primary-bright);
+}
+
+.player-list__settings:disabled {
+  cursor: not-allowed;
+  opacity: 0.38;
+}
+
+.player-list__settings:disabled:hover {
+  background: transparent;
+  color: var(--app-muted);
+}
+
+.player-list__settings:focus-visible {
+  outline: 2px solid var(--app-primary-bright);
+  outline-offset: 2px;
+}
+
+.player-list__items {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.player-list__items--scrollable {
+  max-height: calc(5 * 1.375rem + 4 * 0.4rem);
+  overflow-y: auto;
+  margin-right: -1.2rem;
+  padding-right: 1.2rem;
+}
+
+.player-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  color: var(--app-text);
+}
+
+.player-row__avatar {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background-size: cover;
+  background-position: center;
+}
+
+.player-row__avatar--placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.6rem;
+  font-weight: 700;
+  color: #fff;
+}
+
+.player-row__avatar--slot {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #8b93a6;
+  background: #171d2b;
+  border: 0;
+  opacity: 1;
+}
+
+.player-row__name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.player-row__identity {
+  display: flex;
+  align-items: center;
+  flex: 1 1 auto;
+  min-width: 0;
+  gap: 0.3rem;
+}
+
+.player-row__name--link {
+  text-decoration: none;
+}
+
+.player-row__name--link:hover {
+  text-decoration: underline;
+}
+
+.player-row__mods {
+  display: flex;
+  align-items: center;
+  gap: 0.2rem;
+  flex-shrink: 0;
+}
+
+.player-row__mods--overlapped {
+  gap: 0;
+}
+
+.player-row__mods--overlapped .player-row__mod {
+  position: relative;
+  margin-left: -0.58rem;
+  transition:
+    margin-left 150ms ease,
+    transform 150ms ease;
+}
+
+.player-row__mods--overlapped .player-row__mod:first-child {
+  margin-left: 0;
+}
+
+.player-row__mods--overlapped .player-row__mod:hover {
+  z-index: 2;
+}
+
+.player-row__mods--overlapped:hover .player-row__mod {
+  margin-left: 0;
+}
+
+.player-row__mods--overlapped:hover {
+  gap: 0.28rem;
+}
+
+.player-row__mod {
+  display: inline-flex;
+  width: 1.55rem;
+  height: 1.1rem;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  color: transparent;
+}
+
+.player-row__mod :deep(svg) {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.player-row__mod--more {
+  cursor: default;
+}
+
+.player-row__mod-fallback {
+  color: var(--app-muted);
+  font-size: 0.55rem;
+  font-weight: 700;
+}
+
+.player-row__host {
+  flex-shrink: 0;
+  color: var(--p-yellow-400, #eab308);
+}
+
+.player-row__referee {
+  flex: 0 0 auto;
+  color: var(--app-primary-bright);
+}
+
+.player-row__style-change {
+  flex: 0 0 auto;
+  color: var(--app-primary-bright);
+}
+
+.player-row__ready {
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--app-muted);
+  opacity: 0.4;
+}
+
+.player-row__ready[data-ready="true"] {
+  background: var(--p-green-500, #22c55e);
+  opacity: 1;
+}
+
+.player-row__status {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+}
+
+.player-row__status[data-status="playing"] {
+  color: var(--app-purple-bright);
+}
+
+.player-row__status[data-status="idle"] {
+  color: #ef4444;
+}
+
+.player-row__status[data-status="ready"] {
+  color: #22c55e;
+}
+
+.player-row__status[data-status="spectating"] {
+  color: #66ccff;
+}
+
+.player-row__status[data-status="finished_play"] {
+  color: #66ccff;
+}
+
+.player-row__no-map {
+  display: inline-flex;
+  flex-shrink: 0;
+  color: var(--p-red-500, #ef4444);
+}
+
+.player-list__empty {
+  font-size: 0.8rem;
+  color: var(--app-muted);
+  padding: 0.4rem 0;
+}
+</style>

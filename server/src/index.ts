@@ -14,12 +14,42 @@ import { applyPendingUpdate } from "./updater/applyUpdate.js";
 import { openInBrowser } from "./browser.js";
 import { createTray } from "./tray/index.js";
 import { evaluateWinCondition } from "./match-result/winConditionRunner.js";
-import { addClient, removeClient, sendJson, broadcast, clientCount } from "./wsGateway.js";
-import { connectToRefereeHub } from "./lazer/refereeHubClient.js";
+import { addClient, removeClient, sendJson, broadcast, clientCount, requestContext } from "./wsGateway.js";
+import { connectToRefereeHub, disconnectFromRefereeHub } from "./lazer/refereeHubClient.js";
 import { roomManager } from "./lazer/roomManager.js";
 import * as lazerHandlers from "./lazer/handlers.js";
+import type { LazerConnectionStateEvent, LazerSyncStateEvent, LazerRoomsEvent } from "./types.js";
+import { ChatSocket } from "./lazer/chatSocket.js";
 
 const launchedAfterUpdate = process.argv.includes("--updated");
+let chatSocket: ChatSocket | null = null;
+
+function startChatSocket(): void {
+  if (shuttingDown) return;
+  chatSocket?.close();
+  chatSocket = new ChatSocket({
+    accessToken: getAccessToken,
+    onNotification: (notification) => {
+      const data = notification.data as Record<string, unknown> | undefined;
+      if (notification.event === "chat.channel.join") {
+        const channel = (data?.channel ?? data) as Record<string, unknown> | undefined;
+        const channelId = Number(channel?.channel_id);
+        if (Number.isInteger(channelId) && channelId > 0) roomManager.markChatChannelJoined(channelId);
+        return;
+      }
+      if (notification.event === "chat.message.new") {
+        const messages = Array.isArray(data?.messages) ? data.messages : [];
+        for (const message of messages) {
+          const channelId = Number((message as Record<string, unknown>)?.channel_id);
+          const room = Number.isInteger(channelId) ? roomManager.getRoomByChatChannel(channelId) : undefined;
+          if (room) broadcast({ type: "lazer_chat_message", roomId: room.room_id, message, users: data?.users ?? [] });
+        }
+      }
+    },
+    onError: (error) => console.error(`[${formatLogTime()}] osu! chat socket: ${error.message}`),
+  });
+  void chatSocket.connect().catch((error) => console.error(`[${formatLogTime()}] osu! chat socket: ${(error as Error).message}`));
+}
 
 // TODO: add actual normal comments to this mess
 if (process.argv[2] === "--apply-update") {
@@ -205,16 +235,63 @@ function sameLobbyValue(left: unknown, right: unknown): boolean {
   return JSON.stringify(left) === JSON.stringify(right);
 }
 
+let lazerConnectionState: LazerConnectionStateEvent = { type: "lazer_connection_state", state: "disconnected" };
+let lazerSyncState: LazerSyncStateEvent = { type: "lazer_sync_state", state: "idle" };
+
+let osuSessionTransition: Promise<void> = Promise.resolve();
+
+async function stopLazerSession(): Promise<void> {
+  chatSocket?.close();
+  chatSocket = null;
+  roomManager.reset();
+  await disconnectFromRefereeHub();
+}
+
 async function startLazerSession(): Promise<void> {
+  if (shuttingDown) return;
+  const auth = getState();
+  if (auth.status !== "authenticated") return;
+  roomManager.setCurrentUserId(auth.user.id);
   roomManager.setListeners(
     (room) => broadcast({ type: "lazer_room_state", room }),
     (roomId) => broadcast({ type: "lazer_room_closed", roomId }),
+    (event) => {
+      if (event.type === "lazer_sync_state") {
+        lazerSyncState = event;
+        if (event.state === "synced") broadcast({ type: "lazer_rooms", roomIds: roomManager.getAllRooms().map((room) => room.room_id) } satisfies LazerRoomsEvent);
+      }
+      broadcast(event);
+    },
+    (event) => broadcast(event),
   );
 
   await connectToRefereeHub(
-    (eventType, payload) => roomManager.handleHubEvent(eventType, payload as Record<string, unknown>),
+    (event) => {
+      if (roomManager.handleHubEvent(event.eventType, event.payload)) broadcast(event);
+    },
     () => roomManager.resync(),
+    (event) => {
+      if (event.type === "lazer_connection_state") {
+        lazerConnectionState = event;
+        if (event.state !== "connected") {
+          lazerSyncState = { type: "lazer_sync_state", state: "idle" };
+          broadcast(lazerSyncState);
+        }
+      }
+      broadcast(event);
+    },
   );
+  if (shuttingDown) {
+    await stopLazerSession();
+    return;
+  }
+  // Initial hub connection must discover rooms without a frontend request.
+  try {
+    await roomManager.resync();
+  } catch (error) {
+    console.error(`[lazer] Initial room sync failed: ${(error as Error).message}`);
+    // TODO: Use the shared API exponential backoff policy for sync retries.
+  }
 }
 
 class BanchoConnection {
@@ -843,9 +920,54 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+function validateLazerRoomId(message: Record<string, unknown>): string | null {
+  return Number.isSafeInteger(message.room_id) && (message.room_id as number) > 0 ? null : "room_id must be a positive integer.";
+}
+
+function validateLazerUserAction(message: Record<string, unknown>): string | null {
+  const roomError = validateLazerRoomId(message);
+  if (roomError) return roomError;
+  return Number.isSafeInteger(message.user_id) && (message.user_id as number) > 0 ? null : "user_id must be a positive integer.";
+}
+
+function validateLazerOptionalMods(message: Record<string, unknown>): string | null {
+  for (const field of ["required_mods", "allowed_mods"]) {
+    const value = message[field];
+    if (value === undefined || value === null) continue;
+    if (!Array.isArray(value)) return `${field} must be an array or null.`;
+    for (const [index, mod] of value.entries()) {
+      if (!isRecord(mod) || !isNonEmptyString(mod.acronym)) return `${field}[${index}].acronym must be a non-empty string.`;
+      if (mod.settings !== undefined && !isRecord(mod.settings)) return `${field}[${index}].settings must be an object.`;
+    }
+  }
+  return null;
+}
+
+function validateLazerOptionalPlaylistFields(message: Record<string, unknown>): string | null {
+  const rulesetError =
+    message.ruleset_id !== undefined && message.ruleset_id !== null && (!Number.isSafeInteger(message.ruleset_id) || (message.ruleset_id as number) < 0 || (message.ruleset_id as number) > 3)
+      ? "ruleset_id must be an integer from 0 to 3 or null."
+      : null;
+  if (rulesetError) return rulesetError;
+  if (message.beatmap_id !== undefined && message.beatmap_id !== null && (!Number.isSafeInteger(message.beatmap_id) || (message.beatmap_id as number) <= 0))
+    return "beatmap_id must be a positive integer or null.";
+  if (message.freestyle !== undefined && message.freestyle !== null && typeof message.freestyle !== "boolean") return "freestyle must be a boolean or null.";
+  return validateLazerOptionalMods(message);
+}
+
+function validateLazerPlaylistItem(message: Record<string, unknown>): string | null {
+  const roomError = validateLazerRoomId(message);
+  if (roomError) return roomError;
+  return validateLazerOptionalPlaylistFields(message);
+}
+
 function validateMessage(message: unknown): string | null {
   if (!isRecord(message)) {
     return "Message must be a JSON object.";
+  }
+
+  if (message.requestId !== undefined && (!isNonEmptyString(message.requestId) || message.requestId.length > 128)) {
+    return "requestId must be a non-empty string of at most 128 characters.";
   }
 
   if (!isNonEmptyString(message.type)) {
@@ -914,10 +1036,10 @@ function validateMessage(message: unknown): string | null {
       if (!isNonEmptyString(message.channel)) {
         return "channel must be a non-empty string.";
       }
-      if (!Number.isInteger(message.teamRedScore) || (message.teamRedScore as number) < 0) {
+      if (!Number.isSafeInteger(message.teamRedScore) || (message.teamRedScore as number) < 0) {
         return "teamRedScore must be a non-negative integer.";
       }
-      if (!Number.isInteger(message.teamBlueScore) || (message.teamBlueScore as number) < 0) {
+      if (!Number.isSafeInteger(message.teamBlueScore) || (message.teamBlueScore as number) < 0) {
         return "teamBlueScore must be a non-negative integer.";
       }
       return null;
@@ -926,7 +1048,7 @@ function validateMessage(message: unknown): string | null {
       if (!isNonEmptyString(message.channel)) {
         return "channel must be a non-empty string.";
       }
-      if (message.bestOf !== null && (!Number.isInteger(message.bestOf) || (message.bestOf as number) < 1)) {
+      if (message.bestOf !== null && (!Number.isSafeInteger(message.bestOf) || (message.bestOf as number) < 1)) {
         return "bestOf must be null or a positive integer.";
       }
       if (message.nextPickTeam !== null && !isNonEmptyString(message.nextPickTeam)) {
@@ -936,7 +1058,7 @@ function validateMessage(message: unknown): string | null {
     },
     set_active_win_condition: () => {
       if (!isNonEmptyString(message.channel)) return "channel must be a non-empty string.";
-      if (!Number.isInteger(message.beatmapId) || (message.beatmapId as number) <= 0) return "beatmapId must be a positive integer.";
+      if (!Number.isSafeInteger(message.beatmapId) || (message.beatmapId as number) <= 0) return "beatmapId must be a positive integer.";
       if (message.source !== null && typeof message.source !== "string") return "source must be a string or null.";
       return null;
     },
@@ -947,6 +1069,91 @@ function validateMessage(message: unknown): string | null {
     test_win_condition: () => {
       if (!isNonEmptyString(message.slotId) || typeof message.source !== "string" || !isRecord(message.sampleContext)) return "slotId, source and sampleContext are required.";
       return null;
+    },
+    lazer_make_room: () => {
+      if (!Number.isSafeInteger(message.ruleset_id) || (message.ruleset_id as number) < 0 || (message.ruleset_id as number) > 3) return "ruleset_id must be an integer from 0 to 3.";
+      if (!Number.isSafeInteger(message.beatmap_id) || (message.beatmap_id as number) <= 0) return "beatmap_id must be a positive integer.";
+      if (!isNonEmptyString(message.name)) return "name must be a non-empty string.";
+      if (message.max_participants !== undefined && (!Number.isSafeInteger(message.max_participants) || (message.max_participants as number) <= 0))
+        return "max_participants must be a positive integer.";
+      return null;
+    },
+    lazer_load_chat: () => validateLazerRoomId(message),
+    lazer_join_room: () => validateLazerRoomId(message),
+    lazer_leave_room: () => validateLazerRoomId(message),
+    lazer_close_room: () => validateLazerRoomId(message),
+    lazer_invite_player: () => validateLazerUserAction(message),
+    lazer_kick_player: () => validateLazerUserAction(message),
+    lazer_ban_user: () => validateLazerUserAction(message),
+    lazer_add_referee: () => validateLazerUserAction(message),
+    lazer_remove_referee: () => validateLazerUserAction(message),
+    lazer_change_room_settings: () => {
+      const roomError = validateLazerRoomId(message);
+      if (roomError) return roomError;
+      if (message.name !== undefined && message.name !== null && typeof message.name !== "string") return "name must be a string or null.";
+      if (message.password !== undefined && message.password !== null && typeof message.password !== "string") return "password must be a string or null.";
+      if (message.match_type !== undefined && message.match_type !== null && message.match_type !== "head_to_head" && message.match_type !== "team_versus") {
+        return "match_type must be head_to_head, team_versus, or null.";
+      }
+      if (message.max_participants !== undefined && message.max_participants !== null && (!Number.isSafeInteger(message.max_participants) || (message.max_participants as number) < 0))
+        return "max_participants must be a non-negative integer or null.";
+      return null;
+    },
+    lazer_edit_current_playlist_item: () => validateLazerPlaylistItem(message),
+    lazer_add_playlist_item: () => {
+      const roomError = validateLazerRoomId(message);
+      if (roomError) return roomError;
+      if (message.freestyle !== undefined && typeof message.freestyle !== "boolean") return "freestyle must be a boolean.";
+      if (message.required_mods === null || message.allowed_mods === null) return "Playlist mods must be arrays when provided.";
+      if (!Number.isSafeInteger(message.ruleset_id) || (message.ruleset_id as number) < 0 || (message.ruleset_id as number) > 3) return "ruleset_id must be an integer from 0 to 3.";
+      if (!Number.isSafeInteger(message.beatmap_id) || (message.beatmap_id as number) <= 0) return "beatmap_id must be a positive integer.";
+      return validateLazerOptionalMods(message);
+    },
+    lazer_edit_playlist_item: () => {
+      const roomError = validateLazerRoomId(message);
+      if (roomError) return roomError;
+      if (!Number.isSafeInteger(message.playlist_item_id) || (message.playlist_item_id as number) <= 0) return "playlist_item_id must be a positive integer.";
+      return validateLazerOptionalPlaylistFields(message);
+    },
+    lazer_remove_playlist_item: () => {
+      const roomError = validateLazerRoomId(message);
+      if (roomError) return roomError;
+      return Number.isSafeInteger(message.playlist_item_id) && (message.playlist_item_id as number) > 0 ? null : "playlist_item_id must be a positive integer.";
+    },
+    lazer_roll: () => {
+      const roomError = validateLazerRoomId(message);
+      if (roomError) return roomError;
+      if (message.max !== undefined && (!Number.isSafeInteger(message.max) || (message.max as number) <= 0)) return "max must be a positive integer.";
+      return null;
+    },
+    lazer_move_user: () => {
+      const roomError = validateLazerRoomId(message);
+      if (roomError) return roomError;
+      if (!Number.isSafeInteger(message.user_id) || (message.user_id as number) <= 0) return "user_id must be a positive integer.";
+      if (message.slot !== undefined && message.slot !== null && (!Number.isSafeInteger(message.slot) || (message.slot as number) < 0)) return "slot must be null or a non-negative integer.";
+      if (message.team !== undefined && message.team !== null && message.team !== "red" && message.team !== "blue") return "team must be red, blue, or null.";
+      return null;
+    },
+    lazer_set_lock_state: () => {
+      const roomError = validateLazerRoomId(message);
+      if (roomError) return roomError;
+      return typeof message.locked === "boolean" ? null : "locked must be a boolean.";
+    },
+    lazer_start_match: () => {
+      const roomError = validateLazerRoomId(message);
+      if (roomError) return roomError;
+      if (message.countdown !== undefined && message.countdown !== null && (!Number.isSafeInteger(message.countdown) || (message.countdown as number) < 0))
+        return "countdown must be null or a non-negative integer.";
+      return null;
+    },
+    lazer_stop_match_countdown: () => validateLazerRoomId(message),
+    lazer_abort_match: () => validateLazerRoomId(message),
+    lazer_list_rooms: () => null,
+    lazer_send_chat_message: () => {
+      const roomError = validateLazerRoomId(message);
+      if (roomError) return roomError;
+      if (!isNonEmptyString(message.message)) return "message must be a non-empty string.";
+      return message.is_action === undefined || typeof message.is_action === "boolean" ? null : "is_action must be a boolean.";
     },
   };
 
@@ -1037,24 +1244,43 @@ function handleLogout(client: WebSocket): void {
 }
 
 async function handleOsuLogin(client: WebSocket, message: ClientMessage): Promise<void> {
+  const previous = osuSessionTransition;
+  let release!: () => void;
+  osuSessionTransition = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await previous;
   const { clientId, clientSecret, code, redirectUri } = message as Extract<ClientMessage, { type: "osu_login" }>;
   try {
+    await stopLazerSession();
     const user = await loginOsu({ clientId: clientId.trim(), clientSecret: clientSecret, redirectUri: redirectUri.trim() }, code.trim());
     await startLazerSession();
+    startChatSocket();
     sendJson(client, { type: "osu_user", user });
   } catch (error) {
     console.error(`[${formatLogTime()}] osu! OAuth request failed: ${(error as Error).message}`);
     sendJson(client, { type: "error", request: "osu_login", message: (error as Error).message || "Unable to reach the osu! API." });
+  } finally {
+    release();
   }
 }
 
 async function handleOsuLogout(client: WebSocket): Promise<void> {
+  const previous = osuSessionTransition;
+  let release!: () => void;
+  osuSessionTransition = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await previous;
   try {
+    await stopLazerSession();
     const status = await logoutOsu();
     sendJson(client, { type: "ack", received: "osu_logout", status });
   } catch (error) {
     console.error(`[${formatLogTime()}] osu! logout failed: ${(error as Error).message}`);
     sendJson(client, { type: "error", request: "osu_logout", message: "Unable to log out from the osu! API." });
+  } finally {
+    release();
   }
 }
 
@@ -1082,7 +1308,13 @@ async function handleApiRequest(client: WebSocket, message: ClientMessage): Prom
   } catch (error) {
     console.error(`[${formatLogTime()}] osu! API request failed: ${(error as Error).message}`);
     const messageText = (error as Error)?.name === "NotAuthenticatedError" ? "You must be logged in to access the osu! API." : (error as Error).message || "Unable to reach the osu! API.";
-    sendJson(client, { type: "error", request: "api_request", message: messageText });
+    sendJson(client, {
+      type: "error",
+      request: "api_request",
+      message: messageText,
+      ...(error instanceof Error && "code" in error ? { code: error.code, outcomeUnknown: "outcomeUnknown" in error ? error.outcomeUnknown : false } : {}),
+      ...(error instanceof Error && "retryAfterMs" in error ? { retryAfterMs: error.retryAfterMs } : {}),
+    });
   }
 }
 
@@ -1166,7 +1398,13 @@ function handleSetLobbySettings(client: WebSocket, message: ClientMessage): void
 function handleClientMessage(client: WebSocket, rawMessage: unknown): void {
   const validationError = validateMessage(rawMessage);
   if (validationError) {
-    sendJson(client, { type: "error", message: validationError });
+    sendJson(client, {
+      type: "error",
+      ...(isRecord(rawMessage) && isNonEmptyString(rawMessage.type) ? { request: rawMessage.type } : {}),
+      ...(isRecord(rawMessage) && typeof rawMessage.requestId === "string" ? { requestId: rawMessage.requestId } : {}),
+      code: "VALIDATION_ERROR",
+      message: validationError,
+    });
     return;
   }
 
@@ -1198,6 +1436,7 @@ function handleClientMessage(client: WebSocket, rawMessage: unknown): void {
     confirm_install: handleConfirmInstall,
     test_win_condition: handleTestWinCondition,
     lazer_make_room: lazerHandlers.handleLazerMakeRoom,
+    lazer_load_chat: lazerHandlers.handleLazerLoadChat,
     lazer_join_room: lazerHandlers.handleLazerJoinRoom,
     lazer_leave_room: lazerHandlers.handleLazerLeaveRoom,
     lazer_close_room: lazerHandlers.handleLazerCloseRoom,
@@ -1218,6 +1457,7 @@ function handleClientMessage(client: WebSocket, rawMessage: unknown): void {
     lazer_stop_match_countdown: lazerHandlers.handleLazerStopMatchCountdown,
     lazer_abort_match: lazerHandlers.handleLazerAbortMatch,
     lazer_list_rooms: lazerHandlers.handleLazerListRooms,
+    lazer_send_chat_message: lazerHandlers.handleLazerSendChatMessage,
   };
 
   handlers[message.type](client, message);
@@ -1225,6 +1465,11 @@ function handleClientMessage(client: WebSocket, rawMessage: unknown): void {
 
 webSocketServer.on("connection", (client) => {
   addClient(client);
+  sendJson(client, lazerConnectionState);
+  sendJson(client, lazerSyncState);
+  // A browser reconnect reuses the live hub session and cached room snapshots.
+  for (const room of roomManager.getAllRooms()) sendJson(client, { type: "lazer_room_state", room });
+  sendJson(client, { type: "lazer_rooms", roomIds: roomManager.getAllRooms().map((room) => room.room_id) } satisfies LazerRoomsEvent);
   banchoConnection.sendStatus(client);
   for (const [channel, state] of banchoConnection.lobbyStates) {
     banchoConnection.sendLobbyState(channel, state, client);
@@ -1241,7 +1486,7 @@ webSocketServer.on("connection", (client) => {
       });
       return;
     }
-    handleClientMessage(client, message);
+    requestContext.run({ requestId: isRecord(message) && typeof message.requestId === "string" ? message.requestId : undefined }, () => handleClientMessage(client, message));
   });
 
   client.on("close", () => {
@@ -1252,11 +1497,6 @@ webSocketServer.on("connection", (client) => {
   });
 });
 
-await restoreSession();
-if (getState().status === "authenticated") {
-  await startLazerSession();
-}
-
 httpServer.listen(config.httpPort, config.httpHost, () => {
   console.log(`[${formatLogTime()}] WhistleIRC server listening on http://${config.httpHost}:${config.httpPort}`);
   console.log(`[${formatLogTime()}] WebSocket endpoint: ws://${config.httpHost}:${config.httpPort}/ws`);
@@ -1264,6 +1504,20 @@ httpServer.listen(config.httpPort, config.httpHost, () => {
   const browserUrl = `http://localhost:${config.httpPort}${launchedAfterUpdate ? "?updated=1" : ""}`;
 
   openInBrowser(browserUrl);
+
+  // Serve the frontend before restoring authentication or contacting osu!.
+  const previous = osuSessionTransition;
+  osuSessionTransition = (async () => {
+    await previous;
+    try {
+      await restoreSession();
+      if (shuttingDown || getState().status !== "authenticated") return;
+      startChatSocket();
+      await startLazerSession();
+    } catch (error) {
+      console.error(`[${formatLogTime()}] lazer session startup failed: ${(error as Error).message}`);
+    }
+  })();
 });
 
 createTray({ port: config.httpPort, onQuit: () => shutdown("tray") });
@@ -1283,7 +1537,9 @@ function shutdown(signal?: string): void {
     client.terminate();
   }
 
-  let pendingClosures = 2;
+  // Keep the process alive until the hub has sent its disconnect as well.
+  // Abrupt termination leaves the old referee connection active remotely.
+  let pendingClosures = 3;
   const finishClosure = () => {
     pendingClosures -= 1;
     if (pendingClosures === 0) {
@@ -1291,14 +1547,22 @@ function shutdown(signal?: string): void {
     }
   };
 
+  const shutdownTimer = setTimeout(() => {
+    console.warn(`[${formatLogTime()}] Shutdown timed out; forcing exit with ${pendingClosures} pending closures.`);
+    process.exit(0);
+  }, 5000);
+  shutdownTimer.unref();
+
+  void stopLazerSession()
+    .catch((error) => console.error(`[${formatLogTime()}] Failed to stop lazer session: ${error instanceof Error ? error.message : String(error)}`))
+    .finally(finishClosure);
+
   webSocketServer.close(finishClosure);
   if (httpServer.listening) {
     httpServer.close(finishClosure);
   } else {
     finishClosure();
   }
-
-  setTimeout(() => process.exit(0), 1500).unref();
 }
 
 if (process.stdin.isTTY && typeof process.stdin.setRawMode === "function") {

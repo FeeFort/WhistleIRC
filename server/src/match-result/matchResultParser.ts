@@ -35,7 +35,7 @@ function buildTeam(scores: RawMatchScore[], team: Team, usernameById: Map<number
   return result;
 }
 
-// skips aborted maps as they have no scores in array
+// Skip aborted maps as they have no scores in array
 export function parseLastMapResult(response: RawMatchResponse): MapResult | null {
   const games = (response.events ?? []).map((event) => event.game).filter((game): game is RawMatchGame => Boolean(game) && Array.isArray(game!.scores) && game!.scores.length > 0);
   const game = games[games.length - 1];

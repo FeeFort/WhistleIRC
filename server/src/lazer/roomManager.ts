@@ -1,5 +1,10 @@
 import type {
+  RoomJoinedResponse as RoomState,
   RoomJoinedResponse,
+  HubEventType,
+  HubEventPayloads,
+  PendingRoomJoin,
+  MakeRoomRequest,
   RoomSettingsChangedEvent,
   MatchStateChangedEvent,
   PlaylistItemAddedEvent,
@@ -16,26 +21,70 @@ import type {
   RefereeAddedEvent,
   RefereeRemovedEvent,
   LazerPlayer,
+  LazerPlaylistItem,
   MatchUserStatus,
   ListRoomsResponse,
+  LazerStatusHandler,
+  HubEventHandler,
+  LazerHubEvent,
+  PendingChatLoad,
+  ChatMessage,
 } from "../types.js";
+import { config } from "../config.js";
+import { fetchChatMessages } from "./chatApi.js";
 import { invokeHub } from "./refereeHubClient.js";
 
-type RoomState = RoomJoinedResponse;
-
 class RoomManager {
+  private currentUserId: number | null = null;
+  private excludedRooms = new Set<number>();
+  private generation = 0;
+  private replayPlaylist: Map<number, LazerPlaylistItem> | null = null;
+  private replayPlayers: Map<number, LazerPlayer> | null = null;
   private rooms = new Map<number, RoomState>();
+  private pendingJoins = new Map<number, PendingRoomJoin>();
+  private pendingCreations = new Set<PendingRoomJoin>();
+  private pendingChatLoads = new Map<number, PendingChatLoad>();
+  private resyncPromise: Promise<void> | null = null;
   private onRoomChanged: ((room: RoomState) => void) | null = null;
+  private onDeferredEvent: HubEventHandler | null = null;
+  private onStatus: LazerStatusHandler | null = null;
   private onRoomRemoved: ((roomId: number) => void) | null = null;
+  private joinedChatChannels = new Set<number>();
+  private chatWaiters = new Map<number, Array<(error?: Error) => void>>();
 
-  setListeners(onChanged: (room: RoomState) => void, onRemoved: (roomId: number) => void): void {
+  setListeners(onChanged: (room: RoomState) => void, onRemoved: (roomId: number) => void, onStatus?: LazerStatusHandler, onDeferredEvent?: HubEventHandler): void {
     this.onRoomChanged = onChanged;
     this.onRoomRemoved = onRemoved;
+    this.onStatus = onStatus ?? null;
+    this.onDeferredEvent = onDeferredEvent ?? null;
+  }
+
+  reset(): void {
+    this.currentUserId = null;
+    ++this.generation;
+    this.excludedRooms.clear();
+    for (const pending of [...this.pendingJoins.values(), ...this.pendingCreations]) pending.cancelled = true;
+    this.pendingJoins.clear();
+    this.pendingCreations.clear();
+    this.resyncPromise = null;
+    for (const load of this.pendingChatLoads.values()) load.cancelled = true;
+    this.pendingChatLoads.clear();
+    for (const roomId of [...this.rooms.keys()]) this.removeRoom(roomId);
+    this.joinedChatChannels.clear();
+    for (const waiters of this.chatWaiters.values()) {
+      for (const done of waiters) done(new Error("osu! session ended."));
+    }
+    this.chatWaiters.clear();
+    this.onStatus?.({ type: "lazer_sync_state", state: "idle" });
   }
 
   trackRoom(room: RoomState): void {
     this.rooms.set(room.room_id, room);
     this.onRoomChanged?.(room);
+  }
+
+  setCurrentUserId(userId: number): void {
+    this.currentUserId = userId;
   }
 
   getRoom(roomId: number): RoomState | undefined {
@@ -46,6 +95,68 @@ class RoomManager {
     return [...this.rooms.values()];
   }
 
+  getRoomByChatChannel(channelId: number): RoomState | undefined {
+    return this.getAllRooms().find((room) => room.chat_channel_id === channelId);
+  }
+
+  markChatChannelJoined(channelId: number): void {
+    this.joinedChatChannels.add(channelId);
+    for (const resolve of this.chatWaiters.get(channelId) ?? []) resolve();
+    this.chatWaiters.delete(channelId);
+  }
+
+  async waitForChatChannel(channelId: number, timeoutMs = 10_000): Promise<void> {
+    if (this.joinedChatChannels.has(channelId)) return;
+    await new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        const waiters = this.chatWaiters.get(channelId) ?? [];
+        this.chatWaiters.set(
+          channelId,
+          waiters.filter((waiter) => waiter !== done),
+        );
+        reject(new Error(`Chat channel ${channelId} was not joined in time.`));
+      }, timeoutMs);
+      const done = (error?: Error) => {
+        clearTimeout(timer);
+        if (error) reject(error);
+        else resolve();
+      };
+      const waiters = this.chatWaiters.get(channelId) ?? [];
+      waiters.push(done);
+      this.chatWaiters.set(channelId, waiters);
+    });
+  }
+
+  loadChat(roomId: number): Promise<ChatMessage[]> {
+    const existing = this.pendingChatLoads.get(roomId);
+    if (existing) return existing.promise;
+    const room = this.rooms.get(roomId);
+    if (!room) return Promise.reject(Object.assign(new Error(`Room ${roomId} is not tracked.`), { stage: "channel" }));
+    const generation = this.generation;
+    const pending: PendingChatLoad = { cancelled: false, promise: Promise.resolve([]) };
+    this.pendingChatLoads.set(roomId, pending);
+    pending.promise = (async () => {
+      let stage = "channel";
+      try {
+        await this.waitForChatChannel(room.chat_channel_id);
+        if (pending.cancelled || generation !== this.generation) throw new Error("osu! session or room ended.");
+        stage = "history";
+        const history = await fetchChatMessages(room.chat_channel_id);
+        if (pending.cancelled || generation !== this.generation) throw new Error("osu! session or room ended.");
+        return history;
+      } catch (error) {
+        // TODO: Retry chat initialization with the shared exponential backoff policy.
+        throw Object.assign(error instanceof Error ? error : new Error(String(error)), {
+          stage,
+          ...(pending.cancelled || generation !== this.generation ? { code: "SESSION_ENDED" } : {}),
+        });
+      } finally {
+        if (this.pendingChatLoads.get(roomId) === pending) this.pendingChatLoads.delete(roomId);
+      }
+    })();
+    return pending.promise;
+  }
+
   private findPlayer(room: RoomState, userId: number): LazerPlayer | undefined {
     return room.players.find((p) => p.user_id === userId);
   }
@@ -53,34 +164,69 @@ class RoomManager {
   private upsertPlayerStub(room: RoomState, userId: number): LazerPlayer {
     let player = this.findPlayer(room, userId);
     if (!player) {
-      player = { user_id: userId, status: "idle", style: { ruleset_id: null, beatmap_id: null }, mods: [], team: null };
+      // A Left/Joined pair may already be included in the snapshot. Restore the
+      // full snapshot entry rather than losing status, mods, style and team.
+      player = this.replayPlayers?.has(userId)
+        ? structuredClone(this.replayPlayers.get(userId)!)
+        : { user_id: userId, status: "idle", style: { ruleset_id: null, beatmap_id: null }, mods: [], team: null };
       room.players.push(player);
     }
     return player;
   }
 
-  handleHubEvent(eventType: string, payload: Record<string, unknown>): void {
+  handleHubEvent(eventType: HubEventType, payload: HubEventPayloads[HubEventType]): boolean {
     const roomId = payload.room_id;
     if (typeof roomId !== "number") {
       console.warn(`[roomManager] event ${eventType} has no room_id, ignoring`, payload);
-      return;
+      return false;
     }
 
-    if (eventType === "RefereeAdded") {
-      const event = payload as unknown as RefereeAddedEvent;
-      this.joinRoom(event.room_id).catch((error) => {
-        console.error(`[roomManager] failed to join room ${event.room_id} after RefereeAdded: ${(error as Error).message}`);
-      });
-      return;
+    if (eventType === "UserKicked" && (payload as UserKickedEvent).kicked_user_id === this.currentUserId) {
+      this.removeRoom(roomId, true);
+      return true;
+    }
+
+    const pendingJoin = this.pendingJoins.get(roomId);
+    if (eventType === "RefereeInvited") {
+      if (this.excludedRooms.has(roomId)) return false;
+      // This notification is addressed to the invited referee. Added/Removed
+      // instead describe changes to the creator's tracked referee list.
+      if (!pendingJoin && !this.rooms.has(roomId)) {
+        const generation = this.generation;
+        this.joinRoom(roomId).catch((error) => {
+          if (generation !== this.generation) return;
+          this.onStatus?.({ type: "lazer_room_error", roomId, operation: "join", message: error instanceof Error ? error.message : String(error) });
+          // TODO: Retry automatic joins using the shared exponential backoff policy.
+          console.error(`[roomManager] failed to join room ${roomId} after RefereeInvited: ${(error as Error).message}`);
+        });
+      }
+      // Deliver the invitation immediately, independently of the join result.
+      return true;
+    }
+
+    if (pendingJoin) {
+      pendingJoin.events.push({ eventType, payload });
+      return true;
+    }
+
+    if (!this.rooms.has(roomId) && this.pendingCreations.size) {
+      for (const creation of this.pendingCreations) {
+        // Creation is bounded by the hub timeout; also cap retained events under load.
+        if (Date.now() - creation.startedAt <= config.hubRequestTimeoutMs && creation.events.length < 512) {
+          creation.events.push({ eventType, payload, deferred: true });
+        } else console.warn(`[roomManager] creation event buffer limit reached, ignoring ${eventType}`);
+      }
+      return false;
     }
 
     const room = this.rooms.get(roomId);
     if (!room) {
-      // Событие по комнате, о которой мы ещё не знаем (например, RefereeRemoved
-      // пришёл раньше, чем мы успели обработать RefereeAdded) — игнорируем безопасно.
+      // If we don't have the room tracked, we can't update it. Safely ignoring instead
       console.warn(`[roomManager] event ${eventType} for unknown room ${roomId}, ignoring`);
-      return;
+      return false;
     }
+
+    const previousState = JSON.stringify(room);
 
     switch (eventType) {
       case "RoomSettingsChanged": {
@@ -98,7 +244,9 @@ class RoomManager {
       }
       case "PlaylistItemAdded": {
         const e = payload as unknown as PlaylistItemAddedEvent;
-        room.playlist.push(e.playlist_item);
+        // A refreshed snapshot may already contain an event buffered during JoinRoom.
+        const index = room.playlist.findIndex((item) => item.id === e.playlist_item.id);
+        if (index === -1) room.playlist.push(this.replayPlaylist?.has(e.playlist_item.id) ? structuredClone(this.replayPlaylist.get(e.playlist_item.id)!) : e.playlist_item);
         break;
       }
       case "PlaylistItemChanged": {
@@ -152,48 +300,158 @@ class RoomManager {
         this.upsertPlayerStub(room, e.user_id).team = e.team;
         break;
       }
+      case "RefereeAdded": {
+        const e = payload as RefereeAddedEvent;
+        if (!room.referees.some((referee) => referee.user_id === e.user_id)) room.referees.push({ user_id: e.user_id });
+        break;
+      }
       case "RefereeRemoved": {
         const e = payload as unknown as RefereeRemovedEvent;
         room.referees = room.referees.filter((r) => r.user_id !== e.user_id);
         break;
       }
-      // CountdownStarted/Stopped, MatchStarted/Aborted/Completed, RollCompleted, RefereeInvited
-      // don't mutate room state directly, rather they're transported to frontend as is
-      // without RoomState changes (see index.ts).
+      // Events without state changes are forwarded by index.ts
       default:
-        break;
+        return true;
     }
 
-    this.onRoomChanged?.(room);
+    if (!this.replayPlayers && JSON.stringify(room) !== previousState) this.onRoomChanged?.(room);
+    return true;
   }
 
-  removeRoom(roomId: number): void {
+  removeRoom(roomId: number, excludeFromResync = false): void {
+    if (excludeFromResync) this.excludedRooms.add(roomId);
+    const chatLoad = this.pendingChatLoads.get(roomId);
+    if (chatLoad) chatLoad.cancelled = true;
+    this.pendingChatLoads.delete(roomId);
+    const pending = this.pendingJoins.get(roomId);
+    if (pending) pending.cancelled = true;
     if (this.rooms.delete(roomId)) {
       this.onRoomRemoved?.(roomId);
     }
   }
 
-  private async joinRoom(roomId: number): Promise<void> {
-    const response = await invokeHub<RoomJoinedResponse>("JoinRoom", roomId);
-    this.trackRoom(response);
-  }
-
-  async resync(): Promise<void> {
-    const response = await invokeHub<ListRoomsResponse>("ListRooms");
-    const liveRoomIds = new Set(response.room_ids);
-
-    for (const roomId of this.rooms.keys()) {
-      if (!liveRoomIds.has(roomId)) this.removeRoom(roomId);
+  async joinRoom(roomId: number | null, request?: MakeRoomRequest): Promise<RoomState> {
+    const generation = this.generation;
+    const existing = roomId === null ? undefined : this.pendingJoins.get(roomId);
+    if (existing) {
+      await existing.promise;
+      if (generation !== this.generation) throw new Error("osu! session ended.");
+      const room = roomId === null ? undefined : this.rooms.get(roomId);
+      if (!room) throw new Error(`Room ${roomId} was not joined.`);
+      return room;
     }
-    for (const roomId of liveRoomIds) {
-      if (!this.rooms.has(roomId)) {
-        try {
-          await this.joinRoom(roomId);
-        } catch (error) {
-          console.error(`[roomManager] failed to rejoin room ${roomId}: ${(error as Error).message}`);
+
+    const pending: PendingRoomJoin = { cancelled: false, startedAt: Date.now(), events: [], promise: Promise.resolve() };
+    if (roomId === null) this.pendingCreations.add(pending);
+    else this.pendingJoins.set(roomId, pending);
+    pending.promise = (async () => {
+      try {
+        const response = roomId === null ? await invokeHub<RoomJoinedResponse>("MakeRoom", request) : await invokeHub<RoomJoinedResponse>("JoinRoom", roomId);
+        roomId = response.room_id;
+        if (this.excludedRooms.has(roomId)) pending.cancelled = true;
+        if (!pending.cancelled) this.rooms.set(roomId, response);
+      } finally {
+        this.pendingCreations.delete(pending);
+        if (roomId !== null && this.pendingJoins.get(roomId) === pending) this.pendingJoins.delete(roomId);
+        if (!pending.cancelled && roomId !== null && this.rooms.has(roomId)) {
+          const room = this.rooms.get(roomId)!;
+          this.replayPlayers = new Map(room.players.map((player) => [player.user_id, structuredClone(player)]));
+          this.replayPlaylist = new Map(room.playlist.map((item) => [item.id, structuredClone(item)]));
+          try {
+            // Replay any events that were received during the JoinRoom/MakeRoom call, which may have been buffered by the hub.
+            for (const event of pending.events) {
+              if (event.payload.room_id === roomId) this.handleHubEvent(event.eventType, event.payload);
+            }
+          } finally {
+            this.replayPlayers = null;
+            this.replayPlaylist = null;
+          }
+          if (this.rooms.get(roomId) === room) this.onRoomChanged?.(room);
+          for (const event of pending.events) {
+            if (event.deferred && event.payload.room_id === roomId) {
+              this.onDeferredEvent?.({ type: "lazer_event", eventType: event.eventType, roomId, payload: event.payload } as LazerHubEvent);
+            }
+          }
         }
       }
+    })();
+    await pending.promise;
+    if (pending.cancelled || generation !== this.generation) throw new Error("osu! session ended.");
+    const room = roomId === null ? undefined : this.rooms.get(roomId);
+    if (!room) throw new Error(`Room ${roomId} was not joined.`);
+    return room;
+  }
+
+  resync(): Promise<void> {
+    if (this.resyncPromise) {
+      console.log("[roomManager] sync already running, sharing pending operation");
+      return this.resyncPromise;
     }
+    console.log(`[roomManager] sync starting: tracked=${JSON.stringify([...this.rooms.keys()])}, excluded=${JSON.stringify([...this.excludedRooms])}`);
+
+    const generation = this.generation;
+    this.onStatus?.({ type: "lazer_sync_state", state: "syncing" });
+    this.resyncPromise = (async () => {
+      const failedRoomIds: number[] = [];
+      let listed = false;
+      try {
+        const response = await invokeHub<ListRoomsResponse>("ListRooms");
+        if (generation !== this.generation) throw new Error("osu! session ended.");
+        const liveRoomIds = new Set(response.room_ids.filter((roomId) => !this.excludedRooms.has(roomId)));
+        listed = true;
+        console.log(`[roomManager] ListRooms returned=${JSON.stringify(response.room_ids)}, restoring=${JSON.stringify([...liveRoomIds])}`);
+
+        for (const roomId of this.rooms.keys()) {
+          if (!liveRoomIds.has(roomId)) this.removeRoom(roomId);
+        }
+
+        const errors: Error[] = [];
+        for (const roomId of liveRoomIds) {
+          if (this.excludedRooms.has(roomId)) continue;
+          try {
+            // JoinRoom returns a full snapshot and restores hub subscriptions.
+            console.log(`[roomManager] restoring room ${roomId} via JoinRoom (${this.rooms.has(roomId) ? "refresh tracked snapshot" : "start tracking"})`);
+            try {
+              await this.joinRoom(roomId);
+            } catch (error) {
+              // The hub can retain a referee in room therefore trying to recover membership by joining again
+              if (
+                generation !== this.generation ||
+                this.excludedRooms.has(roomId) ||
+                !(error instanceof Error) ||
+                "code" in error ||
+                error.message !== "An unexpected error occurred invoking 'JoinRoom' on the server."
+              )
+                throw error;
+              console.warn(`[roomManager] room ${roomId}: JoinRoom rejected by hub; attempting membership recovery once`);
+              // TODO: Integrate this bounded recovery with shared exponential
+              // backoff once available, keeping unknown-outcome requests excluded.
+              await this.joinRoom(roomId);
+              console.log(`[roomManager] room ${roomId}: membership recovery succeeded`);
+            }
+          } catch (error) {
+            if (generation !== this.generation) throw error;
+            const failure = new Error(`Failed to refresh room ${roomId}: ${(error as Error).message}`, { cause: error });
+            console.error(`[roomManager] ${failure.message}`);
+            errors.push(failure);
+            failedRoomIds.push(roomId);
+          }
+        }
+        if (errors.length) throw new AggregateError(errors, "Some rooms could not be synchronized.");
+        console.log(`[roomManager] sync completed: tracked=${JSON.stringify([...this.rooms.keys()])}`);
+        this.onStatus?.({ type: "lazer_sync_state", state: "synced" });
+      } catch (error) {
+        console.error(`[roomManager] sync failed: scope=${listed ? "partial" : "all"}, failedRooms=${JSON.stringify(failedRoomIds)}`);
+        if (generation === this.generation)
+          this.onStatus?.({ type: "lazer_sync_state", state: "failed", scope: listed ? "partial" : "all", failedRoomIds, message: error instanceof Error ? error.message : String(error) });
+        // TODO: Retry using the shared API exponential backoff policy once implemented.
+        throw error;
+      } finally {
+        if (generation === this.generation) this.resyncPromise = null;
+      }
+    })();
+    return this.resyncPromise;
   }
 }
 

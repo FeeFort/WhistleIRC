@@ -12,7 +12,7 @@
     "format": "prettier --write . --ignore-path ../.prettierignore"
   },
   "dependencies": {
-    "@lucide/vue": "^1.33.0",
+    "@lucide/vue": "^1.50.0",
     "@primeuix/themes": "^3.0.0",
     "monaco-editor": "^0.56.0",
     "primevue": "^5.0.1",

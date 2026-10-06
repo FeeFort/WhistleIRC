@@ -231,7 +231,7 @@ async function prepareWindowsRuntime(arch) {
   console.info = () => {};
   console.warn = () => {};
   try {
-    await fetchPkgRuntime({ nodeRange: "node22", platform: "win", arch, output: runtimeDir });
+    await fetchPkgRuntime({ nodeRange: "node26", platform: "win", arch, output: runtimeDir });
     const runtimeName = fs.readdirSync(runtimeDir).find((file) => file.includes(`-win-${arch}`));
     if (!runtimeName) throw new Error(`pkg-fetch did not produce a Windows ${arch} runtime`);
     const runtimePath = path.join(runtimeDir, runtimeName);
@@ -290,7 +290,7 @@ async function main() {
       const previousPkgNodePath = process.env.PKG_NODE_PATH;
       process.env.PKG_NODE_PATH = runtimePath;
       try {
-        await run(`npx pkg . --targets node22-win-${arch} --no-bytecode --public-packages "${publicPackages}" --public --compress Brotli`);
+        await run(`npx pkg . --targets node26-win-${arch} --no-bytecode --public-packages "${publicPackages}" --public --compress Brotli`);
       } finally {
         if (previousPkgNodePath === undefined) delete process.env.PKG_NODE_PATH;
         else process.env.PKG_NODE_PATH = previousPkgNodePath;
@@ -305,7 +305,7 @@ async function main() {
     for (const arch of ["x64", "arm64"]) {
       showProgress(`Building macOS ${arch}`);
       const rawBinary = path.join(buildDir, `.raw-${arch}`);
-      await run(`npx pkg . --targets node22-macos-${arch} --output "${rawBinary}" --no-bytecode --public-packages "${publicPackages}" --public --compress Brotli`);
+      await run(`npx pkg . --targets node26-macos-${arch} --output "${rawBinary}" --no-bytecode --public-packages "${publicPackages}" --public --compress Brotli`);
       await buildMacZip(buildDir, rawBinary, arch);
       progressStage(`macOS ${arch} packaged`);
     }
@@ -315,7 +315,7 @@ async function main() {
     for (const arch of ["x64", "arm64"]) {
       showProgress(`Building Linux ${arch}`);
       const rawBinary = path.join(buildDir, `.raw-${arch}`);
-      await run(`npx pkg . --targets node22-linux-${arch} --output "${rawBinary}" --no-bytecode --public-packages "${publicPackages}" --public --compress Brotli`);
+      await run(`npx pkg . --targets node26-linux-${arch} --output "${rawBinary}" --no-bytecode --public-packages "${publicPackages}" --public --compress Brotli`);
       await buildAppImage(buildDir, rawBinary, arch);
       progressStage(`Linux ${arch} packaged`);
     }
