@@ -25,7 +25,7 @@ export function sendJson(client: WebSocket, payload: unknown): void {
     if (requestId !== undefined && typeof payload === "object" && payload !== null && "type" in payload && (payload.type === "ack" || payload.type === "error")) {
       payload = { ...payload, requestId };
     }
-    log.debug("> Client message", () => ({ payload: JSON.stringify(payload, (key, value) => (/password|token|secret|authorization|^code$/i.test(key) ? "[redacted]" : value)) }));
+    log.trace("> Client message", () => ({ payload: JSON.stringify(payload, (key, value) => (/password|token|secret|authorization|^code$/i.test(key) ? "[redacted]" : value)) }));
     client.send(JSON.stringify(payload));
   } else {
     log.trace("Skipped send to closed client", { state: client.readyState });
