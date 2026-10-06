@@ -173,10 +173,10 @@ export class Logger {
     this.state.bannerShown = true;
     const banner = { ...info, level: this.level };
     if (!process.stderr.isTTY) {
-      this.info("WhistleIRC server started", banner);
+      this.info("WhistleRef server started", banner);
       return;
     }
-    this.state.sink({ kind: "banner", banner, timestamp: this.state.now(), level: "INFO", scope: this.scope, component: this.component, message: "WhistleIRC server started", fields: {} });
+    this.state.sink({ kind: "banner", banner, timestamp: this.state.now(), level: "INFO", scope: this.scope, component: this.component, message: "WhistleRef server started", fields: {} });
   }
 
   critical(message: string, fields?: LogFieldsInput): void {

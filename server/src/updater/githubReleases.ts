@@ -2,7 +2,7 @@ import semver from "semver";
 import { GithubAsset, GithubRelease, UpdateInfo } from "../types.js";
 
 const GITHUB_OWNER = "FeeFort";
-const GITHUB_REPO = "WhistleIRC";
+const GITHUB_REPO = "WhistleRef";
 
 declare const __APP_VERSION__: string;
 

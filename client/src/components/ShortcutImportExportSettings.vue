@@ -65,7 +65,7 @@ function handleImport({ items, skipped }) {
     <div class="settings-page__setting">
       <div class="settings-page__setting-info">
         <h3>Import shortcuts</h3>
-        <p>Load shortcut definitions from a WhistleIRC JSON file.</p>
+        <p>Load shortcut definitions from a WhistleRef JSON file.</p>
       </div>
       <div class="settings-page__setting-control">
         <input ref="importInput" type="file" accept=".json,application/json" hidden @change="handleFileSelected" />

@@ -161,7 +161,7 @@ watch(
               </button>
             </div>
           </div>
-          <p class="login-form__hint">Authorize WhistleIRC in osu! to connect your profile.</p>
+          <p class="login-form__hint">Authorize WhistleRef in osu! to connect your profile.</p>
           <p v-if="osuError" class="login-form__error">{{ osuError }}</p>
           <Button class="login-form__submit" :loading="osuLoading" :disabled="osuLoading" @click="loginFromOsu"><ExternalLink :size="15" /><span>Login from osu!</span></Button>
           <Button text class="login-form__secondary" :disabled="osuLoading" @click="editCredentials">Edit credentials</Button>

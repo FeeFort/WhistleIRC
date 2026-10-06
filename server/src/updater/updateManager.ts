@@ -15,7 +15,7 @@ declare const __APP_VERSION__: string;
 const log = logger.child("core", "updater");
 
 const GITHUB_OWNER = "FeeFort";
-const GITHUB_REPO = "WhistleIRC";
+const GITHUB_REPO = "WhistleRef";
 
 export class UpdateError extends Error {
   constructor(
@@ -77,7 +77,7 @@ export class UpdateManager {
     this.#state = "checking";
     try {
       const response = await fetch(`https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases/latest`, {
-        headers: { Accept: "application/vnd.github+json", "User-Agent": "WhistleIRC-Updater" },
+        headers: { Accept: "application/vnd.github+json", "User-Agent": "WhistleRef-Updater" },
         signal: AbortSignal.timeout(15_000),
       });
       if (!response.ok) throw new UpdateError("CHECK_FAILED", `GitHub responded with HTTP ${response.status}.`);

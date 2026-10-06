@@ -1411,7 +1411,7 @@ const banchoMessages = ref([
   {
     id: 1,
     type: "system",
-    text: "Welcome to WhistleIRC!",
+    text: "Welcome to WhistleRef!",
   },
 ]);
 const roomClosedByChat = reactive({});
@@ -1768,7 +1768,7 @@ const activeChatTitle = computed(() => {
 watch(
   [isAuthenticated, settingsOpen, activeChatTitle],
   ([authenticated, settingsVisible, title]) => {
-    document.title = authenticated && !settingsVisible && title ? `WhistleIRC — ${title}` : "WhistleIRC";
+    document.title = authenticated && !settingsVisible && title ? `WhistleRef — ${title}` : "WhistleRef";
   },
   { immediate: true },
 );
@@ -2830,7 +2830,7 @@ function handleSend(text) {
       if (!messageText) return;
       isAction = true;
     } else if (/^\/np$/i.test(command)) {
-      messageText = "is listening to [https://github.com/FeeFort/WhistleIRC WhistleIRC]";
+      messageText = "is listening to [https://github.com/FeeFort/WhistleRef WhistleRef]";
       isAction = true;
     }
 
