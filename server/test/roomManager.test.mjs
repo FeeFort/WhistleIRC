@@ -233,7 +233,7 @@ await test("room synchronization", async (t) => {
   });
 
   await t.test("unknown rooms are rejected while pending joins and tracked rooms are accepted", async () => {
-    const warnings = t.mock.method(console, "warn", () => {});
+    const warnings = t.mock.method(process.stderr, "write", () => true);
     assert.equal(roomManager.handleHubEvent("RollCompleted", { room_id: 99, user_id: 1, max: 100, result: 2 }), false);
     assert.equal(roomManager.handleHubEvent("UserJoined", { room_id: 99, user_id: 1 }), false);
     assert.equal(roomManager.getRoom(99), undefined);
@@ -254,7 +254,7 @@ await test("room synchronization", async (t) => {
   });
 
   await t.test("automatic join failure is reported as a room error", async () => {
-    const log = t.mock.method(console, "error", () => {});
+    const log = t.mock.method(process.stderr, "write", () => true);
     invoke = async () => {
       throw new Error("No access");
     };
@@ -322,7 +322,7 @@ await test("room synchronization", async (t) => {
       calls++;
       throw new Error("Unexpected JoinRoom");
     };
-    const warnings = t.mock.method(console, "warn", () => {});
+    const warnings = t.mock.method(process.stderr, "write", () => true);
     assert.equal(roomManager.handleHubEvent("RefereeAdded", { room_id: 90, user_id: 1 }), false);
     assert.equal(roomManager.handleHubEvent("RefereeRemoved", { room_id: 90, user_id: 1 }), false);
     assert.equal(calls, 0);
@@ -331,7 +331,7 @@ await test("room synchronization", async (t) => {
   });
 
   await t.test("SignalR boundary drops invalid events before forwarding", () => {
-    const warnings = t.mock.method(console, "warn", () => {});
+    const warnings = t.mock.method(process.stderr, "write", () => true);
     listeners.get("UserJoined")(null);
     listeners.get("UserJoined")({ room_id: 1, user_id: "bad" });
     assert.equal(forwarded.length, 0);
@@ -355,7 +355,10 @@ await test("room synchronization", async (t) => {
 
   await t.test("ListRooms failure preserves tracked rooms and reaches reconnect error handling", async () => {
     const errors = [];
-    const log = t.mock.method(console, "error", (message) => errors.push(message));
+    const log = t.mock.method(process.stderr, "write", (message) => {
+      errors.push(message);
+      return true;
+    });
     invoke = async () => {
       throw new Error("List failed");
     };
@@ -364,7 +367,7 @@ await test("room synchronization", async (t) => {
     assert.equal(statuses.at(-1).message, "List failed");
     await reconnect();
     assert.equal(roomManager.getAllRooms().length, 1);
-    assert.ok(errors.some((message) => /Sync after reconnect failed: List failed/.test(message)));
+    assert.ok(errors.some((message) => message.includes("Sync after reconnect failed") && message.includes("List failed")));
     log.mock.restore();
   });
   await t.test("SignalR timeout releases a join and ignores its late snapshot", async () => {
@@ -410,7 +413,13 @@ await test("room synchronization", async (t) => {
 
   await t.test("SignalR diagnostics redact passwords in request logs", async (t) => {
     const logs = [];
-    t.mock.method(console, "log", (message) => logs.push(message));
+    const previousLevel = logger.level;
+    logger.setLevel("TRACE");
+    t.after(() => logger.setLevel(previousLevel));
+    t.mock.method(process.stderr, "write", (message) => {
+      logs.push(message);
+      return true;
+    });
     invoke = async () => undefined;
     await invokeHub("ChangeRoomSettings", 1, { name: "Room", password: "do-not-log-this" });
     assert.ok(logs.some((message) => message.includes("ChangeRoomSettings")));
@@ -629,3 +638,4 @@ await test("room synchronization", async (t) => {
     assert.equal(statuses.at(-1).state, "disconnected");
   });
 });
+import { logger } from "../src/logger/logger.ts";

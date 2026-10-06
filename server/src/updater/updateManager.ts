@@ -1,3 +1,4 @@
+import { logger } from "../logger/logger.js";
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import fs from "node:fs";
@@ -10,6 +11,8 @@ import semver from "semver";
 import { GithubAsset, GithubRelease, UpdateCheckResult, UpdateInfo, UpdateProgressSender, UpdaterState } from "../types.js";
 
 declare const __APP_VERSION__: string;
+
+const log = logger.child("core", "updater");
 
 const GITHUB_OWNER = "FeeFort";
 const GITHUB_REPO = "WhistleIRC";
@@ -47,6 +50,7 @@ function findAsset(assets: GithubAsset[]): GithubAsset {
   if (!/^[-._a-zA-Z0-9]+$/.test(asset.name)) {
     throw new UpdateError("INVALID_ASSET", "The update package has an unsafe filename.");
   }
+  log.trace("Release artifact selected", { name: asset.name, bytes: asset.size, platform: process.platform, arch: process.arch });
   return asset;
 }
 
@@ -68,6 +72,8 @@ export class UpdateManager {
       throw new UpdateError("UPDATE_IN_PROGRESS", "An update operation is already in progress.");
     }
 
+    log.debug("Checking for updates");
+    log.trace("Updater state changed", { previous: this.#state, next: "checking" });
     this.#state = "checking";
     try {
       const response = await fetch(`https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases/latest`, {
@@ -85,7 +91,9 @@ export class UpdateManager {
       const version = currentVersion();
       if (!semver.valid(version)) throw new UpdateError("INVALID_CURRENT_VERSION", "The current application version is invalid.");
       if (!semver.gt(latestVersion, version)) {
+        log.debug("Application is up to date", { version });
         this.#target = null;
+        log.trace("Updater state changed", { previous: this.#state, next: "idle" });
         this.#state = "idle";
         return { type: "update_check_result", available: false, currentVersion: version };
       }
@@ -93,6 +101,8 @@ export class UpdateManager {
       const asset = findAsset(release.assets || []);
       checksumFromDigest(asset.digest);
       this.#target = { version: latestVersion, asset, releaseNotesUrl: release.html_url, publishedAt: release.published_at };
+      log.info("Update available", { version: latestVersion });
+      log.trace("Updater state changed", { previous: this.#state, next: "available" });
       this.#state = "available";
       return {
         type: "update_check_result",
@@ -103,6 +113,7 @@ export class UpdateManager {
         publishedAt: release.published_at,
       };
     } catch (error) {
+      log.trace("Updater state changed", { previous: this.#state, next: "idle" });
       this.#state = "idle";
       if (error instanceof UpdateError) throw error;
       throw new UpdateError("CHECK_FAILED", `Unable to check for updates: ${(error as Error).message}`);
@@ -114,6 +125,8 @@ export class UpdateManager {
       throw new UpdateError("INVALID_UPDATE_STATE", "Check for an available update before downloading it.");
     }
 
+    log.info("Downloading update", { version: this.#target.version, asset: this.#target.asset.name });
+    log.trace("Updater state changed", { previous: this.#state, next: "downloading" });
     this.#state = "downloading";
     this.#abortController = new AbortController();
     try {
@@ -128,6 +141,7 @@ export class UpdateManager {
       const progress = new Transform({
         transform(chunk, _encoding, callback) {
           downloadedBytes += chunk.length;
+          log.trace("Update download progress", { totalBytes, downloadedBytes });
           hash.update(chunk);
           send({ type: "update_progress", stage: "downloading", totalBytes, downloadedBytes });
           callback(null, chunk);
@@ -135,14 +149,18 @@ export class UpdateManager {
       });
       await pipeline(Readable.fromWeb(response.body as never), progress, fs.createWriteStream(this.#downloadPath));
 
+      log.debug("Verifying update integrity");
       send({ type: "update_progress", stage: "verifying" });
       if (downloadedBytes !== this.#target.asset.size || hash.digest("hex") !== checksumFromDigest(this.#target.asset.digest)) {
         throw new UpdateError("VERIFY_FAILED", "The downloaded update did not pass integrity verification.");
       }
+      log.trace("Updater state changed", { previous: this.#state, next: "ready_to_install" });
+      log.trace("Update integrity verified", { downloadedBytes, expectedBytes: this.#target.asset.size });
       this.#state = "ready_to_install";
       send({ type: "update_progress", stage: "ready_to_install" });
     } catch (error) {
       await this.#removeDownload();
+      log.trace("Updater state changed", { previous: this.#state, next: this.#target ? "available" : "idle" });
       this.#state = this.#target ? "available" : "idle";
       if (this.#abortController?.signal.aborted) throw new UpdateError("DOWNLOAD_CANCELLED", "The update download was cancelled.");
       if (error instanceof UpdateError) throw error;
@@ -153,6 +171,7 @@ export class UpdateManager {
   }
 
   async cancel(): Promise<void> {
+    log.debug("Cancelling update download");
     if (this.#state !== "downloading" || !this.#abortController) {
       throw new UpdateError("INVALID_UPDATE_STATE", "There is no active update download to cancel.");
     }
@@ -160,12 +179,14 @@ export class UpdateManager {
   }
 
   install(send: UpdateProgressSender): void {
+    log.debug("Update installation requested", { state: this.#state });
     if (this.#state !== "ready_to_install" || !this.#downloadPath) {
       throw new UpdateError("INVALID_UPDATE_STATE", "Download and verify an update before installing it.");
     }
     if (!isPackagedRuntime()) {
       throw new UpdateError("INSTALL_UNSUPPORTED_RUNTIME", "Updates can only be installed from a packaged application.");
     }
+    log.trace("Updater state changed", { previous: this.#state, next: "installing" });
     this.#state = "installing";
     send({ type: "update_progress", stage: "installing" });
     const helperPath = path.join(this.#stagingDirectory || os.tmpdir(), `whistleirc-update-helper-${process.pid}`);
@@ -173,9 +194,11 @@ export class UpdateManager {
       fs.copyFileSync(process.execPath, helperPath);
       fs.chmodSync(helperPath, 0o755);
     } catch (error) {
+      log.trace("Updater state changed", { previous: this.#state, next: "ready_to_install" });
       this.#state = "ready_to_install";
       throw new UpdateError("HELPER_PREPARE_FAILED", `Unable to prepare the update helper: ${(error as Error).message}`);
     }
+    log.trace("Starting update helper", { helperPath, downloadPath: this.#downloadPath });
     const helper = spawn(helperPath, ["--apply-update", String(process.pid), this.#downloadPath], {
       detached: true,
       stdio: "ignore",
@@ -183,13 +206,18 @@ export class UpdateManager {
       env: { ...process.env, WHISTLEIRC_UPDATE_HELPER: "1" },
     });
     helper.once("error", (error) => {
+      log.error("Update helper failed to start", { error });
       fs.appendFileSync(`${os.tmpdir()}/whistleirc-update-error.log`, `${new Date().toISOString()} Helper spawn failed: ${error.stack || error.message}\n`);
     });
     helper.unref();
   }
 
   async #removeDownload(): Promise<void> {
-    if (this.#stagingDirectory) await rm(this.#stagingDirectory, { recursive: true, force: true });
+    if (this.#stagingDirectory) {
+      log.trace("Removing update staging directory", { path: this.#stagingDirectory });
+      await rm(this.#stagingDirectory, { recursive: true, force: true });
+      log.trace("Update staging directory removed");
+    }
     this.#stagingDirectory = null;
     this.#downloadPath = null;
   }

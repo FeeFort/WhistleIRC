@@ -1,3 +1,4 @@
+import { logger } from "../logger/logger.js";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -5,6 +6,8 @@ import { createRequire } from "node:module";
 import { openInBrowser } from "../browser.js";
 import { SysTrayInstance, SysTrayOptions, TrayOptions } from "../types.js";
 import { createKdeTray } from "./kdeTray.js";
+
+const log = logger.child("core", "tray");
 
 const require = createRequire(import.meta.url);
 const systray2Module = require("systray2") as { default?: unknown };
@@ -17,14 +20,14 @@ function getIconBase64(): string {
   const candidates = [path.join(__dirname, "..", "icons", iconName), path.join(__dirname, "..", "..", "icons", iconName)];
   const iconPath = candidates.find((candidate) => fs.existsSync(candidate)) ?? candidates[0];
   const icon = fs.readFileSync(iconPath);
-  console.log(`[Tray] Loading icon: ${iconPath} (${icon.length} bytes)`);
+  log.debug("Loading icon", { path: iconPath, bytes: icon.length });
   return icon.toString("base64");
 }
 
 export function createTray({ port, onQuit }: TrayOptions): SysTrayInstance {
   if (process.platform === "linux" && process.env.XDG_SESSION_TYPE === "wayland" && /kde|plasma/i.test(`${process.env.XDG_CURRENT_DESKTOP ?? ""}:${process.env.DESKTOP_SESSION ?? ""}`)) {
     const kdeReady = createKdeTray({ port, onQuit }).catch((error) => {
-      console.error(`[Tray] KDE StatusNotifier unavailable, using systray2: ${(error as Error).message}`);
+      log.warn("KDE StatusNotifier unavailable, using systray2", { error });
       return createLegacyTray({ port, onQuit });
     });
     return {
@@ -41,7 +44,7 @@ export function createTray({ port, onQuit }: TrayOptions): SysTrayInstance {
 }
 
 function createLegacyTray({ port, onQuit }: TrayOptions): SysTrayInstance {
-  console.log(`[Tray] Creating tray for ${process.platform}/${process.arch} on port ${port}`);
+  log.debug("Creating tray", { platform: process.platform, arch: process.arch, port });
   const openItem = {
     title: "Open WhistleIRC",
     tooltip: "Open in browser",
@@ -68,21 +71,21 @@ function createLegacyTray({ port, onQuit }: TrayOptions): SysTrayInstance {
     debug: false,
     copyDir: true,
   });
-  console.log("[Tray] SysTray instance created");
+  log.debug("SysTray instance created");
 
   systray.onClick((action) => {
-    console.log(`[Tray] Menu item clicked: ${action.item.title}`);
+    log.debug("Menu item clicked", { title: action.item.title });
     action.item.click?.();
   });
-  console.log("[Tray] Click handler registered");
+  log.trace("Click handler registered");
 
   systray
     .ready()
     .then(() => {
-      console.log("[Tray] Tray is ready");
+      log.info("Tray ready");
     })
     .catch((error) => {
-      console.error(`Tray failed to start: ${(error as Error).message}`);
+      log.error("Tray failed to start", { error });
     });
 
   return systray;

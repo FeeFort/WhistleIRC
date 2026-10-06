@@ -1,3 +1,4 @@
+import { logger } from "./logger/logger.js";
 import {
   MpSizeCommand,
   MpSetCommand,
@@ -362,6 +363,12 @@ function parseMatchMetadata(text: string): MatchMetadata | null {
 }
 
 export function parseBanchoBotMessage(text: string): ParsedBanchoBotMessage {
+  const result = parseBanchoBotMessageValue(text);
+  logger.child("stable", "banchoParser").trace(result ? "Message parsed" : "Message not recognized", () => ({ parser: "parseBanchoBotMessage", result }));
+  return result;
+}
+
+function parseBanchoBotMessageValue(text: string): ParsedBanchoBotMessage {
   const slotLock = parseSlotLockState(text);
   if (slotLock) return { type: "slot_lock", value: slotLock };
   const room = parseRoomName(text);
@@ -419,6 +426,12 @@ export function parseBanchoBotMessage(text: string): ParsedBanchoBotMessage {
 }
 
 export function parseLobbyCommand(text: string): ParsedLobbyCommand {
+  const result = parseLobbyCommandValue(text);
+  logger.child("stable", "banchoParser").trace(result ? "Message parsed" : "Message not recognized", () => ({ parser: "parseLobbyCommand", result }));
+  return result;
+}
+
+function parseLobbyCommandValue(text: string): ParsedLobbyCommand {
   const settings = parseMpSetCommand(text);
   if (settings) return { type: "settings", value: settings };
 

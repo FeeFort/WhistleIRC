@@ -2,7 +2,10 @@ import { hubRateLimiter, rateLimitError } from "../rateLimiter.js";
 import * as signalR from "@microsoft/signalr";
 import { getAccessToken } from "../auth/auth.js";
 import { config } from "../config.js";
+import { logger } from "../logger/logger.js";
 import { HubEventHandler, ResyncHandler, HubEventType, LazerHubEvent, HubEventPayloads, LazerStatusHandler } from "../types.js";
+
+const log = logger.child("lazer", "refereeHub");
 
 // Full list of referee hub events that can be invoked by the server
 const CLIENT_EVENTS = [
@@ -155,7 +158,6 @@ export function isHubResponse(methodName: string, value: unknown): boolean {
 
 let connection: signalR.HubConnection | null = null;
 let connectionGeneration = 0;
-let invocationSequence = 0;
 let sessionAbort = new AbortController();
 let statusHandler: LazerStatusHandler | undefined;
 
@@ -168,7 +170,7 @@ export async function disconnectFromRefereeHub(): Promise<void> {
   const notify = statusHandler;
   statusHandler = undefined;
   notify?.({ type: "lazer_connection_state", state: "disconnected" });
-  if (previous) console.log(`[refereeHub] session=${connectionGeneration - 1} stopping connection (${previous.state})`);
+  if (previous) log.debug("Stopping connection", { session: connectionGeneration - 1, state: previous.state });
   await previous?.stop();
 }
 
@@ -181,19 +183,24 @@ export async function connectToRefereeHub(onEvent: HubEventHandler, onResync: Re
       accessTokenFactory: () => getAccessToken(),
     })
     .withAutomaticReconnect()
-    .configureLogging(signalR.LogLevel.Warning)
+    .configureLogging({
+      log: (level, message) => {
+        // Keep protocol payload logging in the application
+        if (level >= signalR.LogLevel.Warning && level < signalR.LogLevel.None) log.log(level === signalR.LogLevel.Critical ? "ERROR" : "WARN", message);
+      },
+    })
     .build();
 
   connection = hub;
   for (const eventName of CLIENT_EVENTS) {
     hub.on(eventName, (payload: unknown) => {
       if (generation !== connectionGeneration) {
-        console.log(`[refereeHub] session=${generation} ignored stale event ${eventName}`);
+        log.trace("Ignored stale event", { session: generation, eventName });
         return;
       }
-      console.log(`[refereeHub] session=${generation} received ${eventName}: ${JSON.stringify(payload, (key, value) => (/password|token|secret|authorization/i.test(key) ? "[redacted]" : value))}`);
+      log.traceIn(eventName, () => ({ session: generation, payload: JSON.stringify(payload, (key, value) => (/password|token|secret|authorization/i.test(key) ? "[redacted]" : value)) }));
       if (!isHubPayload(eventName, payload)) {
-        console.warn(`[refereeHub] Invalid ${eventName} payload, ignoring`);
+        log.warn("Invalid event payload, ignoring", { eventName });
         return;
       }
       onEvent({
@@ -210,18 +217,18 @@ export async function connectToRefereeHub(onEvent: HubEventHandler, onResync: Re
     sessionAbort.abort();
     sessionAbort = new AbortController();
     onStatus?.({ type: "lazer_connection_state", state: "reconnecting", ...(error ? { reason: error.message } : {}) });
-    console.warn(`[refereeHub] Reconnecting: ${error?.message ?? "unknown reason"}`);
+    log.separator(`Reconnecting: ${error?.message ?? "unknown reason"}`, "WARN");
   });
 
   hub.onreconnected(async () => {
     if (generation !== connectionGeneration) return;
     sessionAbort = new AbortController();
     onStatus?.({ type: "lazer_connection_state", state: "connected" });
-    console.log("[refereeHub] Reconnected — syncing rooms list");
+    log.separator("Connection restored");
     try {
       await onResync();
     } catch (error) {
-      console.error(`[refereeHub] Sync after reconnect failed: ${(error as Error).message}`);
+      log.warn("Sync after reconnect failed", { error });
     }
   });
 
@@ -229,33 +236,37 @@ export async function connectToRefereeHub(onEvent: HubEventHandler, onResync: Re
     if (generation !== connectionGeneration) return;
     onStatus?.({ type: "lazer_connection_state", state: "disconnected", ...(error ? { reason: error.message } : {}) });
     sessionAbort.abort();
-    console.error(`[refereeHub] Connection closed: ${error?.message ?? "no error"}`);
+    if (error) log.error("Connection closed, automatic reconnect stopped", { error });
+    else log.info("Connection closed");
   });
 
-  console.log(`[refereeHub] session=${generation} connecting to ${new URL("/referee", config.spectatorServerUrl)}`);
+  log.info("Connecting", { session: generation, url: new URL("/referee", config.spectatorServerUrl).toString() });
   onStatus?.({ type: "lazer_connection_state", state: "connecting" });
   try {
     await hub.start();
   } catch (error) {
-    console.error(`[refereeHub] session=${generation} connection failed: ${error instanceof Error ? error.message : String(error)}`);
+    log.warn("Connection failed", { session: generation, error });
     if (generation === connectionGeneration) onStatus?.({ type: "lazer_connection_state", state: "disconnected", reason: error instanceof Error ? error.message : String(error) });
     throw error;
   }
-  if (generation !== connectionGeneration) throw new Error("SignalR session was replaced.");
-  console.log(`[refereeHub] session=${generation} connected, connectionId=${hub.connectionId ?? "unknown"}`);
+  if (generation !== connectionGeneration) {
+    log.trace("Stale hub result ignored", { generation, currentGeneration: connectionGeneration });
+    throw new Error("SignalR session was replaced.");
+  }
+  log.info("Connected", { session: generation, connectionId: hub.connectionId ?? "unknown" });
   onStatus?.({ type: "lazer_connection_state", state: "connected" });
   return hub;
 }
 
 export async function invokeHub<T = unknown>(methodName: string, ...args: unknown[]): Promise<T> {
-  const invocationId = ++invocationSequence;
-  const startedAt = Date.now();
-  console.log(
-    `[refereeHub] call=${invocationId} session=${connectionGeneration} invoke ${methodName}: ${JSON.stringify(args, (key, value) => (/password|token|secret|authorization/i.test(key) ? "[redacted]" : value))}`,
-  );
+  const operation = log.traceStart(methodName, () => ({
+    session: connectionGeneration,
+    args: JSON.stringify(args, (key, value) => (/password|token|secret|authorization/i.test(key) ? "[redacted]" : value)),
+  }));
   if (!connection || connection.state !== signalR.HubConnectionState.Connected) {
-    console.warn(`[refereeHub] call=${invocationId} rejected: connection state=${connection?.state ?? "absent"}`);
-    throw new Error(`Cannot invoke ${methodName}: referee hub is not connected.`);
+    const error = new Error(`Cannot invoke ${methodName}: referee hub is not connected.`);
+    operation.fail(error, "WARN", { state: connection?.state ?? "absent" });
+    throw error;
   }
   const generation = connectionGeneration;
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -264,7 +275,9 @@ export async function invokeHub<T = unknown>(methodName: string, ...args: unknow
   const hub = connection;
   const signal = sessionAbort.signal;
   try {
+    log.trace("Waiting for invocation capacity", { operationId: operation.id, methodName, generation });
     release = await hubRateLimiter.acquire(signal);
+    log.trace("Invocation capacity acquired", { operationId: operation.id, methodName });
     if (signal.aborted || generation !== connectionGeneration || hub !== connection || hub.state !== signalR.HubConnectionState.Connected)
       throw rateLimitError("REQUEST_CANCELLED", "SignalR connection changed before the request was sent.");
     result = await Promise.race([
@@ -282,7 +295,10 @@ export async function invokeHub<T = unknown>(methodName: string, ...args: unknow
         );
       }),
     ]);
-    if (generation !== connectionGeneration) throw new Error("SignalR session was replaced.");
+    if (generation !== connectionGeneration) {
+      log.trace("Stale hub result ignored", { generation, currentGeneration: connectionGeneration });
+      throw new Error("SignalR session was replaced.");
+    }
     if (["ListRooms", "JoinRoom", "MakeRoom"].includes(methodName)) {
       if (!isHubResponse(methodName, result) || (methodName === "JoinRoom" && (result as { room_id: number }).room_id !== args[0])) {
         // TODO: Retry safe snapshot reads through the shared exponential backoff policy.
@@ -293,22 +309,23 @@ export async function invokeHub<T = unknown>(methodName: string, ...args: unknow
         });
       }
     }
-    if (methodName === "ListRooms") {
-      console.log(`[refereeHub] call=${invocationId} ${methodName} succeeded (${Date.now() - startedAt}ms): ${JSON.stringify(result)}`);
-    } else {
-      const roomId = typeof result === "object" && result !== null && "room_id" in result ? result.room_id : undefined;
-      console.log(`[refereeHub] call=${invocationId} ${methodName} succeeded (${Date.now() - startedAt}ms)${roomId === undefined ? "" : `, room=${roomId}`}`);
-    }
+    operation.end(() => ({ result: JSON.stringify(result, (key, value) => (/password|token|secret|authorization/i.test(key) ? "[redacted]" : value)) }));
   } catch (error) {
-    console.error(`[refereeHub] call=${invocationId} session=${generation} ${methodName} failed (${Date.now() - startedAt}ms): ${error instanceof Error ? error.message : String(error)}`);
+    operation.fail(error, "WARN", { session: generation });
     throw error;
   } finally {
-    if (timer !== undefined) clearTimeout(timer);
+    if (timer !== undefined) {
+      clearTimeout(timer);
+      log.trace("Invocation timeout cancelled", { operationId: operation.id });
+    }
     release?.();
   }
   // TODO: Apply shared exponential backoff retries only where replay is safe.
   // Mutations must not be retried blindly: timeout does not cancel the remote call.
-  if (generation !== connectionGeneration) throw new Error("SignalR session was replaced.");
+  if (generation !== connectionGeneration) {
+    log.trace("Stale hub result ignored", { generation, currentGeneration: connectionGeneration });
+    throw new Error("SignalR session was replaced.");
+  }
   return result;
 }
 

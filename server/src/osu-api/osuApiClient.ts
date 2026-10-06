@@ -1,7 +1,10 @@
+import { logger } from "../logger/logger.js";
 import { config } from "../config.js";
 import { InternalApiMethod, OsuApiMeResponse, OsuUser } from "../types.js";
 
 import { restRateLimiter } from "../rateLimiter.js";
+
+const log = logger.child("core", "osuApi");
 
 const OSU_API_URL = "https://osu.ppy.sh/api/v2/";
 
@@ -47,7 +50,9 @@ export async function fetchMe(accessToken: string): Promise<OsuUser> {
 export async function fetchApi(accessToken: string, endpoint: string, method?: InternalApiMethod, body?: Record<string, unknown>): Promise<unknown> {
   if (!method) method = "GET";
 
+  log.debug("API request queued", { method, endpoint });
   const release = await restRateLimiter.acquire();
+  const operation = log.traceStart(`${method} ${endpoint}`, () => ({ body: JSON.stringify(body, (key, value) => (/password|token|secret|authorization/i.test(key) ? "[redacted]" : value)) }));
   const signal = AbortSignal.timeout(config.apiRequestTimeoutMs);
   try {
     const response = await fetch(OSU_API_URL + endpoint.replace(/^\//, ""), {
@@ -57,14 +62,21 @@ export async function fetchApi(accessToken: string, endpoint: string, method?: I
       body: body ? JSON.stringify(body) : undefined,
     });
 
+    log.debug("API response received", { method, endpoint, status: response.status });
     checkApiRateLimit(response);
     if (!response.ok) {
       throw await OsuApiError.fromResponse(response);
     }
 
-    if (response.status === 204 || method === "DELETE") return undefined;
-    return await response.json();
+    if (response.status === 204 || method === "DELETE") {
+      operation.end({ status: response.status });
+      return undefined;
+    }
+    const result: unknown = await response.json();
+    operation.end(() => ({ status: response.status, result: JSON.stringify(result, (key, value) => (/password|token|secret|authorization/i.test(key) ? "[redacted]" : value)) }));
+    return result;
   } catch (error) {
+    operation.fail(error);
     if (signal.aborted)
       throw Object.assign(new Error("API request timed out; its outcome may be unknown."), {
         code: "REQUEST_TIMEOUT",
