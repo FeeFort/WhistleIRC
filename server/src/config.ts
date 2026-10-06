@@ -7,7 +7,7 @@ export const config = {
   redirectUri: "http://localhost:3000/",
   httpHost: process.env.HTTP_HOST || "0.0.0.0",
   httpPort: Number(process.env.HTTP_PORT) || 3000,
-  allowedApiEndpoints: [/^\/matches\/\d+$/, /^\/beatmaps\/\d+$/, /^\/beatmapsets\/\d+$/, /^\/users\/@?[\d\w]+$/, /^\/beatmaps\/\d+\/attributes$/, /^\/rooms\/\d+.*$/,] as RegExp[],
+  allowedApiEndpoints: [/^\/matches\/\d+$/, /^\/beatmaps\/\d+$/, /^\/beatmapsets\/\d+$/, /^\/users\/@?[\d\w]+$/, /^\/beatmaps\/\d+\/attributes$/, /^\/rooms\/\d+.*$/] as RegExp[],
   spectatorServerUrl: "https://spectator.ppy.sh",
   chatWebSocketUrl: "wss://notify.ppy.sh",
   ircHost: "irc.ppy.sh",
