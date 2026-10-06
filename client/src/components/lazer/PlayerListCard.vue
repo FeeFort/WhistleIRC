@@ -217,12 +217,9 @@ function escapeHtml(value) {
             <SvgMarkup v-if="modIconSvg(player, mod)" :svg="modIconSvg(player, mod)" />
             <span v-else class="player-row__mod-fallback">{{ modCode(mod) }}</span>
           </span>
-          <span
-            v-if="playerMods(player).length > 3"
-            v-tooltip.top="moreModsTooltip(player, playerMods(player))"
-            class="player-row__mod player-row__mod--more"
-            aria-label="More mods"
-          ><SvgMarkup :svg="moreModsIconSvg()" /></span>
+          <span v-if="playerMods(player).length > 3" v-tooltip.top="moreModsTooltip(player, playerMods(player))" class="player-row__mod player-row__mod--more" aria-label="More mods"
+            ><SvgMarkup :svg="moreModsIconSvg()"
+          /></span>
         </span>
 
         <span v-if="!player.isSlot && player.noMap" v-tooltip.top="'No Map'" class="player-row__no-map">
