@@ -3,6 +3,7 @@ import { computed } from "vue";
 import { ArrowLeftRight, Ban, Binoculars, CircleArrowUp, CircleCheck, CircleMinus, CirclePlay, LockOpen, Settings, Users, Whistle } from "@lucide/vue";
 import { useNickColor } from "../../composables/useNickColor";
 import { useChatSettings } from "../../composables/useChatSettings";
+import SvgMarkup from "../SvgMarkup.vue";
 import modsMetadata from "../../assets/mods/mods.json";
 import modHexRaw from "../../assets/mods/mod-icon.svg?raw";
 import moreModsRaw from "../../assets/mods/more-mods.svg?raw";
@@ -213,7 +214,7 @@ function escapeHtml(value) {
             class="player-row__mod"
             :aria-label="modInfo(player, mod)?.Name || modCode(mod)"
           >
-            <span v-if="modIconSvg(player, mod)" v-html="modIconSvg(player, mod)" />
+            <SvgMarkup v-if="modIconSvg(player, mod)" :svg="modIconSvg(player, mod)" />
             <span v-else class="player-row__mod-fallback">{{ modCode(mod) }}</span>
           </span>
           <span
@@ -221,8 +222,7 @@ function escapeHtml(value) {
             v-tooltip.top="moreModsTooltip(player, playerMods(player))"
             class="player-row__mod player-row__mod--more"
             aria-label="More mods"
-            v-html="moreModsIconSvg()"
-          />
+          ><SvgMarkup :svg="moreModsIconSvg()" /></span>
         </span>
 
         <span v-if="!player.isSlot && player.noMap" v-tooltip.top="'No Map'" class="player-row__no-map">

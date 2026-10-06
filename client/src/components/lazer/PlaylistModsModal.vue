@@ -7,6 +7,7 @@ import { useToast } from "primevue/usetoast";
 import { useServerConnection } from "../../composables/useServerConnection";
 import modsMetadata from "../../assets/mods/mods.json";
 import modHexRaw from "../../assets/mods/mod-icon.svg?raw";
+import SvgMarkup from "../SvgMarkup.vue";
 
 const modIconSources = import.meta.glob("../../assets/mods/*/*.svg", { eager: true, query: "?raw", import: "default" });
 const GLYPH_SCALE = 0.75;
@@ -325,7 +326,7 @@ onBeforeUnmount(() => window.removeEventListener("keydown", onKeydown, true));
             :class="{ 'playlist-mods-dialog__mod--selected': isModSelected(mod), 'playlist-mods-dialog__mod--blocked': modBlocked(mod) }"
             @click="toggleMod(mod)"
           >
-            <span class="playlist-mods-dialog__mod-icon" v-html="modIconSvg(category, mod, isModSelected(mod))"></span
+            <span class="playlist-mods-dialog__mod-icon"><SvgMarkup :svg="modIconSvg(category, mod, isModSelected(mod))" /></span
             ><span class="playlist-mods-dialog__mod-copy"
               ><span class="playlist-mods-dialog__mod-name">{{ mod.Name }}</span
               ><span v-if="mod.Description" class="playlist-mods-dialog__mod-description">{{ mod.Description }}</span></span
