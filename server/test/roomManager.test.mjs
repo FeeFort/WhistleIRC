@@ -14,6 +14,7 @@ const snapshot = (roomId, name = "Fresh") => ({
   chat_channel_id: roomId + 100,
   name,
   password: "",
+  queue_mode: "HostOnly",
   max_participants: 4,
   state: { type: "head_to_head", locked: false, slots: null },
   playlist: [],
@@ -120,7 +121,7 @@ await test("room synchronization", async (t) => {
     await new Promise((resolve) => setImmediate(resolve));
     roomManager.handleHubEvent("PlaylistItemAdded", { room_id: 1, playlist_item: item });
     roomManager.handleHubEvent("UserStatusChanged", { room_id: 1, user_id: 42, status: "ready" });
-    roomManager.handleHubEvent("RoomSettingsChanged", { room_id: 1, name: "Live", password: "", type: "head_to_head", max_participants: 6 });
+    roomManager.handleHubEvent("RoomSettingsChanged", { room_id: 1, name: "Live", password: "", type: "head_to_head", queue_mode: "AllPlayers", max_participants: 6 });
     const fresh = snapshot(1);
     fresh.playlist = [item];
     await new Promise((resolve) => setImmediate(resolve));
@@ -129,6 +130,7 @@ await test("room synchronization", async (t) => {
     assert.equal(roomManager.getRoom(1).playlist.length, 1);
     assert.equal(roomManager.getRoom(1).players[0].status, "ready");
     assert.equal(roomManager.getRoom(1).name, "Live");
+    assert.equal(roomManager.getRoom(1).queue_mode, "AllPlayers");
   });
 
   await t.test("a room failure is reported without preventing other room updates; retry works", async () => {
@@ -454,7 +456,7 @@ await test("room synchronization", async (t) => {
     roomManager.handleHubEvent("PlaylistItemAdded", { room_id: 97, playlist_item: { ...item, was_played: false } });
     roomManager.handleHubEvent("PlaylistItemChanged", { room_id: 97, playlist_item: { ...item, id: 9, beatmap_id: 10 } });
     roomManager.handleHubEvent("PlaylistItemRemoved", { room_id: 97, playlist_item_id: 9 });
-    roomManager.handleHubEvent("RoomSettingsChanged", { room_id: 97, name: "After snapshot", password: "", type: "team_versus", playlist_item_id: 7, max_participants: 8 });
+    roomManager.handleHubEvent("RoomSettingsChanged", { room_id: 97, name: "After snapshot", password: "", type: "team_versus", queue_mode: "AllPlayersRoundRobin", playlist_item_id: 7, max_participants: 8 });
     roomManager.handleHubEvent("RefereeAdded", { room_id: 97, user_id: 44 });
     roomManager.handleHubEvent("RefereeRemoved", { room_id: 97, user_id: 44 });
     const fresh = snapshot(97);
@@ -469,12 +471,14 @@ await test("room synchronization", async (t) => {
     assert.equal(room.playlist.length, 1);
     assert.equal(room.name, "After snapshot");
     assert.equal(room.max_participants, 8);
+    assert.equal(room.queue_mode, "AllPlayersRoundRobin");
     assert.deepEqual(room.referees, []);
     assert.equal(updates.length, 1);
+    assert.equal(updates[0].queue_mode, "AllPlayersRoundRobin");
     roomManager.removeRoom(97);
   });
 
-  await t.test("self kick removes tracking and prevents resync without invoking LeaveRoom", async () => {
+  await t.test("self kick removes tracking and prevents resync without invoking another hub method", async () => {
     roomManager.setCurrentUserId(35948605);
     roomManager.trackRoom(snapshot(4593225));
     const calls = [];

@@ -86,6 +86,10 @@ class RoomManager {
   setCurrentUserId(userId: number): void {
     this.currentUserId = userId;
   }
+  // LeaveRoom needs the authenticated osu! user ID as the kick target.
+  getCurrentUserId(): number | null {
+    return this.currentUserId;
+  }
 
   getRoom(roomId: number): RoomState | undefined {
     return this.rooms.get(roomId);
@@ -233,6 +237,7 @@ class RoomManager {
         const e = payload as unknown as RoomSettingsChangedEvent;
         room.name = e.name;
         room.password = e.password;
+        room.queue_mode = e.queue_mode;
         room.state.type = e.type;
         room.max_participants = e.max_participants ?? room.max_participants;
         break;

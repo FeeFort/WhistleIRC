@@ -30,6 +30,10 @@ const CLIENT_EVENTS = [
   "MatchCompleted",
 ] as const satisfies readonly HubEventType[];
 
+function isQueueMode(value: unknown): boolean {
+  return value === "HostOnly" || value === "AllPlayers" || value === "AllPlayersRoundRobin";
+}
+
 export function isHubPayload(eventType: HubEventType, value: unknown): value is HubEventPayloads[HubEventType] {
   const object = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
   const id = (v: unknown) => Number.isSafeInteger(v) && Number(v) > 0;
@@ -67,6 +71,7 @@ export function isHubPayload(eventType: HubEventType, value: unknown): value is 
         typeof value.name === "string" &&
         typeof value.password === "string" &&
         matchType(value.type) &&
+        isQueueMode(value.queue_mode) &&
         id(value.playlist_item_id) &&
         (value.max_participants === null || integer(value.max_participants))
       );
@@ -125,6 +130,7 @@ export function isHubResponse(methodName: string, value: unknown): boolean {
     !id(response.chat_channel_id) ||
     typeof response.name !== "string" ||
     typeof response.password !== "string" ||
+    !isQueueMode(response.queue_mode) ||
     !Number.isSafeInteger(response.max_participants) ||
     Number(response.max_participants) < 0 ||
     Number(response.max_participants) > 255 ||

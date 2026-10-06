@@ -7,6 +7,7 @@ const room = {
   chat_channel_id: 2,
   name: "Room",
   password: "",
+  queue_mode: "HostOnly",
   max_participants: 0,
   state: { type: "team_versus", locked: false, slots: null },
   playlist: [{ id: 7, ruleset_id: 3, beatmap_id: 8, required_mods: [], allowed_mods: [], freestyle: true, was_played: false, order: 0 }],
@@ -63,4 +64,18 @@ await test("snapshot response validation checks nested structures and uniqueness
 
 await test("countdowns accept fractional seconds as defined by spectator", () => {
   assert.equal(isHubPayload("CountdownStarted", { room_id: 1, countdown_id: 1, type: "match_start", seconds: 1.5 }), true);
+});
+
+await test("queue modes are validated in snapshots and settings events", () => {
+  const settings = { room_id: 1, name: "Room", password: "", type: "head_to_head", playlist_item_id: 7, max_participants: 4 };
+  for (const queue_mode of ["HostOnly", "AllPlayers", "AllPlayersRoundRobin"]) {
+    assert.equal(isHubResponse("JoinRoom", { ...room, queue_mode }), true);
+    assert.equal(isHubResponse("MakeRoom", { ...room, queue_mode }), true);
+    assert.equal(isHubPayload("RoomSettingsChanged", { ...settings, queue_mode }), true);
+  }
+  for (const queue_mode of [undefined, null, "invalid", 0, {}]) {
+    assert.equal(isHubResponse("JoinRoom", { ...room, queue_mode }), false);
+    assert.equal(isHubResponse("MakeRoom", { ...room, queue_mode }), false);
+    assert.equal(isHubPayload("RoomSettingsChanged", { ...settings, queue_mode }), false);
+  }
 });

@@ -450,6 +450,7 @@ export type MatchType = "head_to_head" | "team_versus";
 export type MatchTeam = "red" | "blue";
 export type MatchUserStatus = "idle" | "ready" | "playing" | "finished_play" | "spectating";
 export type CountdownType = "match_start" | "server_shutting_down";
+export type QueueMode = "HostOnly" | "AllPlayers" | "AllPlayersRoundRobin";
 
 export interface LazerMod {
   acronym: string;
@@ -469,6 +470,7 @@ export interface ChangeRoomSettingsRequest {
   name?: string | null;
   password?: string | null;
   match_type?: MatchType | null;
+  queue_mode?: QueueMode | null;
   max_participants?: number | null;
 }
 
@@ -557,6 +559,7 @@ export interface RoomJoinedResponse {
   chat_channel_id: number;
   name: string;
   password: string;
+  queue_mode: QueueMode;
   max_participants: number;
   state: LazerMatchState;
   playlist: LazerPlaylistItem[];
@@ -586,6 +589,7 @@ export interface RoomSettingsChangedEvent {
   name: string;
   password: string;
   type: MatchType;
+  queue_mode: QueueMode;
   playlist_item_id: number;
   max_participants: number | null;
 }

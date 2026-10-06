@@ -14,6 +14,20 @@ const context = vm.createContext({ sendJson: (_client, reply) => replies.push(JS
 vm.runInContext(ts.transpileModule(validation + dispatch, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText, context);
 const validate = context.validateMessage;
 
+await test("room settings validate queue mode while allowing omitted and null edits", () => {
+  for (const queue_mode of [undefined, null, "HostOnly", "AllPlayers", "AllPlayersRoundRobin"]) {
+    assert.equal(validate({ type: "lazer_change_room_settings", room_id: 1, queue_mode }), null);
+  }
+  for (const queue_mode of ["invalid", 123, {}, [], true]) {
+    const message = { type: "lazer_change_room_settings", room_id: 1, queue_mode, requestId: "queue-mode" };
+    assert.ok(validate(message));
+    context.handleClientMessage({}, message);
+    const reply = replies.pop();
+    assert.equal(reply.code, "VALIDATION_ERROR");
+    assert.equal(reply.requestId, "queue-mode");
+  }
+});
+
 await test("invalid requests produce correlated errors before dispatch", () => {
   const invalid = [
     { type: "lazer_join_room", room_id: 0 },

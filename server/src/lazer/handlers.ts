@@ -159,6 +159,7 @@ export async function handleLazerChangeRoomSettings(client: WebSocket, message: 
       name: m.name,
       password: m.password,
       type: m.match_type,
+      queue_mode: m.queue_mode,
       max_participants: m.max_participants,
     });
     await ack(client, message);

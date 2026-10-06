@@ -1095,6 +1095,9 @@ function validateMessage(message: unknown): string | null {
       if (message.match_type !== undefined && message.match_type !== null && message.match_type !== "head_to_head" && message.match_type !== "team_versus") {
         return "match_type must be head_to_head, team_versus, or null.";
       }
+      if (message.queue_mode !== undefined && message.queue_mode !== null && message.queue_mode !== "HostOnly" && message.queue_mode !== "AllPlayers" && message.queue_mode !== "AllPlayersRoundRobin") {
+        return "queue_mode must be HostOnly, AllPlayers, AllPlayersRoundRobin, or null.";
+      }
       if (message.max_participants !== undefined && message.max_participants !== null && (!Number.isSafeInteger(message.max_participants) || (message.max_participants as number) < 0))
         return "max_participants must be a non-negative integer or null.";
       return null;
