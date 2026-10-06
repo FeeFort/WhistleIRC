@@ -638,4 +638,4 @@ await test("room synchronization", async (t) => {
     assert.equal(statuses.at(-1).state, "disconnected");
   });
 });
-import { logger } from "../src/logger.ts";
+import { logger } from "../src/logger/logger.ts";

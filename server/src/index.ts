@@ -3,7 +3,7 @@ import net from "node:net";
 import path from "node:path";
 import os from "node:os";
 import packageInfo from "../package.json" with { type: "json" };
-import { logger } from "./logger.js";
+import { logger } from "./logger/logger.js";
 import express, { Request, Response } from "express";
 import { WebSocket, WebSocketServer } from "ws";
 import { parseBanchoBotMessage, parseLobbyCommand } from "./banchoBotParser.js";

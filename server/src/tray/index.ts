@@ -1,4 +1,4 @@
-import { logger } from "../logger.js";
+import { logger } from "../logger/logger.js";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";

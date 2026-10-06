@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { stripVTControlCharacters } from "node:util";
 import stringWidth from "string-width";
-import { formatLogRecord } from "../src/loggerFormat.ts";
+import { formatLogRecord } from "../src/logger/loggerFormat.ts";
 
 const record = { timestamp: new Date(2026, 9, 6, 12, 35, 10, 87), level: "DEBUG", scope: "stable", component: "irc", message: "Connected", fields: {} };
 const render = (changes = {}, options = {}) => formatLogRecord({ ...record, ...changes }, { colors: false, isTTY: true, columns: 80, ...options });

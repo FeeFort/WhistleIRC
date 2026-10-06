@@ -1,4 +1,4 @@
-import { logger } from "../logger.js";
+import { logger } from "../logger/logger.js";
 import { getAccessToken } from "../auth/auth.js";
 import { fetchApi } from "../osu-api/osuApiClient.js";
 import { parseLastMapResult } from "./matchResultParser.js";

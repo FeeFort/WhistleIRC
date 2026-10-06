@@ -1,4 +1,4 @@
-import { logger } from "./logger.js";
+import { logger } from "./logger/logger.js";
 import { AsyncLocalStorage } from "node:async_hooks";
 import type { ClientMessage } from "./types.js";
 import { WebSocket } from "ws";

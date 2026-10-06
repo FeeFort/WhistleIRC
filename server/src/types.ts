@@ -1,4 +1,4 @@
-import type { LOG_LEVELS } from "./logger.js";
+import type { LOG_LEVELS } from "./logger/logger.js";
 
 // Logger types
 export type LogLevel = (typeof LOG_LEVELS)[number];

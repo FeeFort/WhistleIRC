@@ -1,4 +1,4 @@
-import { logger } from "../logger.js";
+import { logger } from "../logger/logger.js";
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import fs from "node:fs";

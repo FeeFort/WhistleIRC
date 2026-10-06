@@ -1,4 +1,4 @@
-import { logger } from "../logger.js";
+import { logger } from "../logger/logger.js";
 import { openInBrowser } from "../browser.js";
 import { DbusModule, KdeTrayInstance, KdeTrayOptions } from "../types.js";
 import fs from "node:fs";

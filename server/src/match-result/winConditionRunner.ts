@@ -1,4 +1,4 @@
-import { logger } from "../logger.js";
+import { logger } from "../logger/logger.js";
 import vm from "node:vm";
 import { fetchLastMapResult } from "./matchResultFetcher.js";
 import type { TeamMapResult, WinConditionContext, WinConditionOutcome, WinConditionWinner } from "../types.js";

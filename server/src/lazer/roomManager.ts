@@ -1,4 +1,4 @@
-import { logger } from "../logger.js";
+import { logger } from "../logger/logger.js";
 import type {
   RoomJoinedResponse as RoomState,
   RoomJoinedResponse,

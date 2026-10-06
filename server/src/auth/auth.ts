@@ -1,4 +1,4 @@
-import { logger } from "../logger.js";
+import { logger } from "../logger/logger.js";
 import { fetchApi, fetchMe, OsuApiError } from "../osu-api/osuApiClient.js";
 import { AuthState, NotAuthenticatedReason, OsuOAuthCredentials, OsuUser } from "../types.js";
 import { exchangeCode, OsuOAuthError, refreshToken as refreshOsuToken } from "./osuOAuthClient.js";

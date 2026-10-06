@@ -1,4 +1,4 @@
-import { logger } from "./logger.js";
+import { logger } from "./logger/logger.js";
 import { config } from "./config.js";
 import type { RateLimitConfig, RateLimitEntry, RequestFailure } from "./types.js";
 

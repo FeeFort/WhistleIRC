@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Logger, createJsonFileSink, resolveFileLoggingOptions, createRuntimeFileSink } from "../src/logger.ts";
+import { Logger, createJsonFileSink, resolveFileLoggingOptions, createRuntimeFileSink } from "../src/logger/logger.ts";
 
 test("independent file threshold, secret masking and ordered flush", async (t) => {
   const directory = mkdtempSync(join(tmpdir(), "whistle-threshold-"));

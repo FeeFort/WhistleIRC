@@ -2,7 +2,7 @@ import { hubRateLimiter, rateLimitError } from "../rateLimiter.js";
 import * as signalR from "@microsoft/signalr";
 import { getAccessToken } from "../auth/auth.js";
 import { config } from "../config.js";
-import { logger } from "../logger.js";
+import { logger } from "../logger/logger.js";
 import { HubEventHandler, ResyncHandler, HubEventType, LazerHubEvent, HubEventPayloads, LazerStatusHandler } from "../types.js";
 
 const log = logger.child("lazer", "refereeHub");

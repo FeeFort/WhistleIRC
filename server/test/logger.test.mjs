@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { Logger, LOG_LEVELS, resolveLoggerOptions } from "../src/logger.ts";
+import { Logger, LOG_LEVELS, resolveLoggerOptions } from "../src/logger/logger.ts";
 
 test("interleaved operations keep distinct IDs and monotonic durations", () => {
   const records = [];
