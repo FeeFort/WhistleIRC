@@ -82,7 +82,7 @@ function messageText(record: LogRecord, trace: boolean): string {
     return `${key}=${formatted}`;
   });
   const operation = record.operation;
-  const prefix = operation ? `${operation.phase === "start" ? "┌─>" : "└─<"} #${operation.id} ` : "";
+  const prefix = operation ? `${operation.phase === "start" ? ">" : "<"} #${operation.id} ` : "";
   const outcome = operation && operation.phase !== "start" ? (operation.phase === "failed" ? " FAILED" : " OK") : "";
   const duration = operation?.durationMs === undefined ? "" : ` duration=${operation.durationMs}ms`;
   return clean(prefix + record.message + outcome + (fields.length ? `  ${fields.join(" ")}` : "") + duration);
