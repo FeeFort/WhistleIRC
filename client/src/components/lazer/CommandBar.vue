@@ -37,10 +37,7 @@ const commandGroups = computed(() => [
         warningId: BUILTIN_IDS.START,
         label: "Start",
         warningTitle: startDelaySeconds.value > 0 ? `Start match in ${startDelaySeconds.value}s?` : "Start match?",
-        warningDescription:
-          startDelaySeconds.value > 0
-            ? `A ${startDelaySeconds.value}-second countdown will begin in the lobby.`
-            : "The match will start in the lobby.",
+        warningDescription: startDelaySeconds.value > 0 ? `A ${startDelaySeconds.value}-second countdown will begin in the lobby.` : "The match will start in the lobby.",
         action: () => startLazerMatch(props.roomId, startDelaySeconds.value),
         icon: Play,
         tone: "green",
@@ -144,12 +141,7 @@ function sendCustom(shortcut) {
     emitCommand(shortcut.command);
     return;
   }
-  requestCommandConfirmation(
-    shortcut.command,
-    null,
-    "Send shortcut?",
-    "This shortcut will be sent to the chat.",
-  );
+  requestCommandConfirmation(shortcut.command, null, "Send shortcut?", "This shortcut will be sent to the chat.");
 }
 
 function onCustomShortcutsWheel(event) {
@@ -161,12 +153,7 @@ function onCustomShortcutsWheel(event) {
   container.scrollLeft += event.deltaY;
 }
 
-function requestCommandConfirmation(
-  command,
-  action = null,
-  title = "Send shortcut command?",
-  description = "This command will be sent to the chat.",
-) {
+function requestCommandConfirmation(command, action = null, title = "Send shortcut command?", description = "This command will be sent to the chat.") {
   pendingCommand.value = command;
   pendingAction.value = action;
   pendingTitle.value = title;
@@ -235,7 +222,6 @@ function handleSave(data) {
     addCustomShortcut(data);
   }
 }
-
 </script>
 
 <template>

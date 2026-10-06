@@ -46,7 +46,9 @@ const command = computed(() => {
 
 const isValid = computed(() => {
   if (isLazer.value) {
-    return Boolean(acronym.value.trim()) && Number.isInteger(Number(beatmapId.value)) && Number(beatmapId.value) > 0 && Number.isInteger(Number(maxParticipants.value)) && Number(maxParticipants.value) > 0;
+    return (
+      Boolean(acronym.value.trim()) && Number.isInteger(Number(beatmapId.value)) && Number(beatmapId.value) > 0 && Number.isInteger(Number(maxParticipants.value)) && Number(maxParticipants.value) > 0
+    );
   }
   if (!acronym.value.trim()) return false;
   if (qualifiers.value) return Boolean(qualifiersLobby.value.trim());
@@ -153,41 +155,41 @@ watch(
       </template>
 
       <template v-else>
-      <label class="create-lobby-dialog__field">
-        <span>Best of</span>
-        <InputNumber v-model="bestOf" :min="1" :max="99" :use-grouping="false" inputId="create-lobby-best-of" />
-      </label>
+        <label class="create-lobby-dialog__field">
+          <span>Best of</span>
+          <InputNumber v-model="bestOf" :min="1" :max="99" :use-grouping="false" inputId="create-lobby-best-of" />
+        </label>
 
-      <div class="create-lobby-dialog__toggle-row">
-        <div>
-          <strong>Qualifications</strong>
-          <span>Use a qualifications lobby instead of two teams.</span>
+        <div class="create-lobby-dialog__toggle-row">
+          <div>
+            <strong>Qualifications</strong>
+            <span>Use a qualifications lobby instead of two teams.</span>
+          </div>
+          <ToggleSwitch v-model="qualifiers" class="app-solid-switch" />
         </div>
-        <ToggleSwitch v-model="qualifiers" class="app-solid-switch" />
-      </div>
 
-      <label v-if="!qualifiers" class="create-lobby-dialog__field">
-        <span>Red team name</span>
-        <InputText v-model="teamRed" placeholder="e.g. Team Red" />
-      </label>
+        <label v-if="!qualifiers" class="create-lobby-dialog__field">
+          <span>Red team name</span>
+          <InputText v-model="teamRed" placeholder="e.g. Team Red" />
+        </label>
 
-      <label v-if="!qualifiers" class="create-lobby-dialog__field">
-        <span>Blue team name</span>
-        <InputText v-model="teamBlue" placeholder="e.g. Team Blue" />
-      </label>
+        <label v-if="!qualifiers" class="create-lobby-dialog__field">
+          <span>Blue team name</span>
+          <InputText v-model="teamBlue" placeholder="e.g. Team Blue" />
+        </label>
 
-      <label v-else class="create-lobby-dialog__field">
-        <span>Qualifiers lobby ID</span>
-        <InputText v-model="qualifiersLobby" placeholder="e.g. 12345678" />
-      </label>
+        <label v-else class="create-lobby-dialog__field">
+          <span>Qualifiers lobby ID</span>
+          <InputText v-model="qualifiersLobby" placeholder="e.g. 12345678" />
+        </label>
 
-      <div class="create-lobby-dialog__toggle-row">
-        <div>
-          <strong>Include names in parentheses</strong>
-          <span>Wrap teams and lobby labels in parentheses.</span>
+        <div class="create-lobby-dialog__toggle-row">
+          <div>
+            <strong>Include names in parentheses</strong>
+            <span>Wrap teams and lobby labels in parentheses.</span>
+          </div>
+          <ToggleSwitch v-model="includeParentheses" class="app-solid-switch" />
         </div>
-        <ToggleSwitch v-model="includeParentheses" class="app-solid-switch" />
-      </div>
       </template>
 
       <div class="create-lobby-dialog__preview">

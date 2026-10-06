@@ -14,19 +14,8 @@ import { parseMappoolMessage } from "../../composables/useMappoolChat";
 
 const { nickColor: baseNickColor } = useNickColor();
 const { primaryColor } = useDarkMode();
-const {
-  highlightReferee,
-  highlightTeams,
-  redTeamColor,
-  blueTeamColor,
-  unassignedColorMode,
-  unassignedColor,
-  timestampMode,
-  highlightWords,
-  highlightStyles,
-  highlightColorMode,
-  highlightColor,
-} = useChatSettings();
+const { highlightReferee, highlightTeams, redTeamColor, blueTeamColor, unassignedColorMode, unassignedColor, timestampMode, highlightWords, highlightStyles, highlightColorMode, highlightColor } =
+  useChatSettings();
 
 const teamHighlights = computed(() =>
   normalizeTeamHighlights([
@@ -79,9 +68,7 @@ function formatTimer(seconds) {
 }
 
 const timerLabel = computed(() => (props.timerActive ? formatTimer(props.timerSeconds) : "No timer active"));
-const displayMessages = computed(() =>
-  [...props.messages].sort((left, right) => Number(Boolean(left.pending)) - Number(Boolean(right.pending))),
-);
+const displayMessages = computed(() => [...props.messages].sort((left, right) => Number(Boolean(left.pending)) - Number(Boolean(right.pending))));
 
 const statusLabel = computed(() => (props.connected ? "Connected" : "Disconnected"));
 

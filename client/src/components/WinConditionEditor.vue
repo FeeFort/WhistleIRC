@@ -51,8 +51,8 @@ defineExpose({ applyTestResult });
       result variables. Decimal comma is supported.</small
     >
     <small v-else
-      >The match result is already available as <code>room</code> with <code>room.teamRed</code> and <code>room.teamBlue</code>. Call <code>system.sendMessage(text)</code> for a referee-only note, then use
-      <code>calculateWinner({'{ red, blue }'}, { '{ reverse, onTie }' })</code> to choose the winner.</small
+      >The match result is already available as <code>room</code> with <code>room.teamRed</code> and <code>room.teamBlue</code>. Call <code>system.sendMessage(text)</code> for a referee-only note,
+      then use <code>calculateWinner({'{ red, blue }'}, { '{ reverse, onTie }' })</code> to choose the winner.</small
     >
     <div v-if="!lazerMode" class="win-editor__test">
       <InputNumber v-model="redScore" :min="0" placeholder="Red score" />

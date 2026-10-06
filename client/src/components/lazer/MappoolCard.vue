@@ -68,10 +68,11 @@ function runAction(slot, action) {
     return;
   }
 
-  const toMods = (mods) => (Array.isArray(mods) ? mods : [])
-    .map((mod) => (typeof mod === "string" ? mod : mod?.acronym))
-    .filter(Boolean)
-    .map((acronym) => ({ acronym: String(acronym).toUpperCase() }));
+  const toMods = (mods) =>
+    (Array.isArray(mods) ? mods : [])
+      .map((mod) => (typeof mod === "string" ? mod : mod?.acronym))
+      .filter(Boolean)
+      .map((acronym) => ({ acronym: String(acronym).toUpperCase() }));
   const requiredMods = toMods(slot.requiredMods || slot.required_mods);
   const allowedMods = toMods(slot.allowedMods || slot.allowed_mods);
   const payload = {

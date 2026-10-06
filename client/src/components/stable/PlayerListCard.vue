@@ -106,8 +106,13 @@ function modInfo(player, acronym) {
 function modIconSvg(player, acronym) {
   const mod = modInfo(player, acronym);
   if (!mod) return "";
-  const folder = String(mod.Type || "").replace(/([a-z])([A-Z])/g, "$1-$2").toLowerCase();
-  const slug = String(mod.Name || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  const folder = String(mod.Type || "")
+    .replace(/([a-z])([A-Z])/g, "$1-$2")
+    .toLowerCase();
+  const slug = String(mod.Name || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
   const raw = modIconSources[`../../assets/mods/${folder}/${slug}.svg`];
   const colors = categoryColors[mod.Type];
   if (!raw || !colors) return "";
@@ -132,12 +137,15 @@ function escapeHtml(value) {
 }
 
 function moreModsTooltip(player, mods) {
-  const rows = mods.slice(3).map((acronym) => {
-    const info = modInfo(player, acronym);
-    const name = info?.Name || modCode(acronym);
-    const icon = modIconSvg(player, acronym);
-    return `<span class="app-tooltip__more-mod-row"><span class="app-tooltip__more-mod-icon">${icon || escapeHtml(modCode(acronym))}</span><span>${escapeHtml(name)}</span></span>`;
-  }).join("");
+  const rows = mods
+    .slice(3)
+    .map((acronym) => {
+      const info = modInfo(player, acronym);
+      const name = info?.Name || modCode(acronym);
+      const icon = modIconSvg(player, acronym);
+      return `<span class="app-tooltip__more-mod-row"><span class="app-tooltip__more-mod-icon">${icon || escapeHtml(modCode(acronym))}</span><span>${escapeHtml(name)}</span></span>`;
+    })
+    .join("");
   return { html: `<div class="app-tooltip__more-mods">${rows}</div>` };
 }
 </script>
@@ -187,11 +195,23 @@ function moreModsTooltip(player, mods) {
         </span>
 
         <span v-if="playerMods(player).length" class="player-row__mods" :class="{ 'player-row__mods--overlapped': playerMods(player).length > 3 }">
-          <span v-for="mod in playerMods(player).slice(0, 3)" :key="mod" v-tooltip.top="modInfo(player, mod)?.Name || modCode(mod)" class="player-row__mod" :aria-label="modInfo(player, mod)?.Name || modCode(mod)">
+          <span
+            v-for="mod in playerMods(player).slice(0, 3)"
+            :key="mod"
+            v-tooltip.top="modInfo(player, mod)?.Name || modCode(mod)"
+            class="player-row__mod"
+            :aria-label="modInfo(player, mod)?.Name || modCode(mod)"
+          >
             <span v-if="modIconSvg(player, mod)" v-html="modIconSvg(player, mod)" />
             <span v-else class="player-row__mod-fallback">{{ modCode(mod) }}</span>
           </span>
-          <span v-if="playerMods(player).length > 3" v-tooltip.top="moreModsTooltip(player, playerMods(player))" class="player-row__mod player-row__mod--more" aria-label="More mods" v-html="moreModsIconSvg()" />
+          <span
+            v-if="playerMods(player).length > 3"
+            v-tooltip.top="moreModsTooltip(player, playerMods(player))"
+            class="player-row__mod player-row__mod--more"
+            aria-label="More mods"
+            v-html="moreModsIconSvg()"
+          />
         </span>
 
         <span v-if="!player.isSlot && player.noMap" v-tooltip.top="'No Map'" class="player-row__no-map">
@@ -408,7 +428,9 @@ function moreModsTooltip(player, mods) {
 .player-row__mods--overlapped .player-row__mod {
   position: relative;
   margin-left: -0.58rem;
-  transition: margin-left 150ms ease, transform 150ms ease;
+  transition:
+    margin-left 150ms ease,
+    transform 150ms ease;
 }
 
 .player-row__mods--overlapped .player-row__mod:first-child {

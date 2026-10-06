@@ -1,7 +1,4 @@
-const PLACEHOLDER_COVERS = Object.freeze([
-  "https://osu.ppy.sh/assets/images/1.5f98695d.jpg",
-  "https://osu.ppy.sh/assets/images/0.b3bb5a86.jpg",
-]);
+const PLACEHOLDER_COVERS = Object.freeze(["https://osu.ppy.sh/assets/images/1.5f98695d.jpg", "https://osu.ppy.sh/assets/images/0.b3bb5a86.jpg"]);
 
 export function beatmapCoverBackground(beatmapsetId) {
   const id = Number(beatmapsetId);

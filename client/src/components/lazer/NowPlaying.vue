@@ -32,7 +32,7 @@ const mapDuration = computed(() => {
   const total = Number(props.map?.totalSeconds);
   return Number.isFinite(total) && total > 0 ? formatElapsed(total) : "";
 });
-const rulesetName = computed(() => ({ 0: "osu!", 1: "osu!taiko", 2: "osu!catch", 3: "osu!mania" }[Number(props.map?.rulesetId)] || "osu!"));
+const rulesetName = computed(() => ({ 0: "osu!", 1: "osu!taiko", 2: "osu!catch", 3: "osu!mania" })[Number(props.map?.rulesetId)] || "osu!");
 
 function updateProgress() {
   const map = props.map;
@@ -121,9 +121,7 @@ const modLabels = Object.freeze({
   fadein: "FI",
 });
 const mods = computed(() => {
-  const source = Array.isArray(props.map?.mods)
-    ? props.map.mods
-    : String(props.map?.mods || "").split(/\s*,\s*|\s+/);
+  const source = Array.isArray(props.map?.mods) ? props.map.mods : String(props.map?.mods || "").split(/\s*,\s*|\s+/);
   return source
     .map((mod) => (typeof mod === "string" ? mod : mod?.acronym))
     .filter(Boolean)
@@ -284,7 +282,11 @@ const pickedByStyle = computed(() => {
 .now-playing__separator {
   color: rgba(255, 255, 255, 0.35);
 }
-.now-playing__ruleset { display: inline-flex; align-items: center; gap: 0.18rem; }
+.now-playing__ruleset {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.18rem;
+}
 .now-playing__team--red {
   color: var(--app-red, #ff6d78);
 }

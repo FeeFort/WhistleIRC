@@ -1058,27 +1058,118 @@ html.app-light .app-dialog-mask {
   opacity: 0;
   transition: opacity 130ms ease;
 }
-.app-tooltip strong, .app-tooltip > span, .app-tooltip small { display: block; }
-.app-tooltip > span { margin-top: 0.2rem; color: rgba(255, 255, 255, 0.78); }
-.app-tooltip small { margin-top: 0.35rem; color: rgba(255, 255, 255, 0.62); }
-.app-tooltip img { width: 1rem; height: 1rem; vertical-align: middle; }
-.app-tooltip { max-width: 22rem; max-height: 12rem; overflow: hidden; white-space: normal; }
-.app-tooltip > span { display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 5; }
-.app-tooltip__conflicts { display: flex; gap: 6px; margin-top: 8px; }
-.app-tooltip__conflict-icon { display: inline-flex; flex: 0 0 auto; width: 1.8rem; aspect-ratio: 100 / 70; }
-.app-tooltip__conflict-icon svg { display: block; width: 100%; height: 100%; }
-.app-tooltip__more-mods { display: flex; max-height: 10rem; flex-direction: column; gap: 0.32rem; overflow-y: auto; padding-right: 0.2rem; scrollbar-width: thin; }
-.app-tooltip__more-mod-row { display: flex !important; align-items: center; gap: 0.45rem; margin-top: 0 !important; color: rgba(255, 255, 255, 0.82); }
-.app-tooltip__more-mod-icon { display: inline-flex; width: 1.8rem; height: 1.25rem; flex: 0 0 auto; }
-.app-tooltip__more-mod-icon svg { display: block; width: 100%; height: 100%; }
-.app-tooltip__style-change { min-width: 10.5rem; }
-.app-tooltip__style-row + .app-tooltip__style-row { margin-top: 0.42rem; }
-.app-tooltip__style-row small { display: block; margin: 0 0 0.17rem; color: var(--app-muted); font-size: 0.62rem; }
-.app-tooltip__style-row > span { display: flex; align-items: center; gap: 0.35rem; white-space: nowrap; }
-.app-tooltip__style-row em, .app-tooltip__style-row strong { padding: 0.13rem 0.36rem; border-radius: 0.3rem; font-size: 0.67rem; font-style: normal; font-weight: 700; }
-.app-tooltip__style-row em { background: rgba(255, 255, 255, 0.08); color: var(--app-muted); text-decoration: line-through; }
-.app-tooltip__style-row b { color: var(--app-muted); font-size: 0.75rem; }
-.app-tooltip__style-row strong { background: rgba(var(--app-primary-rgb), 0.15); color: var(--app-primary-bright); }
+.app-tooltip strong,
+.app-tooltip > span,
+.app-tooltip small {
+  display: block;
+}
+.app-tooltip > span {
+  margin-top: 0.2rem;
+  color: rgba(255, 255, 255, 0.78);
+}
+.app-tooltip small {
+  margin-top: 0.35rem;
+  color: rgba(255, 255, 255, 0.62);
+}
+.app-tooltip img {
+  width: 1rem;
+  height: 1rem;
+  vertical-align: middle;
+}
+.app-tooltip {
+  max-width: 22rem;
+  max-height: 12rem;
+  overflow: hidden;
+  white-space: normal;
+}
+.app-tooltip > span {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 5;
+}
+.app-tooltip__conflicts {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+.app-tooltip__conflict-icon {
+  display: inline-flex;
+  flex: 0 0 auto;
+  width: 1.8rem;
+  aspect-ratio: 100 / 70;
+}
+.app-tooltip__conflict-icon svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.app-tooltip__more-mods {
+  display: flex;
+  max-height: 10rem;
+  flex-direction: column;
+  gap: 0.32rem;
+  overflow-y: auto;
+  padding-right: 0.2rem;
+  scrollbar-width: thin;
+}
+.app-tooltip__more-mod-row {
+  display: flex !important;
+  align-items: center;
+  gap: 0.45rem;
+  margin-top: 0 !important;
+  color: rgba(255, 255, 255, 0.82);
+}
+.app-tooltip__more-mod-icon {
+  display: inline-flex;
+  width: 1.8rem;
+  height: 1.25rem;
+  flex: 0 0 auto;
+}
+.app-tooltip__more-mod-icon svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.app-tooltip__style-change {
+  min-width: 10.5rem;
+}
+.app-tooltip__style-row + .app-tooltip__style-row {
+  margin-top: 0.42rem;
+}
+.app-tooltip__style-row small {
+  display: block;
+  margin: 0 0 0.17rem;
+  color: var(--app-muted);
+  font-size: 0.62rem;
+}
+.app-tooltip__style-row > span {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  white-space: nowrap;
+}
+.app-tooltip__style-row em,
+.app-tooltip__style-row strong {
+  padding: 0.13rem 0.36rem;
+  border-radius: 0.3rem;
+  font-size: 0.67rem;
+  font-style: normal;
+  font-weight: 700;
+}
+.app-tooltip__style-row em {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--app-muted);
+  text-decoration: line-through;
+}
+.app-tooltip__style-row b {
+  color: var(--app-muted);
+  font-size: 0.75rem;
+}
+.app-tooltip__style-row strong {
+  background: rgba(var(--app-primary-rgb), 0.15);
+  color: var(--app-primary-bright);
+}
 
 .app-tooltip--visible {
   opacity: 1;

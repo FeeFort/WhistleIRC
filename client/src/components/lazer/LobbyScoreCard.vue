@@ -286,7 +286,16 @@ async function copyMpLink() {
     </Button>
   </div>
 
-  <Dialog v-model:visible="settingsVisible" modal :close-on-escape="!refereesVisible" dismissableMask class="lobby-settings-dialog" header="Lobby settings" :style="{ width: '26rem' }" :pt="{ mask: { class: 'app-dialog-mask' } }">
+  <Dialog
+    v-model:visible="settingsVisible"
+    modal
+    :close-on-escape="!refereesVisible"
+    dismissableMask
+    class="lobby-settings-dialog"
+    header="Lobby settings"
+    :style="{ width: '26rem' }"
+    :pt="{ mask: { class: 'app-dialog-mask' } }"
+  >
     <div class="lobby-settings__body">
       <div class="lobby-settings__configure-row">
         <div>
@@ -334,7 +343,6 @@ async function copyMpLink() {
           <span>Best of and next pick are hidden while qualifications is enabled.</span>
         </div>
       </template>
-
     </div>
 
     <template #footer>

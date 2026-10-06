@@ -31,9 +31,7 @@ const { lastEvent, lazerInvitePlayer, moveLazerUser, kickLazerPlayer, requestApi
 const parsedUserId = computed(() => Number.parseInt(userId.value.trim(), 10));
 const inviteTarget = computed(() => userId.value.trim());
 const hasLimitedSlots = computed(() => props.players.some((player) => player.isSlot));
-const inviteValid = computed(
-  () => Boolean(inviteTarget.value) && Number.isInteger(props.roomId) && props.roomId > 0,
-);
+const inviteValid = computed(() => Boolean(inviteTarget.value) && Number.isInteger(props.roomId) && props.roomId > 0);
 
 function close() {
   if (submittingInvite.value || submittingTeamUserId.value !== null) return;
@@ -156,16 +154,10 @@ watch(lastEvent, (event) => {
     toast.add({ severity: "success", summary: "Player invited", detail: "The invitation was sent successfully.", life: 3500 });
     return;
   }
-
 });
 
 watch(lastEvent, (event) => {
-  if (
-    submittingTeamUserId.value === null ||
-    !["lazer_move_user", "lazer_kick_player"].includes(event?.received) &&
-      !["lazer_move_user", "lazer_kick_player"].includes(event?.request)
-  )
-    return;
+  if (submittingTeamUserId.value === null || (!["lazer_move_user", "lazer_kick_player"].includes(event?.received) && !["lazer_move_user", "lazer_kick_player"].includes(event?.request))) return;
 
   submittingTeamUserId.value = null;
   if (event.type === "ack" && event.received === "lazer_move_user" && pendingSlotMove.value) {
@@ -216,10 +208,10 @@ watch(lastEvent, (event) => {
         <span v-if="player.isSlot" class="players-dialog__avatar players-dialog__avatar--slot" aria-hidden="true"><LockOpen :size="13" /></span>
         <span v-else-if="player.avatarUrl" class="players-dialog__avatar" :style="avatarStyle(player)" />
         <span v-else class="players-dialog__avatar players-dialog__avatar--placeholder" :style="avatarStyle(player)">{{ initials(player.name) }}</span>
-          <span class="players-dialog__identity">
-            <span class="players-dialog__name" :class="{ 'players-dialog__name--slot': player.isSlot }" :style="playerNameStyle(player)">{{ player.name }}</span>
-            <Whistle v-if="player.isReferee" v-tooltip.top="'Referee'" class="players-dialog__referee" :size="14" aria-label="Referee" />
-            <svg v-if="player.isHost" class="players-dialog__host" width="14" height="14" viewBox="0 0 24 24" fill="currentColor" role="img" aria-label="Host">
+        <span class="players-dialog__identity">
+          <span class="players-dialog__name" :class="{ 'players-dialog__name--slot': player.isSlot }" :style="playerNameStyle(player)">{{ player.name }}</span>
+          <Whistle v-if="player.isReferee" v-tooltip.top="'Referee'" class="players-dialog__referee" :size="14" aria-label="Referee" />
+          <svg v-if="player.isHost" class="players-dialog__host" width="14" height="14" viewBox="0 0 24 24" fill="currentColor" role="img" aria-label="Host">
             <path stroke="none" d="M0 0h24v24H0z" fill="none" />
             <path
               d="M19 19h-14c-.5 0 -.9 -.3 -1 -.8l-2 -10c0 -.4 .1 -.8 .5 -1.1c.4 -.2 .8 -.2 1.1 0l4.1 3.3l3.4 -5.1c.4 -.6 1.3 -.6 1.7 0l3.4 5.1l4.1 -3.3c.3 -.3 .8 -.3 1.1 0c.4 .2 .5 .6 .5 1.1l-2 10c0 .5 -.5 .8 -1 .8z"

@@ -23,9 +23,7 @@ const gameModeOptions = [
 function reset() {
   matchType.value = ["head_to_head", "team_versus"].includes(props.initialMatchType) ? props.initialMatchType : "team_versus";
   const initialMaxParticipants = Number(props.initialMaxParticipants);
-  maxParticipants.value = !Number.isFinite(initialMaxParticipants) || initialMaxParticipants <= 0
-    ? 17
-    : Math.min(17, Math.max(1, initialMaxParticipants));
+  maxParticipants.value = !Number.isFinite(initialMaxParticipants) || initialMaxParticipants <= 0 ? 17 : Math.min(17, Math.max(1, initialMaxParticipants));
 }
 function close() {
   emit("update:visible", false);

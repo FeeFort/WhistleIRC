@@ -35,7 +35,7 @@ const mapDuration = computed(() => {
 const rulesetName = computed(() => {
   const value = props.map?.rulesetId ?? props.map?.ruleset_id ?? props.map?.mode_int ?? props.map?.mode;
   const numeric = typeof value === "string" ? ({ osu: 0, taiko: 1, fruits: 2, mania: 3 }[value.toLowerCase()] ?? Number(value)) : Number(value);
-  return ({ 0: "osu!", 1: "osu!taiko", 2: "osu!catch", 3: "osu!mania" }[numeric] || "osu!");
+  return { 0: "osu!", 1: "osu!taiko", 2: "osu!catch", 3: "osu!mania" }[numeric] || "osu!";
 });
 
 function updateProgress() {
@@ -283,7 +283,11 @@ const pickedByStyle = computed(() => {
 .now-playing__separator {
   color: rgba(255, 255, 255, 0.35);
 }
-.now-playing__ruleset { display: inline-flex; align-items: center; gap: 0.18rem; }
+.now-playing__ruleset {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.18rem;
+}
 .now-playing__team--red {
   color: var(--app-red, #ff6d78);
 }

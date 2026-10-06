@@ -32,7 +32,9 @@ export function defaultModsForCategory(category) {
 }
 
 export function defaultLazerModsForCategory(category) {
-  const normalized = String(category || "").trim().toUpperCase();
+  const normalized = String(category || "")
+    .trim()
+    .toUpperCase();
   if (["HD", "HR", "DT"].includes(normalized)) {
     return { requiredMods: [normalized], allowedMods: [] };
   }
@@ -176,18 +178,34 @@ const stores = {
 
 Object.entries(stores).forEach(([mode, store]) => {
   const serializer = mode === "lazer" ? serializeLazerMappool : serializeMappool;
-  watch([store.qualificationModeByLobbyId, store.mapStatesByLobbyId, store.activePoolByLobbyId], () => {
-    localStorage.setItem(STORAGE_KEYS[mode], JSON.stringify({
-      qualificationModeByLobbyId: store.qualificationModeByLobbyId.value,
-      mapStatesByLobbyId: store.mapStatesByLobbyId.value,
-      activePoolByLobbyId: store.activePoolByLobbyId.value,
-    }));
-  }, { deep: true });
+  watch(
+    [store.qualificationModeByLobbyId, store.mapStatesByLobbyId, store.activePoolByLobbyId],
+    () => {
+      localStorage.setItem(
+        STORAGE_KEYS[mode],
+        JSON.stringify({
+          qualificationModeByLobbyId: store.qualificationModeByLobbyId.value,
+          mapStatesByLobbyId: store.mapStatesByLobbyId.value,
+          activePoolByLobbyId: store.activePoolByLobbyId.value,
+        }),
+      );
+    },
+    { deep: true },
+  );
   watch(store.mappools, (value) => localStorage.setItem(MAPPOOLS_KEYS[mode], JSON.stringify(value.map(serializer))), { deep: true });
   localStorage.setItem(MAPPOOLS_KEYS[mode], JSON.stringify(store.mappools.value.map(serializer)));
 });
 
-export { DEFAULT_WIN_CONDITION, WIN_CONDITION_TEMPLATES, LAZER_DEFAULT_WIN_CONDITION, LAZER_WIN_CONDITION_TEMPLATES, winConditionSource, lazerWinConditionSource, serializeMappool, serializeLazerMappool };
+export {
+  DEFAULT_WIN_CONDITION,
+  WIN_CONDITION_TEMPLATES,
+  LAZER_DEFAULT_WIN_CONDITION,
+  LAZER_WIN_CONDITION_TEMPLATES,
+  winConditionSource,
+  lazerWinConditionSource,
+  serializeMappool,
+  serializeLazerMappool,
+};
 
 export function sortMappoolSlots(slots, categories = []) {
   const grouped = new Map();
@@ -236,14 +254,26 @@ function normalizeConfig(value) {
       return normalizedMods.length ? normalizedMods : defaultModsForCategory(slot.category || categoryFromSlotKey(slot.slotId));
     })(),
     requiredMods: Array.isArray(slot.requiredMods)
-      ? slot.requiredMods.map((mod) => (typeof mod === "string" ? mod : mod?.acronym)).filter(Boolean).map(String)
+      ? slot.requiredMods
+          .map((mod) => (typeof mod === "string" ? mod : mod?.acronym))
+          .filter(Boolean)
+          .map(String)
       : Array.isArray(slot.required_mods)
-        ? slot.required_mods.map((mod) => (typeof mod === "string" ? mod : mod?.acronym)).filter(Boolean).map(String)
+        ? slot.required_mods
+            .map((mod) => (typeof mod === "string" ? mod : mod?.acronym))
+            .filter(Boolean)
+            .map(String)
         : [],
     allowedMods: Array.isArray(slot.allowedMods)
-      ? slot.allowedMods.map((mod) => (typeof mod === "string" ? mod : mod?.acronym)).filter(Boolean).map(String)
+      ? slot.allowedMods
+          .map((mod) => (typeof mod === "string" ? mod : mod?.acronym))
+          .filter(Boolean)
+          .map(String)
       : Array.isArray(slot.allowed_mods)
-        ? slot.allowed_mods.map((mod) => (typeof mod === "string" ? mod : mod?.acronym)).filter(Boolean).map(String)
+        ? slot.allowed_mods
+            .map((mod) => (typeof mod === "string" ? mod : mod?.acronym))
+            .filter(Boolean)
+            .map(String)
         : [],
     freestyle: slot.freestyle === true,
     preview: normalizePreview(slot.preview),

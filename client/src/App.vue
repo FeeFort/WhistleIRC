@@ -570,8 +570,7 @@ watch(
         }
       } else if (lazerEvent.eventType === "MatchCompleted") {
         const completedPlaylistItemId = Number(lazerMatchPlaylistItems[lazerEventRoomId]) || Number(getLazerCurrentPlaylistItem(room)?.id);
-        const completedPlaylistItem = room?.playlistHistory?.find((item) => Number(item.id) === completedPlaylistItemId)
-          || room?.playlist?.find((item) => Number(item.id) === completedPlaylistItemId);
+        const completedPlaylistItem = room?.playlistHistory?.find((item) => Number(item.id) === completedPlaylistItemId) || room?.playlist?.find((item) => Number(item.id) === completedPlaylistItemId);
         if (completedPlaylistItem?.beatmap_id) lazerCompletedBeatmaps[lazerEventRoomId] = Number(completedPlaylistItem.beatmap_id);
         if (room && Number.isInteger(completedPlaylistItemId) && completedPlaylistItemId > 0) {
           void loadLazerMatchResult(room, completedPlaylistItemId);
@@ -823,21 +822,22 @@ watch(
     }
 
     if (event?.type === "error") {
-      const operation = {
-        lazer_add_playlist_item: "Add map failed",
-        lazer_edit_playlist_item: "Update map failed",
-        lazer_edit_current_playlist_item: "Update map failed",
-        lazer_remove_playlist_item: "Remove map failed",
-        lazer_close_room: "Close room failed",
-        lazer_start_match: "Start match failed",
-        lazer_stop_match_countdown: "Stop countdown failed",
-        lazer_abort_match: "Abort match failed",
-        lazer_set_lock_state: "Update room lock failed",
-        lazer_move_user: "Move player failed",
-        lazer_kick_player: "Kick player failed",
-        lazer_invite_player: "Invite failed",
-        lazer_load_chat: "Chat history failed",
-      }[event.request] || "Request failed";
+      const operation =
+        {
+          lazer_add_playlist_item: "Add map failed",
+          lazer_edit_playlist_item: "Update map failed",
+          lazer_edit_current_playlist_item: "Update map failed",
+          lazer_remove_playlist_item: "Remove map failed",
+          lazer_close_room: "Close room failed",
+          lazer_start_match: "Start match failed",
+          lazer_stop_match_countdown: "Stop countdown failed",
+          lazer_abort_match: "Abort match failed",
+          lazer_set_lock_state: "Update room lock failed",
+          lazer_move_user: "Move player failed",
+          lazer_kick_player: "Kick player failed",
+          lazer_invite_player: "Invite failed",
+          lazer_load_chat: "Chat history failed",
+        }[event.request] || "Request failed";
       toast.add({ severity: "error", summary: operation, detail: formatLazerWsError(event.message, "The server rejected the request."), life: 5000 });
       return;
     }
@@ -1677,9 +1677,7 @@ function syncLazerNowPlaying(room, { force = false } = {}) {
       currentMap.startTimestamp = null;
       currentMap.error = null;
     }
-    currentMap.mods = (Array.isArray(playlistItem.required_mods) ? playlistItem.required_mods : [])
-      .map((mod) => (typeof mod === "string" ? mod : mod?.acronym))
-      .filter(Boolean);
+    currentMap.mods = (Array.isArray(playlistItem.required_mods) ? playlistItem.required_mods : []).map((mod) => (typeof mod === "string" ? mod : mod?.acronym)).filter(Boolean);
     currentMap.rulesetId = playlistItem.ruleset_id;
     return;
   }
@@ -1722,9 +1720,7 @@ async function loadLazerNowPlayingMap(chatId, roomId, playlistItem) {
       beatmapsetId: Number.isInteger(beatmapsetId) && beatmapsetId > 0 ? beatmapsetId : null,
       coverUrl,
       rulesetId: playlistItem.ruleset_id,
-      mods: (Array.isArray(playlistItem.required_mods) ? playlistItem.required_mods : [])
-        .map((mod) => (typeof mod === "string" ? mod : mod?.acronym))
-        .filter(Boolean),
+      mods: (Array.isArray(playlistItem.required_mods) ? playlistItem.required_mods : []).map((mod) => (typeof mod === "string" ? mod : mod?.acronym)).filter(Boolean),
       status: "waiting",
       error: null,
     });
@@ -1878,7 +1874,7 @@ const activeLobbyPlayers = computed(() => {
       avatarUrl: player.avatarUrl || playerProfilesByLobbyId[activeChat.value]?.[normalizeIrcNick(player.username)]?.avatarUrl || (player.userId ? `https://a.ppy.sh/${player.userId}` : ""),
       team: player.team || null,
       slot: player.slot ?? null,
-      rulesetId: ({ "osu!": 0, "osu!taiko": 1, "osu!catch": 2, "osu!mania": 3 }[lobby.mode] ?? 0),
+      rulesetId: { "osu!": 0, "osu!taiko": 1, "osu!catch": 2, "osu!mania": 3 }[lobby.mode] ?? 0,
       mods: [...commonMods, ...(player.mods || [])]
         .filter((mod) => !/^(?:enabled|disabled|freemod|fm)$/i.test(String(mod).trim()))
         .filter((mod, index, mods) => mods.findIndex((candidate) => candidate.toLowerCase() === mod.toLowerCase()) === index),
@@ -3149,7 +3145,7 @@ async function loadLazerMatchResult(room, playlistItemId) {
         mods: Array.isArray(score.mods) ? score.mods.map((mod) => String(mod.acronym || mod)).filter(Boolean) : [],
       });
     }
-    const average = (values) => values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 0;
+    const average = (values) => (values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 0);
     const makeTeam = (team) => ({
       score: team.reduce((sum, player) => sum + player.score, 0),
       accuracy: average(team.map((player) => player.accuracy)),
@@ -3388,9 +3384,7 @@ function handleLazerSendResult(result) {
       bestOf: lobby.bestOf,
       nextPickTeam: lobby.nextPickTeam,
       lastPlay: lobby.lastPlay || {},
-      currentBeatmap: lazerCompletedBeatmaps[roomId]
-        ? { url: `https://osu.ppy.sh/b/${lazerCompletedBeatmaps[roomId]}` }
-        : null,
+      currentBeatmap: lazerCompletedBeatmaps[roomId] ? { url: `https://osu.ppy.sh/b/${lazerCompletedBeatmaps[roomId]}` } : null,
     },
     result,
   );
@@ -4114,10 +4108,7 @@ function handleLazerSendResult(result) {
         :current-user-id="Number(osuProfile?.id) || null"
         :disabled="Boolean(activeLazerRoom?.closed)"
       />
-      <RefereesDialog
-        v-if="activeChatKind === 'lobby'"
-        v-model:visible="refereesDialogOpen"
-      />
+      <RefereesDialog v-if="activeChatKind === 'lobby'" v-model:visible="refereesDialogOpen" />
       <LazerLobbySetupDialog
         v-if="activeChatKind === 'lazer'"
         v-model:visible="lobbySetupDialogOpen"

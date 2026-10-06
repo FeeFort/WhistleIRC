@@ -41,19 +41,24 @@ function close() {
 
 function join() {
   if (!match.value || props.loading) return;
-    emit("join", channelType.value === "lazer" ? {
-      type: "lazer",
-      id: `lazer:${match.value}`,
-      label: `Lazer room #${match.value}`,
-      roomId: Number(match.value),
-      source: channelInput.value.trim(),
-    } : {
-      type: "stable",
-      id: `mp-${match.value}`,
-    label: `#mp_${match.value}`,
-    matchId: match.value,
-    source: channelInput.value.trim(),
-  });
+  emit(
+    "join",
+    channelType.value === "lazer"
+      ? {
+          type: "lazer",
+          id: `lazer:${match.value}`,
+          label: `Lazer room #${match.value}`,
+          roomId: Number(match.value),
+          source: channelInput.value.trim(),
+        }
+      : {
+          type: "stable",
+          id: `mp-${match.value}`,
+          label: `#mp_${match.value}`,
+          matchId: match.value,
+          source: channelInput.value.trim(),
+        },
+  );
 }
 
 function updateVisible(value) {
@@ -91,7 +96,7 @@ watch(
         </div>
         <div>
           <strong>Join a multiplayer channel</strong>
-        <span>Choose the room type and enter its link or ID.</span>
+          <span>Choose the room type and enter its link or ID.</span>
         </div>
       </div>
 
@@ -102,7 +107,14 @@ watch(
 
       <label class="add-channel-dialog__field">
         <span>{{ channelType === "lazer" ? "Lazer room link or ID" : "Multiplayer link or channel" }}</span>
-        <InputText v-model="channelInput" autofocus :placeholder="channelType === 'lazer' ? 'https://osu.ppy.sh/multiplayer/rooms/12345678 or 12345678' : 'https://osu.ppy.sh/mp/12345678 or #mp_12345678'" spellcheck="false" :disabled="loading" @keydown.enter="join" />
+        <InputText
+          v-model="channelInput"
+          autofocus
+          :placeholder="channelType === 'lazer' ? 'https://osu.ppy.sh/multiplayer/rooms/12345678 or 12345678' : 'https://osu.ppy.sh/mp/12345678 or #mp_12345678'"
+          spellcheck="false"
+          :disabled="loading"
+          @keydown.enter="join"
+        />
       </label>
 
       <p v-if="channelType === 'lazer'" class="add-channel-dialog__help">Accepted: https://osu.ppy.sh/multiplayer/rooms/room-id or a bare room ID.</p>

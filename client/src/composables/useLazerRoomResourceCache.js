@@ -77,7 +77,9 @@ export async function loadLazerCachedProfile(roomId, userId, requestApi) {
 
 export async function loadLazerCachedProfileByUsername(roomId, username, requestApi) {
   const room = roomCache(roomId);
-  const normalized = String(username || "").trim().replace(/^@+/, "");
+  const normalized = String(username || "")
+    .trim()
+    .replace(/^@+/, "");
   if (!room || !normalized) return null;
   const cached = Object.values(room.profiles || {}).find((profile) => String(profile?.username || "").toLowerCase() === normalized.toLowerCase());
   if (cached) return cached;

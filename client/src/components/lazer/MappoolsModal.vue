@@ -11,7 +11,15 @@ import PlaylistModsModal from "./PlaylistModsModal.vue";
 import BulkBeatmapImportDialog from "../BulkBeatmapImportDialog.vue";
 import { escapeRegExp } from "../../composables/useMessageHighlighting";
 import { beatmapCoverBackground } from "../../composables/useBeatmapCover";
-import { LAZER_DEFAULT_WIN_CONDITION, LAZER_WIN_CONDITION_TEMPLATES, defaultLazerModsForCategory, defaultModsForCategory, serializeLazerMappool, useMappool, lazerWinConditionSource } from "../../composables/useMappool";
+import {
+  LAZER_DEFAULT_WIN_CONDITION,
+  LAZER_WIN_CONDITION_TEMPLATES,
+  defaultLazerModsForCategory,
+  defaultModsForCategory,
+  serializeLazerMappool,
+  useMappool,
+  lazerWinConditionSource,
+} from "../../composables/useMappool";
 import { useServerConnection } from "../../composables/useServerConnection";
 const props = defineProps({ visible: Boolean });
 const emit = defineEmits(["update:visible"]);
@@ -327,7 +335,7 @@ function openSlotMods(pool, slot) {
     }
   }
   slotModsTarget.value = slot;
-  slotModsRuleset.value = ({ osu: 0, taiko: 1, fruits: 2, mania: 3 }[pool.ruleset] ?? 0);
+  slotModsRuleset.value = { osu: 0, taiko: 1, fruits: 2, mania: 3 }[pool.ruleset] ?? 0;
   slotModsVisible.value = true;
 }
 function applySlotMods(value) {
@@ -346,7 +354,8 @@ function selectWinTemplate(template) {
   draft.freeMod = template === "freemod";
   draft.slot.freeMod = draft.freeMod;
   winTemplateMenuOpen.value = false;
-  if (template === "freemod") draft.slot.winCondition = { type: "script", template, reverse: draft.winReverse, source: lazerWinConditionSource(template, draft.winReverse, draft.pool.freeModMultipliers) };
+  if (template === "freemod")
+    draft.slot.winCondition = { type: "script", template, reverse: draft.winReverse, source: lazerWinConditionSource(template, draft.winReverse, draft.pool.freeModMultipliers) };
   else if (template !== "custom") draft.slot.winCondition = { type: "script", template, reverse: draft.winReverse, source: lazerWinConditionSource(template, draft.winReverse) };
 }
 function setWinReverse(reverse) {
@@ -688,12 +697,7 @@ watch(editing, (value) => {
         </div>
         <span class="mappool__actions" @click.stop
           ><Button v-tooltip.top="'Add category'" text rounded aria-label="Add category" @click="addCategory(pool)"><Plus :size="16" /></Button
-          ><Button
-            v-tooltip.top="'Edit mappool'"
-            text
-            rounded
-            aria-label="Edit mappool"
-            @click="editing = { ...pool, freeModMultipliers: multiplierRows(pool.freeModMultipliers) }"
+          ><Button v-tooltip.top="'Edit mappool'" text rounded aria-label="Edit mappool" @click="editing = { ...pool, freeModMultipliers: multiplierRows(pool.freeModMultipliers) }"
             ><Pencil :size="15" /></Button
           ><Button v-tooltip.top="'Export mappool'" text rounded aria-label="Export mappool" @click="exportPool(pool)"><Download :size="15" /></Button
           ><Button v-tooltip.top="'Add bulk of beatmaps'" text rounded aria-label="Add bulk of beatmaps" @click="openBulkImport(pool)"><Upload :size="15" /></Button
@@ -746,8 +750,13 @@ watch(editing, (value) => {
                 ><div v-show="categoryIsExpanded(pool, category.name)" class="mappool__category-slots">
                   <div v-for="slot in category.slots" :key="slot.slotId" class="slot">
                     <div class="slot__fields" @click.stop>
-                      <label class="slot__field"><span>Beatmap ID</span><InputText v-model="slot.beatmapId" inputmode="numeric" @input="handleBeatmapInput(pool, slot)" /></label
-                      ><div class="slot__field slot__mods-field"><span>Mods</span><button type="button" class="slot__mods-configure" aria-label="Configure mods" @click.stop="openSlotMods(pool, slot)"><SlidersHorizontal :size="13" /><span>Configure</span></button></div>
+                      <label class="slot__field"><span>Beatmap ID</span><InputText v-model="slot.beatmapId" inputmode="numeric" @input="handleBeatmapInput(pool, slot)" /></label>
+                      <div class="slot__field slot__mods-field">
+                        <span>Mods</span
+                        ><button type="button" class="slot__mods-configure" aria-label="Configure mods" @click.stop="openSlotMods(pool, slot)">
+                          <SlidersHorizontal :size="13" /><span>Configure</span>
+                        </button>
+                      </div>
                     </div>
                     <Transition name="slot-preview">
                       <div
@@ -772,8 +781,7 @@ watch(editing, (value) => {
                       </div>
                     </Transition>
                     <span class="slot__actions" @click.stop
-                      ><Button v-tooltip.top="'Edit beatmap win condition'" text rounded aria-label="Edit beatmap win condition" @click="editSlot(pool, slot)"
-                        ><Pencil :size="15" /></Button
+                      ><Button v-tooltip.top="'Edit beatmap win condition'" text rounded aria-label="Edit beatmap win condition" @click="editSlot(pool, slot)"><Pencil :size="15" /></Button
                       ><Button v-tooltip.top="'Delete beatmap'" text rounded severity="danger" aria-label="Delete beatmap" @click="requestDelete(pool, { type: 'slot', slotId: slot.slotId })"
                         ><Trash2 :size="15" /></Button
                     ></span>
@@ -953,14 +961,7 @@ watch(editing, (value) => {
       <Button v-tooltip.top="'Confirm deletion'" label="Delete" severity="danger" @click="confirmDelete" />
     </template>
   </Dialog>
-  <PlaylistModsModal
-    v-if="slotModsTarget"
-    v-model:visible="slotModsVisible"
-    :item="slotModsTarget"
-    :ruleset-id="slotModsRuleset"
-    local-only
-    @save-mods="applySlotMods"
-  />
+  <PlaylistModsModal v-if="slotModsTarget" v-model:visible="slotModsVisible" :item="slotModsTarget" :ruleset-id="slotModsRuleset" local-only @save-mods="applySlotMods" />
   <Dialog
     v-if="invalidMappoolsConfirmation"
     :visible="Boolean(invalidMappoolsConfirmation)"
@@ -1140,7 +1141,10 @@ watch(editing, (value) => {
   font-weight: 700;
   white-space: nowrap;
   cursor: pointer;
-  transition: border-color 160ms ease, background-color 160ms ease, color 160ms ease;
+  transition:
+    border-color 160ms ease,
+    background-color 160ms ease,
+    color 160ms ease;
 }
 .slot__mods-field .slot__mods-configure {
   margin-top: 0.225rem;
