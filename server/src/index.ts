@@ -26,6 +26,13 @@ import { ChatSocket } from "./lazer/chatSocket.js";
 
 const launchedAfterUpdate = process.argv.includes("--updated");
 const sessionLog = logger.child("lazer", "session");
+const ircLog = logger.child("stable", "irc");
+const winConditionLog = logger.child("stable", "winCondition");
+const chatLog = logger.child("lazer", "chatSocket");
+const authLog = logger.child("core", "auth");
+const apiLog = logger.child("core", "osuApi");
+const wsLog = logger.child("core", "webSocket");
+const updateLog = logger.child("core", "updater");
 let chatSocket: ChatSocket | null = null;
 
 function startChatSocket(): void {
@@ -50,9 +57,9 @@ function startChatSocket(): void {
         }
       }
     },
-    onError: (error) => console.error(`[${formatLogTime()}] osu! chat socket: ${error.message}`),
+    onError: (error) => chatLog.warn("Chat socket error", { error }),
   });
-  void chatSocket.connect().catch((error) => console.error(`[${formatLogTime()}] osu! chat socket: ${(error as Error).message}`));
+  void chatSocket.connect().catch((error) => chatLog.warn("Chat socket connection failed", { error }));
 }
 
 // TODO: add actual normal comments to this mess
@@ -61,13 +68,9 @@ if (process.argv[2] === "--apply-update") {
     await applyPendingUpdate(process.argv[3], process.argv[4]);
     process.exit(0);
   } catch (error) {
-    console.error(`Update installation failed: ${(error as Error).message}`);
+    updateLog.critical("Update installation failed", { error });
     process.exit(1);
   }
-}
-
-function formatLogTime(date = new Date()): string {
-  return date.toTimeString().slice(0, 8);
 }
 
 const __filename = fileURLToPath(import.meta.url);
@@ -75,6 +78,10 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 const httpServer = http.createServer(app);
+httpServer.on("error", (error) => {
+  logger.critical("HTTP server failed", { host: config.httpHost, port: config.httpPort, error });
+  process.exit(1);
+});
 const staticDirectory = path.join(__dirname, "..", "static");
 const webSocketServer = new WebSocketServer({
   server: httpServer,
@@ -297,7 +304,7 @@ async function startLazerSession(): Promise<void> {
     await roomManager.resync();
     sessionLog.separator("Session ready");
   } catch (error) {
-    console.error(`[lazer] Initial room sync failed: ${(error as Error).message}`);
+    sessionLog.warn("Initial room sync failed", { error });
     // TODO: Use the shared API exponential backoff policy for sync retries.
   }
 }
@@ -552,11 +559,15 @@ class BanchoConnection {
         systemMessages: outcome.systemMessages,
         error: outcome.error,
       });
-      console.log(
-        `[${formatLogTime()}] win_condition ${channel} beatmap=${activeWinCondition.beatmapId} match=${state.id ?? "unknown"} winner=${outcome.winner}${outcome.error ? ` error=${outcome.error}` : ""}`,
-      );
+      winConditionLog.log(outcome.error ? "WARN" : "INFO", "Win condition evaluated", {
+        channel,
+        beatmapId: activeWinCondition.beatmapId,
+        matchId: state.id,
+        winner: outcome.winner,
+        ...(outcome.error ? { error: outcome.error } : {}),
+      });
     } else if (activeWinCondition) {
-      console.warn(`[${formatLogTime()}] win_condition skipped for ${channel}: active beatmap=${activeWinCondition.beatmapId}, current beatmap=${state.currentBeatmap?.id ?? "unknown"}`);
+      winConditionLog.warn("Win condition skipped, beatmap changed", { channel, activeBeatmapId: activeWinCondition.beatmapId, currentBeatmapId: state.currentBeatmap?.id });
     }
     const nextPickTeam = getOppositePickTeam(state);
     const winningScore = getWinningScore(state.bestOf);
@@ -609,7 +620,7 @@ class BanchoConnection {
       }
     }
 
-    console.error(`[${formatLogTime()}] lobby title refresh failed for ${channel}: ${(lastError as Error)?.message || String(lastError)}`);
+    ircLog.warn("Lobby title refresh failed", { channel, error: lastError });
     try {
       this.sendMessage(channel, "!mp settings");
     } catch (error) {
@@ -698,10 +709,10 @@ class BanchoConnection {
     this.pendingAutoSettings.add(key);
     try {
       this.sendMessage(channel, "!mp settings");
-      console.log(`[${formatLogTime()}] IRC OUT PRIVMSG ${channel} :!mp settings (automatic)`);
+      ircLog.traceOut("Automatic settings request", { channel });
     } catch (error) {
       this.pendingAutoSettings.delete(key);
-      console.error(`[${formatLogTime()}] IRC OUT PRIVMSG ${channel} :!mp settings failed: ${(error as Error).message}`);
+      ircLog.warn("Automatic settings request failed", { channel, error });
     }
   }
 
@@ -785,7 +796,7 @@ class BanchoConnection {
     const message = parseIrcLine(line);
 
     if (message.command.toUpperCase() !== "QUIT") {
-      console.log(`[${formatLogTime()}] IRC ${line}`);
+      ircLog.traceIn(line);
     }
 
     if (line.startsWith("PING")) {
@@ -793,9 +804,9 @@ class BanchoConnection {
       const pong = payload ? `PONG ${payload}` : "PONG";
       try {
         this.sendRaw(pong);
-        console.log(`[${formatLogTime()}] IRC OUT ${pong}`);
+        ircLog.traceOut(pong);
       } catch (error) {
-        console.error(`[${formatLogTime()}] IRC OUT ${pong} failed: ${(error as Error).message}`);
+        ircLog.warn("PONG failed", { error });
       }
       return;
     }
@@ -845,7 +856,7 @@ class BanchoConnection {
     if (["JOIN", "PART"].includes(message.command) && message.params[0]) {
       const channel = message.params[0].replace(/^:/, "");
       const nick = getNick(message.prefix);
-      console.log(`[${formatLogTime()}] IRC ${message.command} ${channel}`);
+      ircLog.info(message.command === "JOIN" ? "User joined channel" : "User left channel", { channel, nick });
       if (isMultiplayerChannel(channel) && this.isOwnNick(nick)) {
         if (message.command === "JOIN") {
           this.getLobbyState(channel, true);
@@ -1215,9 +1226,9 @@ async function handleTestWinCondition(client: WebSocket, message: ClientMessage)
   const payload = message as Extract<ClientMessage, { type: "test_win_condition" }>;
   const result = await evaluateWinCondition(payload.source, payload.sampleContext as unknown as WinConditionContext);
   if (result.error) {
-    console.error(`[${formatLogTime()}] win_condition_test ${payload.slotId} failed: ${result.error}`);
+    winConditionLog.warn("Win condition test failed", { slotId: payload.slotId, error: result.error });
   } else {
-    console.log(`[${formatLogTime()}] win_condition_test ${payload.slotId} → winner=${result.winner}${result.systemMessages.length ? ` messages=${JSON.stringify(result.systemMessages)}` : ""}`);
+    winConditionLog.debug("Win condition test completed", () => ({ slotId: payload.slotId, winner: result.winner, messages: result.systemMessages }));
   }
   sendJson(client, { type: "win_condition_test_result", slotId: payload.slotId, ...result });
 }
@@ -1231,7 +1242,7 @@ function handleSetActiveWinCondition(client: WebSocket, message: ClientMessage):
   } else {
     banchoConnection.activeWinConditions.delete(channelKey);
   }
-  console.log(`[${formatLogTime()}] active_win_condition ${channelKey}: ${source ? `beatmap=${payload.beatmapId}` : "cleared"}`);
+  winConditionLog.debug(source ? "Active win condition set" : "Active win condition cleared", { channel: channelKey, ...(source ? { beatmapId: payload.beatmapId } : {}) });
   sendJson(client, { type: "ack", received: message.type });
 }
 
@@ -1266,7 +1277,7 @@ async function handleOsuLogin(client: WebSocket, message: ClientMessage): Promis
     startChatSocket();
     sendJson(client, { type: "osu_user", user });
   } catch (error) {
-    console.error(`[${formatLogTime()}] osu! OAuth request failed: ${(error as Error).message}`);
+    authLog.warn("OAuth request failed", { error });
     sendJson(client, { type: "error", request: "osu_login", message: (error as Error).message || "Unable to reach the osu! API." });
   } finally {
     release();
@@ -1285,7 +1296,7 @@ async function handleOsuLogout(client: WebSocket): Promise<void> {
     const status = await logoutOsu();
     sendJson(client, { type: "ack", received: "osu_logout", status });
   } catch (error) {
-    console.error(`[${formatLogTime()}] osu! logout failed: ${(error as Error).message}`);
+    authLog.warn("Logout failed", { error });
     sendJson(client, { type: "error", request: "osu_logout", message: "Unable to log out from the osu! API." });
   } finally {
     release();
@@ -1314,7 +1325,7 @@ async function handleApiRequest(client: WebSocket, message: ClientMessage): Prom
     const response = await fetchApi(accessToken, endpoint, method, body as Record<string, unknown>);
     sendJson(client, { type: "api_response", endpoint, response });
   } catch (error) {
-    console.error(`[${formatLogTime()}] osu! API request failed: ${(error as Error).message}`);
+    apiLog.warn("API request failed", { error });
     const messageText = (error as Error)?.name === "NotAuthenticatedError" ? "You must be logged in to access the osu! API." : (error as Error).message || "Unable to reach the osu! API.";
     sendJson(client, {
       type: "error",
@@ -1418,11 +1429,13 @@ function handleClientMessage(client: WebSocket, rawMessage: unknown): void {
 
   const message = rawMessage as ClientMessage;
 
-  const logMessage: Record<string, unknown> = { ...message };
-  delete logMessage.password;
-  delete logMessage.clientSecret;
-  delete logMessage.code;
-  console.log(`[${formatLogTime()}] WS ${JSON.stringify(logMessage)}`);
+  wsLog.traceIn(message.type, () => {
+    const logMessage: Record<string, unknown> = { ...message };
+    delete logMessage.password;
+    delete logMessage.clientSecret;
+    delete logMessage.code;
+    return { payload: logMessage };
+  });
 
   const handlers: Record<string, (client: WebSocket, message: ClientMessage) => void> = {
     login: handleLogin,
@@ -1523,7 +1536,7 @@ httpServer.listen(config.httpPort, config.httpHost, () => {
       startChatSocket();
       await startLazerSession();
     } catch (error) {
-      console.error(`[${formatLogTime()}] lazer session startup failed: ${(error as Error).message}`);
+      sessionLog.error("Session startup failed", { error });
     }
   })();
 });
@@ -1556,13 +1569,13 @@ function shutdown(signal?: string): void {
   };
 
   const shutdownTimer = setTimeout(() => {
-    console.warn(`[${formatLogTime()}] Shutdown timed out; forcing exit with ${pendingClosures} pending closures.`);
+    logger.warn("Shutdown timed out, forcing exit", { pendingClosures });
     process.exit(0);
   }, 5000);
   shutdownTimer.unref();
 
   void stopLazerSession()
-    .catch((error) => console.error(`[${formatLogTime()}] Failed to stop lazer session: ${error instanceof Error ? error.message : String(error)}`))
+    .catch((error) => sessionLog.warn("Failed to stop session", { error }))
     .finally(finishClosure);
 
   webSocketServer.close(finishClosure);

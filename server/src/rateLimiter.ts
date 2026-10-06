@@ -1,5 +1,8 @@
+import { logger } from "./logger.js";
 import { config } from "./config.js";
 import type { RateLimitConfig, RateLimitEntry, RequestFailure } from "./types.js";
+
+const log = logger.child("core", "rateLimit");
 
 export function rateLimitError(code: RequestFailure["code"], message: string): Error & RequestFailure {
   // TODO: Apply shared exponential backoff only to operations safe to repeat.
@@ -24,7 +27,7 @@ export class TokenBucket {
 
   pause(milliseconds: number): void {
     this.pausedUntil = Math.max(this.pausedUntil, performance.now() + milliseconds);
-    console.warn(`[rateLimit] ${this.label} paused for ${milliseconds}ms`);
+    log.warn("Requests paused", { queue: this.label, durationMs: milliseconds });
     this.drain();
   }
 
@@ -65,7 +68,7 @@ export class TokenBucket {
     for (const entry of [...this.queue]) {
       if (entry.expiresAt <= now) {
         this.remove(entry);
-        console.warn(`[rateLimit] ${this.label} queue wait expired`);
+        log.warn("Queue wait expired", { queue: this.label, maxWaitMs: this.settings.maxWaitMs });
         entry.reject(rateLimitError("RATE_LIMIT_WAIT_TIMEOUT", "Request waited too long for the API limit. Please try again later."));
       }
     }

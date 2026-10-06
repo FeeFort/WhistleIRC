@@ -170,7 +170,7 @@ export async function disconnectFromRefereeHub(): Promise<void> {
   const notify = statusHandler;
   statusHandler = undefined;
   notify?.({ type: "lazer_connection_state", state: "disconnected" });
-  if (previous) console.log(`[refereeHub] session=${connectionGeneration - 1} stopping connection (${previous.state})`);
+  if (previous) log.debug("Stopping connection", { session: connectionGeneration - 1, state: previous.state });
   await previous?.stop();
 }
 
@@ -183,19 +183,24 @@ export async function connectToRefereeHub(onEvent: HubEventHandler, onResync: Re
       accessTokenFactory: () => getAccessToken(),
     })
     .withAutomaticReconnect()
-    .configureLogging(signalR.LogLevel.Warning)
+    .configureLogging({
+      log: (level, message) => {
+        // Keep protocol payload logging in the application
+        if (level >= signalR.LogLevel.Warning && level < signalR.LogLevel.None) log.log(level === signalR.LogLevel.Critical ? "ERROR" : "WARN", message);
+      },
+    })
     .build();
 
   connection = hub;
   for (const eventName of CLIENT_EVENTS) {
     hub.on(eventName, (payload: unknown) => {
       if (generation !== connectionGeneration) {
-        console.log(`[refereeHub] session=${generation} ignored stale event ${eventName}`);
+        log.trace("Ignored stale event", { session: generation, eventName });
         return;
       }
-      console.log(`[refereeHub] session=${generation} received ${eventName}: ${JSON.stringify(payload, (key, value) => (/password|token|secret|authorization/i.test(key) ? "[redacted]" : value))}`);
+      log.traceIn(eventName, () => ({ session: generation, payload: JSON.stringify(payload, (key, value) => (/password|token|secret|authorization/i.test(key) ? "[redacted]" : value)) }));
       if (!isHubPayload(eventName, payload)) {
-        console.warn(`[refereeHub] Invalid ${eventName} payload, ignoring`);
+        log.warn("Invalid event payload, ignoring", { eventName });
         return;
       }
       onEvent({
@@ -223,7 +228,7 @@ export async function connectToRefereeHub(onEvent: HubEventHandler, onResync: Re
     try {
       await onResync();
     } catch (error) {
-      console.error(`[refereeHub] Sync after reconnect failed: ${(error as Error).message}`);
+      log.warn("Sync after reconnect failed", { error });
     }
   });
 
@@ -231,20 +236,21 @@ export async function connectToRefereeHub(onEvent: HubEventHandler, onResync: Re
     if (generation !== connectionGeneration) return;
     onStatus?.({ type: "lazer_connection_state", state: "disconnected", ...(error ? { reason: error.message } : {}) });
     sessionAbort.abort();
-    console.error(`[refereeHub] Connection closed: ${error?.message ?? "no error"}`);
+    if (error) log.error("Connection closed, automatic reconnect stopped", { error });
+    else log.info("Connection closed");
   });
 
-  console.log(`[refereeHub] session=${generation} connecting to ${new URL("/referee", config.spectatorServerUrl)}`);
+  log.info("Connecting", { session: generation, url: new URL("/referee", config.spectatorServerUrl).toString() });
   onStatus?.({ type: "lazer_connection_state", state: "connecting" });
   try {
     await hub.start();
   } catch (error) {
-    console.error(`[refereeHub] session=${generation} connection failed: ${error instanceof Error ? error.message : String(error)}`);
+    log.warn("Connection failed", { session: generation, error });
     if (generation === connectionGeneration) onStatus?.({ type: "lazer_connection_state", state: "disconnected", reason: error instanceof Error ? error.message : String(error) });
     throw error;
   }
   if (generation !== connectionGeneration) throw new Error("SignalR session was replaced.");
-  console.log(`[refereeHub] session=${generation} connected, connectionId=${hub.connectionId ?? "unknown"}`);
+  log.info("Connected", { session: generation, connectionId: hub.connectionId ?? "unknown" });
   onStatus?.({ type: "lazer_connection_state", state: "connected" });
   return hub;
 }

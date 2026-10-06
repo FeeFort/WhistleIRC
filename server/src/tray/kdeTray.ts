@@ -1,9 +1,12 @@
+import { logger } from "../logger.js";
 import { openInBrowser } from "../browser.js";
 import { DbusModule, KdeTrayInstance, KdeTrayOptions } from "../types.js";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import zlib from "node:zlib";
+
+const log = logger.child("core", "kdeTray");
 
 function readPixmap(): [number, number, Buffer] {
   const base = path.dirname(fileURLToPath(import.meta.url));
@@ -59,7 +62,7 @@ function readPixmap(): [number, number, Buffer] {
 export async function createKdeTray(options: KdeTrayOptions): Promise<KdeTrayInstance> {
   const dbus = (await import("dbus-next")) as DbusModule;
   const bus = dbus.sessionBus();
-  bus.on("error", (error: Error) => console.error(`[Tray] KDE D-Bus error: ${error.stack ?? error.message}`));
+  bus.on("error", (error: Error) => log.error("KDE D-Bus connection failed", { error }));
   const serviceName = `com.whistleirc.Tray${process.pid}`;
   const itemPath = "/StatusNotifierItem";
   const menuPath = "/MenuBar";
@@ -192,8 +195,7 @@ export async function createKdeTray(options: KdeTrayOptions): Promise<KdeTrayIns
     const watcherInterface = watcher.getInterface("org.kde.StatusNotifierWatcher");
     await watcherInterface.RegisterStatusNotifierItem(serviceName);
   } catch (error) {
-    const details = error instanceof Error ? (error.stack ?? error.message) : String(error);
-    console.error(`[Tray] KDE registration failed: ${details}`);
+    log.debug("KDE registration failed", { error });
     bus.disconnect();
     throw error;
   }

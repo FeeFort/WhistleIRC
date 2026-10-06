@@ -1,3 +1,4 @@
+import { logger } from "../logger.js";
 import type {
   RoomJoinedResponse as RoomState,
   RoomJoinedResponse,
@@ -33,6 +34,8 @@ import type {
 import { config } from "../config.js";
 import { fetchChatMessages } from "./chatApi.js";
 import { invokeHub } from "./refereeHubClient.js";
+
+const log = logger.child("lazer", "roomManager");
 
 class RoomManager {
   private currentUserId: number | null = null;
@@ -177,7 +180,7 @@ class RoomManager {
   handleHubEvent(eventType: HubEventType, payload: HubEventPayloads[HubEventType]): boolean {
     const roomId = payload.room_id;
     if (typeof roomId !== "number") {
-      console.warn(`[roomManager] event ${eventType} has no room_id, ignoring`, payload);
+      log.warn("Event has no room ID, ignoring", { eventType });
       return false;
     }
 
@@ -197,7 +200,7 @@ class RoomManager {
           if (generation !== this.generation) return;
           this.onStatus?.({ type: "lazer_room_error", roomId, operation: "join", message: error instanceof Error ? error.message : String(error) });
           // TODO: Retry automatic joins using the shared exponential backoff policy.
-          console.error(`[roomManager] failed to join room ${roomId} after RefereeInvited: ${(error as Error).message}`);
+          log.warn("Failed to join invited room", { roomId, error });
         });
       }
       // Deliver the invitation immediately, independently of the join result.
@@ -214,7 +217,7 @@ class RoomManager {
         // Creation is bounded by the hub timeout; also cap retained events under load.
         if (Date.now() - creation.startedAt <= config.hubRequestTimeoutMs && creation.events.length < 512) {
           creation.events.push({ eventType, payload, deferred: true });
-        } else console.warn(`[roomManager] creation event buffer limit reached, ignoring ${eventType}`);
+        } else log.warn("Creation event buffer limit reached", { eventType });
       }
       return false;
     }
@@ -222,7 +225,7 @@ class RoomManager {
     const room = this.rooms.get(roomId);
     if (!room) {
       // If we don't have the room tracked, we can't update it. Safely ignoring instead
-      console.warn(`[roomManager] event ${eventType} for unknown room ${roomId}, ignoring`);
+      log.warn("Event for unknown room, ignoring", { eventType, roomId });
       return false;
     }
 
@@ -385,10 +388,10 @@ class RoomManager {
 
   resync(): Promise<void> {
     if (this.resyncPromise) {
-      console.log("[roomManager] sync already running, sharing pending operation");
+      log.debug("Sync already running, sharing pending operation");
       return this.resyncPromise;
     }
-    console.log(`[roomManager] sync starting: tracked=${JSON.stringify([...this.rooms.keys()])}, excluded=${JSON.stringify([...this.excludedRooms])}`);
+    log.debug("Sync starting", () => ({ tracked: [...this.rooms.keys()], excluded: [...this.excludedRooms] }));
 
     const generation = this.generation;
     this.onStatus?.({ type: "lazer_sync_state", state: "syncing" });
@@ -400,7 +403,7 @@ class RoomManager {
         if (generation !== this.generation) throw new Error("osu! session ended.");
         const liveRoomIds = new Set(response.room_ids.filter((roomId) => !this.excludedRooms.has(roomId)));
         listed = true;
-        console.log(`[roomManager] ListRooms returned=${JSON.stringify(response.room_ids)}, restoring=${JSON.stringify([...liveRoomIds])}`);
+        log.debug("Room list received", () => ({ returned: response.room_ids, restoring: [...liveRoomIds] }));
 
         for (const roomId of this.rooms.keys()) {
           if (!liveRoomIds.has(roomId)) this.removeRoom(roomId);
@@ -411,7 +414,7 @@ class RoomManager {
           if (this.excludedRooms.has(roomId)) continue;
           try {
             // JoinRoom returns a full snapshot and restores hub subscriptions.
-            console.log(`[roomManager] restoring room ${roomId} via JoinRoom (${this.rooms.has(roomId) ? "refresh tracked snapshot" : "start tracking"})`);
+            log.debug("Restoring room", { roomId, refresh: this.rooms.has(roomId) });
             try {
               await this.joinRoom(roomId);
             } catch (error) {
@@ -424,25 +427,25 @@ class RoomManager {
                 error.message !== "An unexpected error occurred invoking 'JoinRoom' on the server."
               )
                 throw error;
-              console.warn(`[roomManager] room ${roomId}: JoinRoom rejected by hub; attempting membership recovery once`);
+              log.warn("Room join rejected, attempting membership recovery once", { roomId });
               // TODO: Integrate this bounded recovery with shared exponential
               // backoff once available, keeping unknown-outcome requests excluded.
               await this.joinRoom(roomId);
-              console.log(`[roomManager] room ${roomId}: membership recovery succeeded`);
+              log.info("Room membership recovered", { roomId });
             }
           } catch (error) {
             if (generation !== this.generation) throw error;
             const failure = new Error(`Failed to refresh room ${roomId}: ${(error as Error).message}`, { cause: error });
-            console.error(`[roomManager] ${failure.message}`);
+            log.warn("Room synchronization failed", { roomId, error: failure });
             errors.push(failure);
             failedRoomIds.push(roomId);
           }
         }
         if (errors.length) throw new AggregateError(errors, "Some rooms could not be synchronized.");
-        console.log(`[roomManager] sync completed: tracked=${JSON.stringify([...this.rooms.keys()])}`);
+        log.debug("Sync completed", () => ({ tracked: [...this.rooms.keys()] }));
         this.onStatus?.({ type: "lazer_sync_state", state: "synced" });
       } catch (error) {
-        console.error(`[roomManager] sync failed: scope=${listed ? "partial" : "all"}, failedRooms=${JSON.stringify(failedRoomIds)}`);
+        log.warn("Synchronization failed", { scope: listed ? "partial" : "all", failedRooms: failedRoomIds });
         if (generation === this.generation)
           this.onStatus?.({ type: "lazer_sync_state", state: "failed", scope: listed ? "partial" : "all", failedRoomIds, message: error instanceof Error ? error.message : String(error) });
         // TODO: Retry using the shared API exponential backoff policy once implemented.
