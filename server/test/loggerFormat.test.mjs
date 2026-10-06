@@ -19,12 +19,14 @@ test("operation output includes boundaries, shared ID, outcome and duration", ()
 test("banner includes runtime details and brand colors without changing layout", () => {
   const banner = { version: "0.4.0-alpha", url: "http://localhost:3000", nodeVersion: "v24.0.0", os: "Linux 6.10", arch: "x64", level: "WARN" };
   const plain = render({ kind: "banner", banner });
-  assert.equal(plain, "┃ WhistleIRC v0.4.0-alpha\n┃ Web UI  http://localhost:3000\n┃ Node.js v24.0.0\n┃ OS      Linux 6.10 / x64\n┃ Logging WARN\n");
+  assert.equal(plain, "\n┃ WhistleIRC v0.4.0-alpha\n┃ Web UI     http://localhost:3000\n┃ Node.js    v24.0.0\n┃ OS         Linux 6.10 / x64\n┃ Logging    WARN\n\n");
   const colored = render({ kind: "banner", banner }, { colors: true });
   assert.equal(stripVTControlCharacters(colored), plain);
-  assert.ok(colored.includes("\u001b[1;38;5;183mW"));
+  assert.ok(colored.includes("\u001b[1;38;5;135mWhistle"));
   assert.ok(colored.includes("\u001b[1;37mIRC"));
-  assert.ok(colored.includes("\u001b[32mNode.js"));
+  assert.ok(colored.includes("\u001b[90mNode.js"));
+  assert.ok(colored.includes("\u001b[90mv24.0.0"));
+  assert.ok(colored.includes("\u001b[1;38;5;208mWARN"));
   for (const columns of [12, 30]) {
     for (const line of render({ kind: "banner", banner }, { columns }).trimEnd().split("\n")) assert.ok(stringWidth(line) <= columns);
   }

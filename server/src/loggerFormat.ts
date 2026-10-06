@@ -74,10 +74,10 @@ function formatBanner(info: StartupBannerInfo, options: LogFormatOptions): strin
   const columns = Math.max(1, Math.floor(options.columns || 80));
   const prefix = columns >= 4 ? `${paint("┃", "38;5;135", colors)} ` : "";
   const width = Math.max(1, columns - stringWidth(prefix));
-  const purpleGradient = [183, 177, 171, 165, 135, 99, 63];
-  const brand = [..."Whistle"].map((letter, index) => paint(letter, `1;38;5;${purpleGradient[index]}`, colors)).join("") + paint("IRC", "1;37", colors);
-  const rows = [`WhistleIRC v${info.version}`, `Web UI  ${info.url}`, `Node.js ${info.nodeVersion}`, `OS      ${info.os} / ${info.arch}`, `Logging ${info.level}`];
+  const brand = paint("Whistle", "1;38;5;135", colors) + paint("IRC", "1;37", colors);
+  const rows = [`WhistleIRC v${info.version}`, `Web UI     ${info.url}`, `Node.js    ${info.nodeVersion}`, `OS         ${info.os} / ${info.arch}`, `Logging    ${info.level}`];
   return (
+    "\n" +
     rows
       .flatMap((row, index) =>
         wrap(clean(row), width).map((line) => {
@@ -85,14 +85,14 @@ function formatBanner(info: StartupBannerInfo, options: LogFormatOptions): strin
             const [before, after] = line.split("WhistleIRC");
             return prefix + paint(before, "90", colors) + brand + paint(after, "90", colors);
           }
-          const labelLength = index === 0 ? 0 : [0, 8, 8, 8, 8][index];
+          const labelLength = index === 0 ? 0 : 11;
           const label = line.slice(0, labelLength);
           const value = line.slice(labelLength);
-          if (index === 2) return prefix + paint(line, "32", colors);
-          return prefix + paint(label, "90", colors) + paint(value, index === 1 ? "34" : index === 4 ? levelColors[info.level] : "90", colors);
+          return prefix + paint(label, "90", colors) + paint(value, index === 1 ? "34" : index === 4 ? `1;${levelColors[info.level]}` : "90", colors);
         }),
       )
-      .join("\n") + "\n"
+      .join("\n") +
+    "\n\n"
   );
 }
 
