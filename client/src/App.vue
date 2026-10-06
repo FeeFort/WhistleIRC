@@ -56,7 +56,7 @@ import { useNowPlayingSettings } from "./composables/useNowPlayingSettings";
 import { NOTIFICATION_SOUNDS, NOTIFICATION_TRIGGER_OPTIONS, getNotificationSoundUrl, useNotifications } from "./composables/useNotifications";
 
 const commandScrollToken = ref(0);
-const savedLogin = localStorage.getItem("feeirc-remembered-login") || "";
+const savedLogin = localStorage.getItem("whistleref-remembered-login") || "";
 const currentUser = ref("");
 const refereeUser = computed(() => currentUser.value);
 const isAuthenticated = ref(false);
@@ -182,7 +182,7 @@ const { soundEnabled, toastEnabled, ignoreBanchoBot, sound, soundTrigger, toastT
 const { showNowPlaying, showProgressBar, showProgressTimeLabel } = useNowPlayingSettings();
 const nowPlayingByLobby = reactive({});
 const lazerNowPlayingFinishedTimeouts = new Map();
-const PLAYER_PROFILE_CACHE_KEY = "whistleirc-lobby-player-profiles";
+const PLAYER_PROFILE_CACHE_KEY = "whistleref-lobby-player-profiles";
 const primaryColorDraft = ref(primaryColor.value);
 const banchoBotColorDraft = ref(banchoBotColor.value);
 const redTeamColorDraft = ref(redTeamColor.value);
@@ -1140,7 +1140,7 @@ function handleLogout() {
   currentUser.value = "";
   isAuthenticated.value = false;
   settingsOpen.value = false;
-  localStorage.removeItem("feeirc-remembered-login");
+  localStorage.removeItem("whistleref-remembered-login");
 }
 
 async function checkForUpdates() {
@@ -1258,10 +1258,10 @@ async function handleLogin({ username, password, rememberMe }) {
   if (connectedSuccessfully) {
     if (rememberMe) {
       void saveRememberedCredentials(username, password).catch(() => {});
-      localStorage.setItem("feeirc-remembered-login", username);
+      localStorage.setItem("whistleref-remembered-login", username);
     } else {
       void clearRememberedCredentials();
-      localStorage.removeItem("feeirc-remembered-login");
+      localStorage.removeItem("whistleref-remembered-login");
     }
     currentUser.value = username;
     isAuthenticated.value = true;
@@ -1305,7 +1305,7 @@ async function handleOsuLogout() {
     user: null,
   });
   await clearRememberedCredentials();
-  localStorage.removeItem("feeirc-remembered-login");
+  localStorage.removeItem("whistleref-remembered-login");
 }
 
 function handleCopyCallback() {
@@ -1411,7 +1411,7 @@ const banchoMessages = ref([
   {
     id: 1,
     type: "system",
-    text: "Welcome to WhistleIRC!",
+    text: "Welcome to WhistleRef!",
   },
 ]);
 const roomClosedByChat = reactive({});
@@ -1768,7 +1768,7 @@ const activeChatTitle = computed(() => {
 watch(
   [isAuthenticated, settingsOpen, activeChatTitle],
   ([authenticated, settingsVisible, title]) => {
-    document.title = authenticated && !settingsVisible && title ? `WhistleIRC — ${title}` : "WhistleIRC";
+    document.title = authenticated && !settingsVisible && title ? `WhistleRef — ${title}` : "WhistleRef";
   },
   { immediate: true },
 );
@@ -2830,7 +2830,7 @@ function handleSend(text) {
       if (!messageText) return;
       isAction = true;
     } else if (/^\/np$/i.test(command)) {
-      messageText = "is listening to [https://github.com/FeeFort/WhistleIRC WhistleIRC]";
+      messageText = "is listening to [https://github.com/FeeFort/WhistleRef WhistleRef]";
       isAction = true;
     }
 

@@ -1,6 +1,6 @@
 import { reactive } from "vue";
 
-const STORAGE_KEY = "whistleirc-lazer-room-resource-cache-v1";
+const STORAGE_KEY = "whistleref-lazer-room-resource-cache-v1";
 const REQUEST_INTERVAL_MS = 180;
 const inFlight = new Map();
 let nextRequestAt = 0;

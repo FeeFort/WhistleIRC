@@ -55,8 +55,8 @@ const previewLoads = new Set();
 const hiddenPreviewKeys = ref(new Set());
 const previewTimers = new Map();
 const previewRequestVersions = new Map();
-const PREVIEW_CACHE_KEY = "whistleirc-beatmap-preview-cache";
-const DELETE_CONFIRMATIONS_KEY = "whistleirc-mappool-delete-confirmations";
+const PREVIEW_CACHE_KEY = "whistleref-beatmap-preview-cache";
+const DELETE_CONFIRMATIONS_KEY = "whistleref-mappool-delete-confirmations";
 function readDeleteConfirmations() {
   try {
     const value = JSON.parse(localStorage.getItem(DELETE_CONFIRMATIONS_KEY) || "{}");

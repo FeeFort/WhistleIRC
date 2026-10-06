@@ -1,6 +1,6 @@
 import { ref, watch } from "vue";
 
-const STORAGE_KEY = "feeirc-notification-settings";
+const STORAGE_KEY = "whistleref-notification-settings";
 const soundModules = import.meta.glob("../sounds/*.mp3", { eager: true, query: "?url", import: "default" });
 
 const SOUND_ORDER = [

@@ -1,10 +1,10 @@
 import { ref, watch } from "vue";
 import { icons } from "@lucide/vue";
 
-const CUSTOM_KEY = "feeirc-shortcuts-custom";
-const START_DELAY_KEY = "feeirc-shortcuts-start-delay";
-const TIMER_SECONDS_KEY = "feeirc-shortcuts-timer-seconds";
-const WARNINGS_KEY = "feeirc-shortcuts-warnings";
+const CUSTOM_KEY = "whistleref-shortcuts-custom";
+const START_DELAY_KEY = "whistleref-shortcuts-start-delay";
+const TIMER_SECONDS_KEY = "whistleref-shortcuts-timer-seconds";
+const WARNINGS_KEY = "whistleref-shortcuts-warnings";
 
 // stable ids for the fixed/built-in commands - used as keys for the
 // per-command warning toggle map

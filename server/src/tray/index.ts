@@ -46,7 +46,7 @@ export function createTray({ port, onQuit }: TrayOptions): SysTrayInstance {
 function createLegacyTray({ port, onQuit }: TrayOptions): SysTrayInstance {
   log.debug("Creating tray", { platform: process.platform, arch: process.arch, port });
   const openItem = {
-    title: "Open WhistleIRC",
+    title: "Open WhistleRef",
     tooltip: "Open in browser",
     checked: false,
     enabled: true,
@@ -64,8 +64,8 @@ function createLegacyTray({ port, onQuit }: TrayOptions): SysTrayInstance {
   const systray = new SysTray({
     menu: {
       icon: getIconBase64(),
-      title: "WhistleIRC",
-      tooltip: "WhistleIRC — osu! referee client",
+      title: "WhistleRef",
+      tooltip: "WhistleRef — osu! referee client",
       items: [openItem, quitItem],
     },
     debug: false,

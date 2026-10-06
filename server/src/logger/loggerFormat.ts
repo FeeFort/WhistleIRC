@@ -93,15 +93,15 @@ function formatBanner(info: StartupBannerInfo, options: LogFormatOptions): strin
   const columns = Math.max(1, Math.floor(options.columns || 80));
   const prefix = columns >= 4 ? `${paint("┃", "38;5;135", colors)} ` : "";
   const width = Math.max(1, columns - stringWidth(prefix));
-  const brand = paint("Whistle", "1;38;5;135", colors) + paint("IRC", "1;37", colors);
-  const rows = [`WhistleIRC v${info.version}`, `Web UI     ${info.url}`, `Node.js    ${info.nodeVersion}`, `OS         ${info.os} / ${info.arch}`, `Logging    ${info.level}`];
+  const brand = paint("Whistle", "1;38;5;135", colors) + paint("Ref", "1;37", colors);
+  const rows = [`WhistleRef v${info.version}`, `Web UI     ${info.url}`, `Node.js    ${info.nodeVersion}`, `OS         ${info.os} / ${info.arch}`, `Logging    ${info.level}`];
   return (
     "\n" +
     rows
       .flatMap((row, index) =>
         wrap(clean(row), width).map((line) => {
-          if (index === 0 && line.includes("WhistleIRC")) {
-            const [before, after] = line.split("WhistleIRC");
+          if (index === 0 && line.includes("WhistleRef")) {
+            const [before, after] = line.split("WhistleRef");
             return prefix + paint(before, "90", colors) + brand + paint(after, "90", colors);
           }
           const labelLength = index === 0 ? 0 : 11;

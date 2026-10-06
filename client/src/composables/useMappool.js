@@ -1,7 +1,7 @@
 import { ref, watch } from "vue";
 
-const STORAGE_KEYS = Object.freeze({ stable: "whistleirc-mappool-state", lazer: "whistleirc-lazer-mappool-state" });
-const MAPPOOLS_KEYS = Object.freeze({ stable: "whistleirc-mappools", lazer: "whistleirc-lazer-mappools" });
+const STORAGE_KEYS = Object.freeze({ stable: "whistleref-mappool-state", lazer: "whistleref-lazer-mappool-state" });
+const MAPPOOLS_KEYS = Object.freeze({ stable: "whistleref-mappools", lazer: "whistleref-lazer-mappools" });
 const DEFAULT_WIN_CONDITION = `const room = await parseRoom();
 system.sendMessage(\`Scores: \${room.teamRed.score} - \${room.teamBlue.score}\`);
 return calculateWinner({ red: room.teamRed.score, blue: room.teamBlue.score }, { onTie: "manual" });`;

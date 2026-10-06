@@ -23,7 +23,7 @@ export function exportShortcuts(shortcuts) {
   const payload = {
     schemaVersion: SCHEMA_VERSION,
     exportedAt: new Date().toISOString(),
-    exportedFrom: `WhistleIRC v${serverPackage.version}`,
+    exportedFrom: `WhistleRef v${serverPackage.version}`,
     shortcuts: shortcuts.map((shortcut) => ({
       name: shortcut.label ?? shortcut.name ?? "",
       command: shortcut.command ?? "",
@@ -37,7 +37,7 @@ export function exportShortcuts(shortcuts) {
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
-  link.download = `whistleirc-shortcuts-${new Date().toISOString().slice(0, 10)}.json`;
+  link.download = `whistleref-shortcuts-${new Date().toISOString().slice(0, 10)}.json`;
   link.click();
   URL.revokeObjectURL(url);
 }

@@ -42,7 +42,7 @@ async function replaceFile(source: string, target: string): Promise<void> {
 }
 
 export async function applyLinuxUpdate(parentPid: number, assetPath: string): Promise<void> {
-  const logPath = `${process.env.TMPDIR || "/tmp"}/whistleirc-update-error.log`;
+  const logPath = `${process.env.TMPDIR || "/tmp"}/whistleref-update-error.log`;
   const log = async (message: string) => appendFile(logPath, `${new Date().toISOString()} ${message}\n`).catch(() => undefined);
   await log(`Linux update helper started (parent=${parentPid}, asset=${assetPath})`);
   try {

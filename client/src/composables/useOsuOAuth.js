@@ -1,5 +1,5 @@
 const AUTHORIZE_URL = "https://osu.ppy.sh/oauth/authorize";
-const STATE_KEY = "whistleirc-osu-oauth-state";
+const STATE_KEY = "whistleref-osu-oauth-state";
 
 export function getOsuRedirectUri() {
   return import.meta.env.VITE_OSU_REDIRECT_URI || `${window.location.origin}${window.location.pathname}`;

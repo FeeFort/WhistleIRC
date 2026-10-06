@@ -98,7 +98,7 @@ const profileMenuItems = computed(() => [
       <SidebarAside>
         <SidebarPanel>
           <SidebarHeader>
-            <div class="app-sidebar__logo"><span class="app-sidebar__logo-mark">Whistle</span><span>IRC</span></div>
+            <div class="app-sidebar__logo"><span class="app-sidebar__logo-mark">Whistle</span><span>Ref</span></div>
           </SidebarHeader>
 
           <SidebarContent>

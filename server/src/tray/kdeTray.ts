@@ -63,7 +63,7 @@ export async function createKdeTray(options: KdeTrayOptions): Promise<KdeTrayIns
   const dbus = (await import("dbus-next")) as DbusModule;
   const bus = dbus.sessionBus();
   bus.on("error", (error: Error) => log.error("KDE D-Bus connection failed", { error }));
-  const serviceName = `com.whistleirc.Tray${process.pid}`;
+  const serviceName = `com.whistleref.Tray${process.pid}`;
   const itemPath = "/StatusNotifierItem";
   const menuPath = "/MenuBar";
   const pixmap = readPixmap();
@@ -86,10 +86,10 @@ export async function createKdeTray(options: KdeTrayOptions): Promise<KdeTrayIns
       return "ApplicationStatus";
     }
     get Id() {
-      return "WhistleIRC";
+      return "WhistleRef";
     }
     get Title() {
-      return "WhistleIRC";
+      return "WhistleRef";
     }
     get Status() {
       return "Active";
@@ -101,7 +101,7 @@ export async function createKdeTray(options: KdeTrayOptions): Promise<KdeTrayIns
       return menuPath;
     }
     get ToolTip() {
-      return "WhistleIRC — osu! referee client";
+      return "WhistleRef — osu! referee client";
     }
   }
   StatusNotifierItem.configureMembers({
@@ -148,7 +148,7 @@ export async function createKdeTray(options: KdeTrayOptions): Promise<KdeTrayIns
           },
           [],
         ]);
-      return [0, [1, {}, [item(2, "Open WhistleIRC"), item(3, "Quit")]]];
+      return [0, [1, {}, [item(2, "Open WhistleRef"), item(3, "Quit")]]];
     }
     Event(id: number, event: string, _data: unknown, _timestamp: number): void {
       void _data;

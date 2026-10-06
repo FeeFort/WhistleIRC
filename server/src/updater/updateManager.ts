@@ -15,7 +15,7 @@ declare const __APP_VERSION__: string;
 const log = logger.child("core", "updater");
 
 const GITHUB_OWNER = "FeeFort";
-const GITHUB_REPO = "WhistleIRC";
+const GITHUB_REPO = "WhistleRef";
 
 export class UpdateError extends Error {
   constructor(
@@ -77,7 +77,7 @@ export class UpdateManager {
     this.#state = "checking";
     try {
       const response = await fetch(`https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases/latest`, {
-        headers: { Accept: "application/vnd.github+json", "User-Agent": "WhistleIRC-Updater" },
+        headers: { Accept: "application/vnd.github+json", "User-Agent": "WhistleRef-Updater" },
         signal: AbortSignal.timeout(15_000),
       });
       if (!response.ok) throw new UpdateError("CHECK_FAILED", `GitHub responded with HTTP ${response.status}.`);
@@ -130,7 +130,7 @@ export class UpdateManager {
     this.#state = "downloading";
     this.#abortController = new AbortController();
     try {
-      this.#stagingDirectory = await mkdtemp(path.join(os.tmpdir(), "whistleirc-update-"));
+      this.#stagingDirectory = await mkdtemp(path.join(os.tmpdir(), "whistleref-update-"));
       this.#downloadPath = path.join(this.#stagingDirectory, this.#target.asset.name);
       const response = await fetch(this.#target.asset.browser_download_url, { signal: this.#abortController.signal });
       if (!response.ok || !response.body) throw new UpdateError("DOWNLOAD_FAILED", `Download failed with HTTP ${response.status}.`);
@@ -189,7 +189,7 @@ export class UpdateManager {
     log.trace("Updater state changed", { previous: this.#state, next: "installing" });
     this.#state = "installing";
     send({ type: "update_progress", stage: "installing" });
-    const helperPath = path.join(this.#stagingDirectory || os.tmpdir(), `whistleirc-update-helper-${process.pid}`);
+    const helperPath = path.join(this.#stagingDirectory || os.tmpdir(), `whistleref-update-helper-${process.pid}`);
     try {
       fs.copyFileSync(process.execPath, helperPath);
       fs.chmodSync(helperPath, 0o755);
@@ -203,11 +203,11 @@ export class UpdateManager {
       detached: true,
       stdio: "ignore",
       windowsHide: true,
-      env: { ...process.env, WHISTLEIRC_UPDATE_HELPER: "1" },
+      env: { ...process.env, WHISTLEREF_UPDATE_HELPER: "1" },
     });
     helper.once("error", (error) => {
       log.error("Update helper failed to start", { error });
-      fs.appendFileSync(`${os.tmpdir()}/whistleirc-update-error.log`, `${new Date().toISOString()} Helper spawn failed: ${error.stack || error.message}\n`);
+      fs.appendFileSync(`${os.tmpdir()}/whistleref-update-error.log`, `${new Date().toISOString()} Helper spawn failed: ${error.stack || error.message}\n`);
     });
     helper.unref();
   }
