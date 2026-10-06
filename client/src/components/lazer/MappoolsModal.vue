@@ -12,14 +12,7 @@ import PlaylistModsModal from "./PlaylistModsModal.vue";
 import BulkBeatmapImportDialog from "../BulkBeatmapImportDialog.vue";
 import { escapeRegExp } from "../../composables/useMessageHighlighting";
 import { beatmapCoverBackground } from "../../composables/useBeatmapCover";
-import {
-  LAZER_DEFAULT_WIN_CONDITION,
-  LAZER_WIN_CONDITION_TEMPLATES,
-  defaultLazerModsForCategory,
-  serializeLazerMappool,
-  useMappool,
-  lazerWinConditionSource,
-} from "../../composables/useMappool";
+import { LAZER_DEFAULT_WIN_CONDITION, LAZER_WIN_CONDITION_TEMPLATES, defaultLazerModsForCategory, serializeLazerMappool, useMappool, lazerWinConditionSource } from "../../composables/useMappool";
 import { useServerConnection } from "../../composables/useServerConnection";
 const props = defineProps({ visible: Boolean });
 const emit = defineEmits(["update:visible"]);

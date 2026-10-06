@@ -34,16 +34,8 @@ const nextItem = computed(() => orderedItems.value.find((item) => Number(item.id
 const parsedBeatmapId = computed(() => Number.parseInt(beatmapId.value.trim(), 10));
 const isSwapping = computed(() => swappingItemId.value !== null);
 const swappingItem = computed(() => orderedItems.value.find((item) => Number(item.id) === Number(swappingItemId.value)) || null);
-const modsItem = computed(
-  () => orderedItems.value.find((item) => Number(item.id) === Number(modsItemId.value)) || null,
-);
-const canAdd = computed(
-  () =>
-    Number.isInteger(parsedBeatmapId.value) &&
-    parsedBeatmapId.value > 0 &&
-    Number.isInteger(props.roomId) &&
-    props.roomId > 0,
-);
+const modsItem = computed(() => orderedItems.value.find((item) => Number(item.id) === Number(modsItemId.value)) || null);
+const canAdd = computed(() => Number.isInteger(parsedBeatmapId.value) && parsedBeatmapId.value > 0 && Number.isInteger(props.roomId) && props.roomId > 0);
 const canSubmit = computed(() => (isSwapping.value ? canAdd.value && swappingItem.value : canAdd.value));
 
 function itemLabel(item) {

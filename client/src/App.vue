@@ -539,12 +539,7 @@ watch(
           pendingLazerMappoolSlots.delete(lazerEventRoomId);
           const currentItem = room.playlist.find((item) => Number(item.id) === playlistItemId);
           const matchTeams = lazerEventPayload.teams;
-          lazerMatchTeams.set(
-            lazerEventRoomId,
-            matchTeams && typeof matchTeams === "object"
-              ? new Map(Object.entries(matchTeams).map(([userId, team]) => [Number(userId), team]))
-              : new Map(),
-          );
+          lazerMatchTeams.set(lazerEventRoomId, matchTeams && typeof matchTeams === "object" ? new Map(Object.entries(matchTeams).map(([userId, team]) => [Number(userId), team])) : new Map());
           if (currentItem && room.playlist.length === 1) lazerSinglePlaylistMatches.set(lazerEventRoomId, { ...currentItem });
           else lazerSinglePlaylistMatches.delete(lazerEventRoomId);
           syncLazerNowPlaying(room);
@@ -1654,8 +1649,7 @@ function syncLazerNowPlaying(room, { force = false } = {}) {
 function getLazerMappoolPreview(roomId, beatmapId) {
   const pool = getLazerActivePool(lazerChatId(roomId));
   const matchSlotId = lazerMatchMappoolSlots.get(Number(roomId)) || pendingLazerMappoolSlots.get(Number(roomId));
-  const slot = pool?.slots?.find((item) => item.slotId === matchSlotId)
-    || pool?.slots?.find((item) => Number(item.beatmapId) === Number(beatmapId));
+  const slot = pool?.slots?.find((item) => item.slotId === matchSlotId) || pool?.slots?.find((item) => Number(item.beatmapId) === Number(beatmapId));
   return slot?.preview || null;
 }
 
@@ -2843,9 +2837,7 @@ function handleSend(text) {
     const roomId = Number(activeLazerRoom.value?.room_id);
     if (!Number.isInteger(roomId) || roomId <= 0 || activeLazerRoom.value?.closed) return;
     const lazerLobby = activeLazerLobbyState.value;
-    const resolvedText = lazerLobby
-      ? formatLobbyTemplate(messageText, getLazerLobbyTemplateValues(roomId, lazerLobby))
-      : messageText;
+    const resolvedText = lazerLobby ? formatLobbyTemplate(messageText, getLazerLobbyTemplateValues(roomId, lazerLobby)) : messageText;
     queueLazerChatMessage(roomId, resolvedText, isAction);
     return;
   }
@@ -3173,16 +3165,18 @@ async function loadLazerMatchResult(room, playlistItemId, matchTeams = new Map()
     let blueScore = baseBlueScore;
     let winnerTeam = redScore === blueScore ? null : redScore > blueScore ? "red" : "blue";
     const pool = getLazerActivePool(lazerChatId(roomId));
-  const completedBeatmapId = Number(room?.playlist?.find((item) => Number(item.id) === itemId)?.beatmap_id) || Number(scores[0]?.beatmap_id);
-    const slot = pool?.slots?.find((item) => item.slotId === mappoolSlotId)
-      || pool?.slots?.find((item) => Number(item.beatmapId) === completedBeatmapId);
+    const completedBeatmapId = Number(room?.playlist?.find((item) => Number(item.id) === itemId)?.beatmap_id) || Number(scores[0]?.beatmap_id);
+    const slot = pool?.slots?.find((item) => item.slotId === mappoolSlotId) || pool?.slots?.find((item) => Number(item.beatmapId) === completedBeatmapId);
     const condition = slot?.winCondition;
-    const conditionTemplate = String(condition?.template || "score").trim().toLowerCase();
+    const conditionTemplate = String(condition?.template || "score")
+      .trim()
+      .toLowerCase();
     // Built-in conditions read directly from the Lazer /scores response.
     // Only a Custom condition evaluates user-provided code.
-    const calculated = conditionTemplate === "custom"
-      ? await evaluateLazerWinCondition(condition?.source, resultRoom)
-      : calculateLazerApiResult(conditionTemplate, resultRoom, condition?.reverse === true, pool?.freeModMultipliers || {});
+    const calculated =
+      conditionTemplate === "custom"
+        ? await evaluateLazerWinCondition(condition?.source, resultRoom)
+        : calculateLazerApiResult(conditionTemplate, resultRoom, condition?.reverse === true, pool?.freeModMultipliers || {});
     for (const message of calculated?.systemMessages || []) appendResultMessage(message);
     if (calculated?.result) {
       redScore = calculated.result.red;
@@ -3212,15 +3206,21 @@ async function loadLazerMatchResult(room, playlistItemId, matchTeams = new Map()
 
 function calculateLazerApiResult(template, room, reverse = false, multipliers = {}) {
   if (template === "freemod") {
-    const normalizedMultipliers = Object.entries(multipliers || {}).map(([mods, value]) => ({
-      mods: String(mods).toUpperCase().split(/[+\s]+/).filter(Boolean),
-      value: Number(value) || 1,
-    })).sort((left, right) => right.mods.length - left.mods.length);
-    const total = (team) => team.players.reduce((sum, player) => {
-      const playerMods = new Set((player.mods || []).map((mod) => String(mod).toUpperCase()));
-      const multiplier = normalizedMultipliers.find((entry) => entry.mods.every((mod) => playerMods.has(mod)))?.value || 1;
-      return sum + player.score * multiplier;
-    }, 0);
+    const normalizedMultipliers = Object.entries(multipliers || {})
+      .map(([mods, value]) => ({
+        mods: String(mods)
+          .toUpperCase()
+          .split(/[+\s]+/)
+          .filter(Boolean),
+        value: Number(value) || 1,
+      }))
+      .sort((left, right) => right.mods.length - left.mods.length);
+    const total = (team) =>
+      team.players.reduce((sum, player) => {
+        const playerMods = new Set((player.mods || []).map((mod) => String(mod).toUpperCase()));
+        const multiplier = normalizedMultipliers.find((entry) => entry.mods.every((mod) => playerMods.has(mod)))?.value || 1;
+        return sum + player.score * multiplier;
+      }, 0);
     return makeLazerCalculatedResult(total(room.teamRed), total(room.teamBlue), reverse);
   }
   if (template === "accuracy") return makeLazerCalculatedResult(room.teamRed.accuracy, room.teamBlue.accuracy, reverse);
