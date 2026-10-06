@@ -69,6 +69,7 @@ if (process.argv[2] === "--apply-update") {
     process.exit(0);
   } catch (error) {
     updateLog.critical("Update installation failed", { error });
+    await logger.flush();
     process.exit(1);
   }
 }
@@ -80,7 +81,7 @@ const app = express();
 const httpServer = http.createServer(app);
 httpServer.on("error", (error) => {
   logger.critical("HTTP server failed", { host: config.httpHost, port: config.httpPort, error });
-  process.exit(1);
+  void logger.flush().finally(() => process.exit(1));
 });
 const staticDirectory = path.join(__dirname, "..", "static");
 const webSocketServer = new WebSocketServer({
@@ -1590,13 +1591,13 @@ function shutdown(signal?: string): void {
     pendingClosures -= 1;
     logger.trace("Component closure completed", { component, pendingClosures });
     if (pendingClosures === 0) {
-      process.exit(0);
+      void logger.flush().finally(() => process.exit(0));
     }
   };
 
   const shutdownTimer = setTimeout(() => {
     logger.warn("Shutdown timed out, forcing exit", { pendingClosures });
-    process.exit(0);
+    void logger.flush().finally(() => process.exit(0));
   }, 5000);
   shutdownTimer.unref();
 

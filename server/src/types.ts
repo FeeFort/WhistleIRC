@@ -40,7 +40,7 @@ export interface StartupBannerInfo {
 }
 
 export type LogSink = (record: LogRecord) => void;
-export type LogFileSink = (record: LogRecord) => void;
+export type LogFileSink = ((record: LogRecord) => void) & { flush?: () => Promise<void> };
 
 export interface LogFormatOptions {
   level?: LogLevel;
@@ -54,6 +54,7 @@ export interface LoggerOptions {
   colors?: boolean;
   sink?: LogSink;
   fileSink?: LogFileSink;
+  fileLevel?: LogLevel;
   now?: () => Date;
   monotonicNow?: () => number;
 }
@@ -66,9 +67,14 @@ export interface LoggerRuntimeOptions {
 export interface FileLoggingOptions {
   enabled: boolean;
   directory: string;
+  maxFileBytes?: number;
+  retentionDays?: number;
+  maxDirectoryBytes?: number;
 }
 
 export interface LoggerState {
+  fileLevel: LogLevel;
+  fileSink?: LogFileSink;
   operationSequence: number;
   bannerShown: boolean;
   level: LogLevel;

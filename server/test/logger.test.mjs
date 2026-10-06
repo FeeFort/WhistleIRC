@@ -45,7 +45,7 @@ test("operation failures are visible at WARN without evaluating disabled payload
   assert.equal(records.length, 1);
   assert.equal(records[0].level, "WARN");
   assert.equal(records[0].operation.id, failure.id);
-  assert.equal(records[0].fields.error, error);
+  assert.deepEqual(records[0].fields.error, { name: "Error", message: error.message });
   assert.equal(evaluations, 0);
 });
 

@@ -1,9 +1,9 @@
 import { formatLogRecord } from "./loggerFormat.js";
-import { appendFileSync, mkdirSync } from "node:fs";
+import { createRuntimeFileSink } from "./loggerFile.js";
+import { prepareLogRecord } from "./loggerData.js";
+export { createRuntimeFileSink, createJsonFileSink } from "./loggerFile.js";
 import { homedir } from "node:os";
 import path from "node:path";
-import { randomUUID } from "node:crypto";
-import { stripVTControlCharacters } from "node:util";
 import type {
   LogFieldsInput,
   LogLevel,
@@ -14,7 +14,6 @@ import type {
   StartupBannerInfo,
   TraceOperation,
   TraceOperationDetails,
-  LogFileSink,
   LogSink,
   FileLoggingOptions,
 } from "./types.js";
@@ -50,66 +49,6 @@ export function resolveFileLoggingOptions(
   return { enabled: !flags.includes("--no-file-log"), directory: path.resolve(directory) };
 }
 
-export function createRuntimeFileSink(options: FileLoggingOptions): LogFileSink | undefined {
-  if (!options.enabled) return undefined;
-  let sink: LogFileSink | undefined;
-  let disabled = false;
-  return (record) => {
-    if (disabled) return;
-    try {
-      if (!sink) {
-        mkdirSync(options.directory, { recursive: true });
-        const name = `whistleirc-${new Date().toISOString().replace(/[:.]/g, "-")}-${process.pid}-${randomUUID()}.jsonl`;
-        sink = createJsonFileSink(path.join(options.directory, name));
-      }
-      sink(record);
-    } catch (error) {
-      disabled = true;
-      process.stderr.write(`File logging disabled: ${error instanceof Error ? error.message : String(error)}\n`);
-    }
-  };
-}
-
-function jsonValue(value: unknown, seen = new WeakSet<object>()): unknown {
-  if (typeof value === "string") return stripVTControlCharacters(value);
-  if (typeof value === "bigint") return String(value);
-  if (value instanceof Date) return value.toISOString();
-  if (value === null || typeof value !== "object") return value;
-  if (seen.has(value)) return "[Circular]";
-  seen.add(value);
-  try {
-    if (value instanceof Error) {
-      const result: Record<string, unknown> = { name: jsonValue(value.name), message: jsonValue(value.message) };
-      if (value.stack) result.stack = jsonValue(value.stack);
-      for (const [key, item] of Object.entries(value)) result[key] = jsonValue(item, seen);
-      if (value.cause !== undefined) result.cause = jsonValue(value.cause, seen);
-      if (value instanceof AggregateError) result.errors = jsonValue(value.errors, seen);
-      return result;
-    }
-    if (Array.isArray(value)) return value.map((item) => jsonValue(item, seen));
-    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, jsonValue(item, seen)]));
-  } finally {
-    seen.delete(value);
-  }
-}
-
-export function createJsonFileSink(filePath: string): LogFileSink {
-  return (record) => {
-    const line = JSON.stringify({
-      timestamp: record.timestamp.toISOString(),
-      level: record.level,
-      scope: record.scope,
-      component: record.component,
-      message: stripVTControlCharacters(record.message),
-      fields: jsonValue(record.fields),
-      ...(record.operation ? { operation: record.operation } : {}),
-      ...(record.kind ? { kind: record.kind } : {}),
-      ...(record.banner ? { banner: jsonValue(record.banner) } : {}),
-    });
-    appendFileSync(filePath, `${line}\n`, "utf8");
-  };
-}
-
 export function resolveLoggerOptions(
   args: readonly string[] = process.argv.slice(2),
   environment: Readonly<Record<string, string | undefined>> = process.env,
@@ -134,10 +73,19 @@ export class Logger {
       operationSequence: 0,
       bannerShown: false,
       level: options.level ?? "INFO",
+      fileLevel: options.fileLevel ?? (options.level === "TRACE" ? "TRACE" : "DEBUG"),
+      fileSink: options.fileSink,
       colors,
       sink: (record) => {
-        terminalSink(record);
-        options.fileSink?.(record);
+        if (record.kind === "banner" || LOG_LEVELS.indexOf(record.level) <= LOG_LEVELS.indexOf(this.state.level)) terminalSink(prepareLogRecord(record, this.state.level));
+        if (this.state.fileSink && LOG_LEVELS.indexOf(record.level) <= LOG_LEVELS.indexOf(this.state.fileLevel)) {
+          try {
+            this.state.fileSink(prepareLogRecord(record, this.state.fileLevel));
+          } catch (error) {
+            this.state.fileSink = undefined;
+            process.stderr.write(`File logging disabled: ${String(error)}\n`);
+          }
+        }
       },
       now: options.now ?? (() => new Date()),
       monotonicNow: options.monotonicNow ?? (() => performance.now()),
@@ -161,12 +109,16 @@ export class Logger {
     return this.state.colors;
   }
 
+  async flush(): Promise<void> {
+    await this.state.fileSink?.flush?.();
+  }
+
   setLevel(level: LogLevel): void {
     this.state.level = level;
   }
 
   isEnabled(level: LogLevel): boolean {
-    return LOG_LEVELS.indexOf(level) <= LOG_LEVELS.indexOf(this.state.level);
+    return LOG_LEVELS.indexOf(level) <= LOG_LEVELS.indexOf(this.state.level) || Boolean(this.state.fileSink && LOG_LEVELS.indexOf(level) <= LOG_LEVELS.indexOf(this.state.fileLevel));
   }
 
   log(level: LogLevel, message: string, fields: LogFieldsInput = {}): void {
