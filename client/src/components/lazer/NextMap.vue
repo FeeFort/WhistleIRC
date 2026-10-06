@@ -13,7 +13,6 @@ import PlaylistModsModal from "./PlaylistModsModal.vue";
 const props = defineProps({
   roomId: { type: Number, default: null },
   items: { type: Array, default: () => [] },
-  historyItems: { type: Array, default: () => [] },
   currentItemId: { type: Number, default: null },
   disabled: { type: Boolean, default: false },
 });
@@ -31,22 +30,12 @@ const beatmaps = reactive({});
 const loadingBeatmapIds = new Set();
 
 const orderedItems = computed(() => [...props.items].sort((left, right) => Number(left.order) - Number(right.order)));
-const orderedHistoryItems = computed(() => [...props.historyItems].sort((left, right) => Number(left.order) - Number(right.order)));
 const nextItem = computed(() => orderedItems.value.find((item) => Number(item.id) !== Number(props.currentItemId) && !item.was_played) || null);
 const parsedBeatmapId = computed(() => Number.parseInt(beatmapId.value.trim(), 10));
 const isSwapping = computed(() => swappingItemId.value !== null);
-const swappingItem = computed(() => orderedHistoryItems.value.find((item) => Number(item.id) === Number(swappingItemId.value)) || null);
-const modsItem = computed(
-  () => orderedItems.value.find((item) => Number(item.id) === Number(modsItemId.value)) || orderedHistoryItems.value.find((item) => Number(item.id) === Number(modsItemId.value)) || null,
-);
-const canAdd = computed(
-  () =>
-    Number.isInteger(parsedBeatmapId.value) &&
-    parsedBeatmapId.value > 0 &&
-    Number.isInteger(props.roomId) &&
-    props.roomId > 0 &&
-    !orderedItems.value.some((item) => Number(item.beatmap_id) === parsedBeatmapId.value),
-);
+const swappingItem = computed(() => orderedItems.value.find((item) => Number(item.id) === Number(swappingItemId.value)) || null);
+const modsItem = computed(() => orderedItems.value.find((item) => Number(item.id) === Number(modsItemId.value)) || null);
+const canAdd = computed(() => Number.isInteger(parsedBeatmapId.value) && parsedBeatmapId.value > 0 && Number.isInteger(props.roomId) && props.roomId > 0);
 const canSubmit = computed(() => (isSwapping.value ? canAdd.value && swappingItem.value : canAdd.value));
 
 function itemLabel(item) {

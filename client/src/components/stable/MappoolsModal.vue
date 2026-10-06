@@ -5,6 +5,7 @@ import InputText from "primevue/inputtext";
 import Button from "primevue/button";
 import SelectButton from "primevue/selectbutton";
 import ToggleSwitch from "primevue/toggleswitch";
+import { useToast } from "primevue/usetoast";
 import { Plus, Pencil, Trash2, Download, Upload, ChevronDown, ChevronRight, Settings, Check, AlertTriangle } from "@lucide/vue";
 import TagInput from "../TagInput.vue";
 import WinConditionEditor from "../WinConditionEditor.vue";
@@ -15,6 +16,7 @@ import { DEFAULT_WIN_CONDITION, WIN_CONDITION_TEMPLATES, defaultModsForCategory,
 import { useServerConnection } from "../../composables/useServerConnection";
 const props = defineProps({ visible: Boolean });
 const emit = defineEmits(["update:visible"]);
+const toast = useToast();
 const { mappools, addMappool, updateMappool, deleteMappool } = useMappool();
 const { lastEvent, testWinCondition, requestApi } = useServerConnection();
 const editing = ref(null);
@@ -614,9 +616,13 @@ function importPool(event) {
     .text()
     .then((text) => {
       const value = JSON.parse(text);
+      if (value?.client !== "stable") {
+        toast.add({ severity: "error", summary: "Import failed", detail: "This file is not a Stable mappool.", life: 4000 });
+        return;
+      }
       addMappool({ ...value, id: crypto.randomUUID() });
     })
-    .catch(() => {});
+    .catch(() => toast.add({ severity: "error", summary: "Import failed", detail: "The selected file is not valid mappool JSON.", life: 4000 }));
 }
 function testScript(payload) {
   testWinCondition(editingSlot.value.slot.slotId, payload.source, payload.sampleContext);
