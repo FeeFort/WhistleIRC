@@ -20,7 +20,7 @@ import Avatar from "primevue/avatar";
 import Button from "primevue/button";
 import Dialog from "primevue/dialog";
 import Message from "primevue/message";
-import { AlertTriangle, ChevronDown, LogOut, MessageSquare, Moon, Plus, Settings2, Sun, X } from "@lucide/vue";
+import { AlertTriangle, ChevronDown, LogIn, LogOut, MessageSquare, Moon, Plus, Settings2, Sun, X } from "@lucide/vue";
 import { useDarkMode } from "../composables/useDarkMode";
 
 const props = defineProps({
@@ -34,7 +34,7 @@ const props = defineProps({
   lazerRooms: { type: Array, default: () => [] },
 });
 
-const emit = defineEmits(["update:open", "logout", "open-settings", "select-chat", "open-add-channel", "close-chat"]);
+const emit = defineEmits(["update:open", "logout", "open-settings", "select-chat", "open-create-lobby", "open-add-channel", "close-chat"]);
 
 const { isDark, toggleDark } = useDarkMode();
 
@@ -163,8 +163,14 @@ const profileMenuItems = computed(() => [
                     </button>
                   </SidebarMenuItem>
                   <SidebarMenuItem>
-                    <SidebarMenuButton @click="emit('open-add-channel')">
+                    <SidebarMenuButton @click="emit('open-create-lobby')">
                       <Plus :size="15" />
+                      <span>Create lobby</span>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                  <SidebarMenuItem>
+                    <SidebarMenuButton @click="emit('open-add-channel')">
+                      <LogIn :size="15" />
                       <span>Add a channel</span>
                     </SidebarMenuButton>
                   </SidebarMenuItem>

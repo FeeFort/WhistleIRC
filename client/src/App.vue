@@ -114,6 +114,7 @@ const lobbyContexts = reactive({});
 const pendingPartChannels = new Set();
 const pendingLobbySeed = ref(null);
 const pendingLobbyCreatedViaApp = ref(false);
+const pendingLazerLobbySeed = ref(null);
 const pendingJoinChannel = ref(null);
 const lazerPlayersDialogOpen = ref(false);
 const lazerRefereesDialogOpen = ref(false);
@@ -664,8 +665,28 @@ watch(
 
     if (event?.type === "ack" && event.received === "lazer_make_room" && event.result) {
       const room = registerLazerRoom(event.result);
+      const seed = pendingLazerLobbySeed.value;
+      pendingLazerLobbySeed.value = null;
+      if (room && seed) {
+        const lobby = lazerLobbyStates[room.id];
+        if (lobby) {
+          lobby.teamAName = seed.teamRed;
+          lobby.teamBName = seed.teamBlue;
+          lobby.qualificationMode = seed.qualificationMode === true;
+          lobby.bestOf = Number.isInteger(seed.bestOf) && seed.bestOf > 0 ? seed.bestOf : null;
+          lobby.matchStatus = getMatchStatus(
+            { bestOf: lobby.bestOf, nextPickTeam: lobby.nextPickTeam, teamRedScore: lobby.teamAScore, teamBlueScore: lobby.teamBScore },
+            lobby.teamAName,
+            lobby.teamBName,
+          );
+        }
+      }
       if (room) activeChat.value = room.id;
       return;
+    }
+
+    if (event?.type === "error" && event.request === "lazer_make_room") {
+      pendingLazerLobbySeed.value = null;
     }
 
     if (event?.type === "lazer_rooms" && Array.isArray(event.roomIds)) {
@@ -3097,7 +3118,8 @@ function handleCommand(command) {
 
 function handleCreateLobby(payload) {
   if (payload.mode === "lazer") {
-    makeLazerRoom(payload.lazer);
+    pendingLazerLobbySeed.value = payload.lobby || null;
+    if (!makeLazerRoom(payload.lazer)) pendingLazerLobbySeed.value = null;
     return;
   }
 
@@ -3557,6 +3579,7 @@ function handleLazerSendResult(result) {
     @logout="handleLogout"
     @open-settings="openSettings"
     @select-chat="selectChat"
+    @open-create-lobby="createLobbyDialogOpen = true"
     @open-add-channel="addChannelDialogOpen = true"
     @close-chat="closeActiveChat"
   >
