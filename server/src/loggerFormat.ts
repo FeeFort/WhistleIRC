@@ -3,7 +3,7 @@ import stringWidth from "string-width";
 import type { LogFormatOptions, LogLevel, LogRecord, StartupBannerInfo } from "./types.js";
 
 const icons: Record<LogLevel, string> = { CRITICAL: "‼", ERROR: "✖", WARN: "▲", INFO: "ℹ", DEBUG: "■", TRACE: "❯" };
-const levelColors: Record<LogLevel, string> = { CRITICAL: "1;37;41", ERROR: "31", WARN: "38;5;208", INFO: "34", DEBUG: "38;5;153", TRACE: "37" };
+const levelColors: Record<LogLevel, string> = { CRITICAL: "1;91", ERROR: "31", WARN: "38;5;208", INFO: "34", DEBUG: "38;5;153", TRACE: "38;5;248" };
 const segmenter = new Intl.Segmenter("en", { granularity: "grapheme" });
 
 // Remove terminal controls before measuring or coloring text
@@ -57,9 +57,28 @@ function wrap(text: string, width: number): string[] {
   });
 }
 
-function messageText(record: LogRecord): string {
+function errorDetails(value: unknown, seen = new WeakSet<object>()): unknown {
+  if (value === null || typeof value !== "object") return value;
+  if (seen.has(value)) return "[Circular]";
+  seen.add(value);
+  try {
+    if (value instanceof Error) {
+      const details: Record<string, unknown> = { name: value.name, message: value.message };
+      for (const [key, item] of Object.entries(value)) if (key !== "stack") details[key] = errorDetails(item, seen);
+      if (value.cause !== undefined) details.cause = errorDetails(value.cause, seen);
+      if (value instanceof AggregateError) details.errors = errorDetails(value.errors, seen);
+      return details;
+    }
+    if (Array.isArray(value)) return value.map((item) => errorDetails(item, seen));
+    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, errorDetails(item, seen)]));
+  } finally {
+    seen.delete(value);
+  }
+}
+
+function messageText(record: LogRecord, trace: boolean): string {
   const fields = Object.entries(record.fields).map(([key, value]) => {
-    const formatted = typeof value === "string" ? value : inspect(value, { colors: false, compact: true, breakLength: Infinity });
+    const formatted = typeof value === "string" ? value : inspect(trace ? value : errorDetails(value), { colors: false, compact: true, breakLength: Infinity });
     return `${key}=${formatted}`;
   });
   const operation = record.operation;
@@ -102,7 +121,7 @@ export function formatLogRecord(record: LogRecord, options: LogFormatOptions): s
   const time = `${record.timestamp.toTimeString().slice(0, 8)}.${String(record.timestamp.getMilliseconds()).padStart(3, "0")}`;
   const scope = clean(record.scope);
   const component = clean(record.component).replace(/\n/g, " ");
-  const text = (record.kind === "separator" && options.isTTY ? "── " : "") + messageText(record);
+  const text = (record.kind === "separator" && options.isTTY ? "── " : "") + messageText(record, options.level === "TRACE");
   const columns = options.isTTY ? Math.max(1, Math.floor(options.columns || 80)) : undefined;
   const level = `${icons[record.level]} ${record.level}`;
 
@@ -122,7 +141,7 @@ export function formatLogRecord(record: LogRecord, options: LogFormatOptions): s
 
   const scopeColor = scope === "lazer" ? "95" : scope === "stable" ? "38;5;208" : "90";
   const context = `${scope}/${component}`;
-  let prefix = `${paint(`[${time}]`, "90", colors)} ${paint(pad(level, 10), `1;${levelColors[record.level]}`, colors)} ${paint(scope, scopeColor, colors)}${paint(`/${component}`, "90", colors)}${" ".repeat(Math.max(0, 16 - stringWidth(context)))} `;
+  let prefix = `${paint(`[${time}]`, "90", colors)} ${paint(pad(level, 7), `1;${levelColors[record.level]}`, colors)} ${paint(scope, scopeColor, colors)}${paint(`/${component}`, "90", colors)}${" ".repeat(Math.max(0, 17 - stringWidth(context)))} `;
   // Shorten the prefix when little space remains for the message
   if (columns !== undefined && columns - stringWidth(prefix) - 2 < 12) prefix = `${paint(level, `1;${levelColors[record.level]}`, colors)} ${paint(scope, scopeColor, colors)} `;
   if (columns !== undefined && columns - stringWidth(prefix) - 2 < 4) prefix = "";
@@ -137,7 +156,7 @@ export function formatLogRecord(record: LogRecord, options: LogFormatOptions): s
           const remaining = available - stringWidth(line);
           if (remaining > 1) content += paint(` ${"─".repeat(remaining - 1)}`, "90", colors);
         }
-        return `${index === 0 ? prefix : continuation}${paint("┃", "90", colors)} ${content}`;
+        return `${index === 0 ? prefix : continuation}${paint("┃", levelColors[record.level], colors)} ${content}`;
       })
       .join("\n") + "\n"
   );

@@ -41,8 +41,41 @@ test("separators fill terminal width and become plain messages outside TTY", () 
   assert.ok(!plain.includes("─"));
 });
 
+test("error stacks appear only when the active logging level is TRACE", () => {
+  const cause = new Error("Underlying failure");
+  const error = Object.assign(new AggregateError([cause], "Request failed", { cause }), { code: "REQUEST_TIMEOUT" });
+  for (const level of ["CRITICAL", "ERROR", "WARN", "INFO", "DEBUG"]) {
+    const output = render({ level: "WARN", fields: { error } }, { level, isTTY: false });
+    assert.ok(output.includes("Request failed"));
+    assert.ok(output.includes("Underlying failure"));
+    assert.ok(output.includes("REQUEST_TIMEOUT"));
+    assert.ok(!output.includes("at TestContext"));
+    assert.ok(!output.includes("loggerFormat.test.mjs:"));
+  }
+  const output = render({ level: "WARN", fields: { error } }, { level: "TRACE", isTTY: false });
+  assert.ok(output.includes("loggerFormat.test.mjs:"));
+  assert.ok(error.stack.includes("loggerFormat.test.mjs:"));
+});
+
 test("normal logs use the chosen prefix and one separator", () => {
-  assert.equal(render(), "[12:35:10.087] ■ DEBUG    stable/irc       ┃ Connected\n");
+  assert.equal(render(), "[12:35:10.087] ■ DEBUG stable/irc        ┃ Connected\n");
+});
+
+test("scope columns align roomManager with shorter components across levels", () => {
+  const positions = [];
+  for (const level of ["ERROR", "WARN", "INFO", "DEBUG", "TRACE"]) {
+    for (const [scope, component] of [
+      ["lazer", "roomManager"],
+      ["lazer", "refereeHub"],
+      ["lazer", "session"],
+      ["stable", "irc"],
+      ["core", "server"],
+    ]) {
+      const output = render({ level, scope, component }, { colors: true, columns: 120 });
+      positions.push(stripVTControlCharacters(output).indexOf("┃"));
+    }
+  }
+  assert.equal(new Set(positions).size, 1);
 });
 
 test("word wrapping preserves words and aligns continuation separators", () => {

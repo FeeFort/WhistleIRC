@@ -80,7 +80,7 @@ test("network directions are separate from operation boundaries", () => {
 
 test("separators respect thresholds and retain structured context", () => {
   const records = [];
-  const log = new Logger({ sink: (record) => records.push(record) }).child("lazer", "session");
+  const log = new Logger({ level: "WARN", sink: (record) => records.push(record) }).child("lazer", "session");
   log.separator("Starting session");
   assert.equal(records.length, 0);
   log.separator("Reconnecting", "WARN");
@@ -97,7 +97,7 @@ test("TTY banner appears once even at WARN and across children", (t) => {
     else delete process.stderr.isTTY;
   });
   const records = [];
-  const log = new Logger({ sink: (record) => records.push(record) });
+  const log = new Logger({ level: "WARN", sink: (record) => records.push(record) });
   const info = { version: "1.2.3", url: "http://localhost:3000", nodeVersion: "v24.0.0", os: "Linux", arch: "x64" };
   log.startupBanner(info);
   log.child("core", "server").startupBanner(info);
@@ -115,7 +115,7 @@ test("non-TTY startup uses an INFO record and respects filtering", (t) => {
   });
   const records = [];
   const info = { version: "1.2.3", url: "http://localhost:3000", nodeVersion: "v24.0.0", os: "Linux", arch: "x64" };
-  new Logger({ sink: (record) => records.push(record) }).startupBanner(info);
+  new Logger({ level: "WARN", sink: (record) => records.push(record) }).startupBanner(info);
   assert.equal(records.length, 0);
   new Logger({ level: "INFO", sink: (record) => records.push(record) }).startupBanner(info);
   assert.equal(records.length, 1);
@@ -125,19 +125,23 @@ test("non-TTY startup uses an INFO record and respects filtering", (t) => {
 
 test("logging flags select the most detailed level regardless of order", () => {
   const cases = [
-    [[], "WARN"],
-    [["-v"], "INFO"],
-    [["--verbose"], "INFO"],
-    [["-d"], "DEBUG"],
-    [["--debug"], "DEBUG"],
-    [["-t"], "TRACE"],
-    [["--trace"], "TRACE"],
-    [["-t", "--verbose", "-d"], "TRACE"],
-    [["-v", "--debug"], "DEBUG"],
-    [["-vdt"], "TRACE"],
-    [["--updated", "--platform=linux"], "WARN"],
-    [["--", "--trace", "--no-color"], "WARN"],
-    [["-v", "--", "-t"], "INFO"],
+    [[], "INFO"],
+    [["-q"], "WARN"],
+    [["--quiet"], "WARN"],
+    [["-v"], "DEBUG"],
+    [["--verbose"], "DEBUG"],
+    [["-d"], "TRACE"],
+    [["--debug"], "TRACE"],
+    [["-q", "--verbose", "-d"], "TRACE"],
+    [["-v", "--debug"], "TRACE"],
+    [["-vqd"], "TRACE"],
+    [["--updated", "--platform=linux"], "INFO"],
+    [["--", "--debug", "--no-color"], "INFO"],
+    [["-v", "--", "-d"], "DEBUG"],
+    [["-q", "-v"], "DEBUG"],
+    [["-v", "-q"], "DEBUG"],
+    [["-t"], "INFO"],
+    [["--trace"], "INFO"],
   ];
   for (const [args, level] of cases) assert.equal(resolveLoggerOptions(args, {}, true).level, level);
 });
@@ -155,7 +159,7 @@ test("colors require stderr TTY and respect explicit disabling", () => {
 test("resolved settings are shared with child loggers", () => {
   const root = new Logger({ ...resolveLoggerOptions(["-d", "--no-color"], {}, true), sink: () => {} });
   const child = root.child("lazer", "refereeHub");
-  assert.equal(child.level, "DEBUG");
+  assert.equal(child.level, "TRACE");
   assert.equal(child.colors, false);
 });
 
@@ -171,13 +175,13 @@ test("each threshold includes exactly its level and more severe levels", () => {
   }
 });
 
-test("default threshold is WARN and critical logging does not terminate", () => {
+test("default threshold is INFO and critical logging does not terminate", () => {
   const records = [];
   const log = new Logger({ sink: (record) => records.push(record) });
   for (const level of LOG_LEVELS) log.log(level, "message");
   assert.deepEqual(
     records.map((record) => record.level),
-    ["CRITICAL", "ERROR", "WARN"],
+    ["CRITICAL", "ERROR", "WARN", "INFO"],
   );
 });
 

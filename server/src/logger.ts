@@ -10,8 +10,8 @@ export function resolveLoggerOptions(
   isTTY = Boolean(process.stderr.isTTY),
 ): LoggerRuntimeOptions {
   const separator = args.indexOf("--");
-  const flags = new Set((separator === -1 ? args : args.slice(0, separator)).flatMap((arg) => (/^-[vdt]+$/.test(arg) ? [...arg.slice(1)].map((flag) => `-${flag}`) : [arg])));
-  const level = flags.has("--trace") || flags.has("-t") ? "TRACE" : flags.has("--debug") || flags.has("-d") ? "DEBUG" : flags.has("--verbose") || flags.has("-v") ? "INFO" : "WARN";
+  const flags = new Set((separator === -1 ? args : args.slice(0, separator)).flatMap((arg) => (/^-[vdq]+$/.test(arg) ? [...arg.slice(1)].map((flag) => `-${flag}`) : [arg])));
+  const level = flags.has("--debug") || flags.has("-d") ? "TRACE" : flags.has("--verbose") || flags.has("-v") ? "DEBUG" : flags.has("--quiet") || flags.has("-q") ? "WARN" : "INFO";
   return { level, colors: isTTY && environment.NO_COLOR === undefined && !flags.has("--no-color") };
 }
 
@@ -25,9 +25,9 @@ export class Logger {
     this.state = {
       operationSequence: 0,
       bannerShown: false,
-      level: options.level ?? "WARN",
+      level: options.level ?? "INFO",
       colors,
-      sink: options.sink ?? ((record) => process.stderr.write(formatLogRecord(record, { colors, isTTY: Boolean(process.stderr.isTTY), columns: process.stderr.columns }))),
+      sink: options.sink ?? ((record) => process.stderr.write(formatLogRecord(record, { colors, level: this.state.level, isTTY: Boolean(process.stderr.isTTY), columns: process.stderr.columns }))),
       now: options.now ?? (() => new Date()),
       monotonicNow: options.monotonicNow ?? (() => performance.now()),
     };

@@ -42,6 +42,7 @@ export interface StartupBannerInfo {
 export type LogSink = (record: LogRecord) => void;
 
 export interface LogFormatOptions {
+  level?: LogLevel;
   colors: boolean;
   isTTY: boolean;
   columns?: number;
