@@ -62,9 +62,7 @@ const commonLobbyIsValid = computed(() => {
 
 const isValid = computed(() => {
   if (isLazer.value) {
-    return (
-      commonLobbyIsValid.value && Number.isInteger(Number(beatmapId.value)) && Number(beatmapId.value) > 0 && Number.isInteger(Number(maxParticipants.value)) && Number(maxParticipants.value) > 0
-    );
+    return commonLobbyIsValid.value && Number.isInteger(Number(beatmapId.value)) && Number(beatmapId.value) > 0 && Number.isInteger(Number(maxParticipants.value)) && Number(maxParticipants.value) > 0;
   }
   return commonLobbyIsValid.value;
 });
