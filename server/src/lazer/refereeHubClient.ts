@@ -249,7 +249,10 @@ export async function connectToRefereeHub(onEvent: HubEventHandler, onResync: Re
     if (generation === connectionGeneration) onStatus?.({ type: "lazer_connection_state", state: "disconnected", reason: error instanceof Error ? error.message : String(error) });
     throw error;
   }
-  if (generation !== connectionGeneration) throw new Error("SignalR session was replaced.");
+  if (generation !== connectionGeneration) {
+    log.trace("Stale hub result ignored", { generation, currentGeneration: connectionGeneration });
+    throw new Error("SignalR session was replaced.");
+  }
   log.info("Connected", { session: generation, connectionId: hub.connectionId ?? "unknown" });
   onStatus?.({ type: "lazer_connection_state", state: "connected" });
   return hub;
@@ -272,7 +275,9 @@ export async function invokeHub<T = unknown>(methodName: string, ...args: unknow
   const hub = connection;
   const signal = sessionAbort.signal;
   try {
+    log.trace("Waiting for invocation capacity", { operationId: operation.id, methodName, generation });
     release = await hubRateLimiter.acquire(signal);
+    log.trace("Invocation capacity acquired", { operationId: operation.id, methodName });
     if (signal.aborted || generation !== connectionGeneration || hub !== connection || hub.state !== signalR.HubConnectionState.Connected)
       throw rateLimitError("REQUEST_CANCELLED", "SignalR connection changed before the request was sent.");
     result = await Promise.race([
@@ -290,7 +295,10 @@ export async function invokeHub<T = unknown>(methodName: string, ...args: unknow
         );
       }),
     ]);
-    if (generation !== connectionGeneration) throw new Error("SignalR session was replaced.");
+    if (generation !== connectionGeneration) {
+      log.trace("Stale hub result ignored", { generation, currentGeneration: connectionGeneration });
+      throw new Error("SignalR session was replaced.");
+    }
     if (["ListRooms", "JoinRoom", "MakeRoom"].includes(methodName)) {
       if (!isHubResponse(methodName, result) || (methodName === "JoinRoom" && (result as { room_id: number }).room_id !== args[0])) {
         // TODO: Retry safe snapshot reads through the shared exponential backoff policy.
@@ -306,12 +314,18 @@ export async function invokeHub<T = unknown>(methodName: string, ...args: unknow
     operation.fail(error, "WARN", { session: generation });
     throw error;
   } finally {
-    if (timer !== undefined) clearTimeout(timer);
+    if (timer !== undefined) {
+      clearTimeout(timer);
+      log.trace("Invocation timeout cancelled", { operationId: operation.id });
+    }
     release?.();
   }
   // TODO: Apply shared exponential backoff retries only where replay is safe.
   // Mutations must not be retried blindly: timeout does not cancel the remote call.
-  if (generation !== connectionGeneration) throw new Error("SignalR session was replaced.");
+  if (generation !== connectionGeneration) {
+    log.trace("Stale hub result ignored", { generation, currentGeneration: connectionGeneration });
+    throw new Error("SignalR session was replaced.");
+  }
   return result;
 }
 

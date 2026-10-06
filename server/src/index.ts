@@ -430,10 +430,12 @@ class BanchoConnection {
       changed = true;
     }
 
+    ircLog.trace(changed ? "Lobby state update applied" : "Lobby state update unchanged", () => ({ channel, fields: Object.keys(update) }));
     if (changed) this.sendLobbyState(channel, state);
   }
 
   closeLobby(channel: string): void {
+    ircLog.trace("Closing lobby, clearing timer and scores", { channel });
     const state = this.getLobbyState(channel);
     const changed = state.status !== "closed" || state.timer.active || state.timer.endsAt !== null;
     state.status = "closed";
@@ -511,6 +513,7 @@ class BanchoConnection {
   }
 
   recordPlayerScore(channel: string, result: PlayerScore): void {
+    ircLog.trace("Player score recorded", { channel, username: result.username, score: result.score });
     const key = normalizeChannel(channel);
     const scores = this.matchScoreBuffers.get(key) || new Map();
     scores.set(result.username.toLowerCase(), result.score);
@@ -522,6 +525,7 @@ class BanchoConnection {
     const channelKey = normalizeChannel(channel);
     const scores = this.matchScoreBuffers.get(channelKey) || new Map();
     if (!scores.size) {
+      ircLog.trace("Match completion has no scores, skipping", { channel });
       this.activeWinConditions.delete(channelKey);
       return;
     }
@@ -533,6 +537,7 @@ class BanchoConnection {
     let scoreDifference = winnerTeam ? Math.abs(teamRedScore - teamBlueScore) : 0;
     let resultRedScore = teamRedScore;
     let resultBlueScore = teamBlueScore;
+    ircLog.trace("Team scores calculated", { channel, teamRedScore, teamBlueScore, winnerTeam, scoreDifference });
     const activeWinCondition = this.activeWinConditions.get(channelKey);
 
     if (activeWinCondition && activeWinCondition.beatmapId === state.currentBeatmap?.id) {
@@ -571,6 +576,7 @@ class BanchoConnection {
       winConditionLog.warn("Win condition skipped, beatmap changed", { channel, activeBeatmapId: activeWinCondition.beatmapId, currentBeatmapId: state.currentBeatmap?.id });
     }
     const nextPickTeam = getOppositePickTeam(state);
+    ircLog.trace("Match result applied", { channel, winnerTeam, nextPickTeam, resultRedScore, resultBlueScore });
     const winningScore = getWinningScore(state.bestOf);
 
     this.updateLobbyState(channel, {
@@ -641,6 +647,7 @@ class BanchoConnection {
 
     if (nick?.toLowerCase() !== "banchobot") return;
     const parsed: ParsedBanchoBotMessage = parseBanchoBotMessage(text);
+    ircLog.trace("BanchoBot message processed", () => ({ channel, type: parsed?.type ?? "unknown" }));
     if (!parsed) return;
 
     if (parsed.type === "room") {
@@ -690,6 +697,7 @@ class BanchoConnection {
       this.updateLobbyState(channel, parsed.value);
     } else if (parsed.type === "timer") {
       const timer = parsed.value;
+      ircLog.trace("Lobby timer event", { channel, ...timer });
       if (timer.type === "started") {
         this.updateLobbyState(channel, {
           timer: {
@@ -784,6 +792,7 @@ class BanchoConnection {
   }
 
   handleData(chunk: string): void {
+    ircLog.trace("IRC chunk received", { bytes: Buffer.byteLength(chunk), buffered: this.buffer.length });
     this.buffer += chunk;
     while (this.buffer.includes("\n")) {
       const lineEnd = this.buffer.indexOf("\n");
@@ -1439,7 +1448,7 @@ function handleClientMessage(client: WebSocket, rawMessage: unknown): void {
     return { payload: logMessage };
   });
 
-  const handlers: Record<string, (client: WebSocket, message: ClientMessage) => void> = {
+  const handlers: Record<string, (client: WebSocket, message: ClientMessage) => void | Promise<void>> = {
     login: handleLogin,
     logout: handleLogout,
     osu_login: handleOsuLogin,
@@ -1483,7 +1492,19 @@ function handleClientMessage(client: WebSocket, rawMessage: unknown): void {
     lazer_send_chat_message: lazerHandlers.handleLazerSendChatMessage,
   };
 
-  handlers[message.type](client, message);
+  const operation = wsLog.traceStart(`Handle ${message.type}`, { requestId: message.requestId });
+  try {
+    const result = handlers[message.type](client, message);
+    if (result)
+      void result.then(
+        () => operation.end(),
+        (error) => operation.fail(error),
+      );
+    else operation.end();
+  } catch (error) {
+    operation.fail(error);
+    throw error;
+  }
 }
 
 webSocketServer.on("connection", (client) => {
@@ -1558,14 +1579,16 @@ function shutdown(signal?: string): void {
   banchoConnection.logout();
 
   for (const client of webSocketServer.clients) {
+    logger.trace("Terminating frontend connection");
     client.terminate();
   }
 
   // Keep the process alive until the hub has sent its disconnect as well.
   // Abrupt termination leaves the old referee connection active remotely.
   let pendingClosures = 3;
-  const finishClosure = () => {
+  const finishClosure = (component: string) => {
     pendingClosures -= 1;
+    logger.trace("Component closure completed", { component, pendingClosures });
     if (pendingClosures === 0) {
       process.exit(0);
     }
@@ -1577,15 +1600,16 @@ function shutdown(signal?: string): void {
   }, 5000);
   shutdownTimer.unref();
 
+  logger.trace("Closing lazer session, WebSocket and HTTP servers", { pendingClosures });
   void stopLazerSession()
     .catch((error) => sessionLog.warn("Failed to stop session", { error }))
-    .finally(finishClosure);
+    .finally(() => finishClosure("lazer"));
 
-  webSocketServer.close(finishClosure);
+  webSocketServer.close(() => finishClosure("webSocket"));
   if (httpServer.listening) {
-    httpServer.close(finishClosure);
+    httpServer.close(() => finishClosure("http"));
   } else {
-    finishClosure();
+    finishClosure("http");
   }
 }
 

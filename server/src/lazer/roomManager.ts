@@ -66,6 +66,12 @@ class RoomManager {
     log.debug("Resetting room tracking", { rooms: this.rooms.size, pendingJoins: this.pendingJoins.size });
     this.currentUserId = null;
     ++this.generation;
+    log.trace("Session generation advanced, cancelling pending work", {
+      generation: this.generation,
+      joins: this.pendingJoins.size,
+      creations: this.pendingCreations.size,
+      chatLoads: this.pendingChatLoads.size,
+    });
     this.excludedRooms.clear();
     for (const pending of [...this.pendingJoins.values(), ...this.pendingCreations]) pending.cancelled = true;
     this.pendingJoins.clear();
@@ -116,6 +122,7 @@ class RoomManager {
     if (this.joinedChatChannels.has(channelId)) return;
     await new Promise<void>((resolve, reject) => {
       const timer = setTimeout(() => {
+        log.trace("Chat channel wait timed out", { channelId, timeoutMs });
         const waiters = this.chatWaiters.get(channelId) ?? [];
         this.chatWaiters.set(
           channelId,
@@ -125,6 +132,7 @@ class RoomManager {
       }, timeoutMs);
       const done = (error?: Error) => {
         clearTimeout(timer);
+        log.trace("Chat channel wait completed, timer cancelled", { channelId, failed: Boolean(error) });
         if (error) reject(error);
         else resolve();
       };
@@ -220,6 +228,7 @@ class RoomManager {
 
     if (pendingJoin) {
       pendingJoin.events.push({ eventType, payload });
+      log.trace("Event buffered during join", { roomId, eventType, pending: pendingJoin.events.length });
       return true;
     }
 
@@ -228,6 +237,7 @@ class RoomManager {
         // Creation is bounded by the hub timeout; also cap retained events under load.
         if (Date.now() - creation.startedAt <= config.hubRequestTimeoutMs && creation.events.length < 512) {
           creation.events.push({ eventType, payload, deferred: true });
+          log.trace("Event buffered during creation", { roomId, eventType, pending: creation.events.length });
         } else log.warn("Creation event buffer limit reached", { eventType });
       }
       return false;
@@ -329,7 +339,9 @@ class RoomManager {
         return true;
     }
 
-    if (!this.replayPlayers && JSON.stringify(room) !== previousState) this.onRoomChanged?.(room);
+    const changed = JSON.stringify(room) !== previousState;
+    log.trace(changed ? "Room state changed" : "Event left room state unchanged", { roomId, eventType, replaying: Boolean(this.replayPlayers) });
+    if (!this.replayPlayers && changed) this.onRoomChanged?.(room);
     return true;
   }
 
@@ -351,8 +363,12 @@ class RoomManager {
     const generation = this.generation;
     const existing = roomId === null ? undefined : this.pendingJoins.get(roomId);
     if (existing) {
+      log.trace("Sharing pending room join", { roomId, generation });
       await existing.promise;
-      if (generation !== this.generation) throw new Error("osu! session ended.");
+      if (generation !== this.generation) {
+        log.trace("Stale room operation ignored", { generation, currentGeneration: this.generation });
+        throw new Error("osu! session ended.");
+      }
       const room = roomId === null ? undefined : this.rooms.get(roomId);
       if (!room) throw new Error(`Room ${roomId} was not joined.`);
       return room;
@@ -376,8 +392,10 @@ class RoomManager {
           this.replayPlaylist = new Map(room.playlist.map((item) => [item.id, structuredClone(item)]));
           try {
             // Replay any events that were received during the JoinRoom/MakeRoom call, which may have been buffered by the hub.
+            log.trace("Replaying buffered events", { roomId, count: pending.events.length });
             for (const event of pending.events) {
               if (event.payload.room_id === roomId) this.handleHubEvent(event.eventType, event.payload);
+              else log.trace("Buffered event belongs to another room, ignoring", { roomId, eventRoomId: event.payload.room_id, eventType: event.eventType });
             }
           } finally {
             this.replayPlayers = null;
@@ -413,7 +431,10 @@ class RoomManager {
       let listed = false;
       try {
         const response = await invokeHub<ListRoomsResponse>("ListRooms");
-        if (generation !== this.generation) throw new Error("osu! session ended.");
+        if (generation !== this.generation) {
+          log.trace("Stale room operation ignored", { generation, currentGeneration: this.generation });
+          throw new Error("osu! session ended.");
+        }
         const liveRoomIds = new Set(response.room_ids.filter((roomId) => !this.excludedRooms.has(roomId)));
         listed = true;
         log.debug("Room list received", () => ({ returned: response.room_ids, restoring: [...liveRoomIds] }));
@@ -426,12 +447,12 @@ class RoomManager {
         for (const roomId of liveRoomIds) {
           if (this.excludedRooms.has(roomId)) continue;
           try {
-            // JoinRoom returns a full snapshot and restores hub subscriptions.
+            // JoinRoom returns a full snapshot and restores hub subscriptions
             log.debug("Restoring room", { roomId, refresh: this.rooms.has(roomId) });
             try {
               await this.joinRoom(roomId);
             } catch (error) {
-              // The hub can retain a referee in room therefore trying to recover membership by joining again
+              // The hub can retain a referee in room so we should try again once
               if (
                 generation !== this.generation ||
                 this.excludedRooms.has(roomId) ||
@@ -440,11 +461,11 @@ class RoomManager {
                 error.message !== "An unexpected error occurred invoking 'JoinRoom' on the server."
               )
                 throw error;
-              log.warn("Room join rejected, attempting membership recovery once", { roomId });
+              log.warn("Room join rejected, retrying once", { roomId });
               // TODO: Integrate this bounded recovery with shared exponential
               // backoff once available, keeping unknown-outcome requests excluded.
               await this.joinRoom(roomId);
-              log.info("Room membership recovered", { roomId });
+              log.info("Room restore successful", { roomId });
             }
           } catch (error) {
             if (generation !== this.generation) throw error;

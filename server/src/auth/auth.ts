@@ -61,13 +61,16 @@ export async function logout(): Promise<{ revokedRemotely: boolean }> {
 
 export async function getAccessToken(): Promise<string> {
   if (authState.status !== "authenticated") {
+    log.trace("Access token requested without authenticated session");
     throw new NotAuthenticatedError("not_logged_in");
   }
 
   const { tokens, credentials } = authState;
   const { user } = authState;
 
+  log.trace("Checking access token expiry", { remainingMs: tokens.expiresAt - Date.now(), refreshBufferMs: REFRESH_BUFFER_MS });
   if (tokens.expiresAt - Date.now() > REFRESH_BUFFER_MS) {
+    log.trace("Using current access token");
     return tokens.accessToken;
   }
 
@@ -80,6 +83,7 @@ export async function getAccessToken(): Promise<string> {
     return newTokens.accessToken;
   } catch (error) {
     if (error instanceof OsuOAuthError) {
+      log.trace("Refresh rejected, authorization required");
       authState = { status: "unauthenticated" };
       throw new NotAuthenticatedError("session_expired");
     }

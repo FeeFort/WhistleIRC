@@ -1,6 +1,9 @@
+import { logger } from "../logger.js";
 import vm from "node:vm";
 import { fetchLastMapResult } from "./matchResultFetcher.js";
 import type { TeamMapResult, WinConditionContext, WinConditionOutcome, WinConditionWinner } from "../types.js";
+
+const log = logger.child("stable", "winCondition");
 
 const SYNC_TIMEOUT_MS = 200;
 const ASYNC_TIMEOUT_MS = 12000;
@@ -30,10 +33,15 @@ function fallbackTeam(score: number, misses: number, accuracy: number, combo: nu
 }
 
 export async function evaluateWinCondition(source: string | undefined, context: WinConditionContext): Promise<WinConditionOutcome> {
+  log.trace("Preparing win condition context", () => ({ matchId: context.matchId, context }));
   const redScore = Number(context.redScore ?? context.redBeatmapScore) || 0;
   const blueScore = Number(context.blueScore ?? context.blueBeatmapScore) || 0;
   const defaultWinner = fallback({ redScore, blueScore });
-  if (!source?.trim()) return { winner: defaultWinner, error: null, systemMessages: [], result: null };
+  if (!source?.trim()) {
+    log.trace("No script provided, using score winner", { winner: defaultWinner });
+    return { winner: defaultWinner, error: null, systemMessages: [], result: null };
+  }
+  const operation = log.traceStart("Evaluate win condition", { matchId: context.matchId, sourceLength: source.length });
 
   const systemMessages: string[] = [];
   let winner: WinConditionWinner | null = null;
@@ -50,12 +58,14 @@ export async function evaluateWinCondition(source: string | undefined, context: 
     } else {
       picked = (options.reverse ? red < blue : red > blue) ? "red" : "blue";
     }
+    log.trace("Winner calculated", { red, blue, picked, reverse: options.reverse });
     winner = picked;
     calculated = { beatmapWinner: picked, beatmapTeamRedScore: red, beatmapTeamBlueScore: blue, scoreDifference: Math.abs(red - blue) };
     return picked;
   }
 
   async function parseRoom() {
+    log.trace("Preparing team results", { matchId: context.matchId });
     const fetched = context.matchId ? await fetchLastMapResult(context.matchId) : null;
     const teamRed = fetched?.teamRed ?? fallbackTeam(redScore, Number(context.redMisses) || 0, Number(context.redAccuracy) || 0, Number(context.redCombo) || 0);
     const teamBlue = fetched?.teamBlue ?? fallbackTeam(blueScore, Number(context.blueMisses) || 0, Number(context.blueAccuracy) || 0, Number(context.blueCombo) || 0);
@@ -67,6 +77,7 @@ export async function evaluateWinCondition(source: string | undefined, context: 
       system: Object.freeze({
         sendMessage: (text: unknown) => {
           systemMessages.push(String(text));
+          log.trace("Script queued system message", { count: systemMessages.length });
         },
       }),
       parseRoom,
@@ -84,9 +95,14 @@ export async function evaluateWinCondition(source: string | undefined, context: 
     const script = new vm.Script(`(async function() {\n${executableSource}\n})()`);
     const scriptPromise = script.runInContext(sandbox, { timeout: SYNC_TIMEOUT_MS }) as Promise<unknown>;
     await Promise.race([scriptPromise, new Promise((_resolve, reject) => setTimeout(() => reject(new Error("Win condition timed out")), ASYNC_TIMEOUT_MS))]);
-    if (!winner) return { winner: defaultWinner, error: "Script finished without calling calculateWinner()", systemMessages, result: null };
+    if (!winner) {
+      operation.fail("Script finished without calling calculateWinner()", "TRACE");
+      return { winner: defaultWinner, error: "Script finished without calling calculateWinner()", systemMessages, result: null };
+    }
+    operation.end(() => ({ winner, calculated, messages: systemMessages.length }));
     return { winner, error: null, systemMessages, result: calculated };
   } catch (error) {
+    operation.fail(error, "TRACE");
     return { winner: defaultWinner, error: error instanceof Error ? error.message : String(error), systemMessages, result: calculated };
   }
 }
