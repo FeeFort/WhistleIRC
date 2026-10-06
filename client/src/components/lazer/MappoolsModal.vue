@@ -5,6 +5,7 @@ import InputText from "primevue/inputtext";
 import Button from "primevue/button";
 import SelectButton from "primevue/selectbutton";
 import ToggleSwitch from "primevue/toggleswitch";
+import { useToast } from "primevue/usetoast";
 import { Plus, Pencil, Trash2, Download, Upload, ChevronDown, ChevronRight, Settings, Check, AlertTriangle, SlidersHorizontal } from "@lucide/vue";
 import WinConditionEditor from "../WinConditionEditor.vue";
 import PlaylistModsModal from "./PlaylistModsModal.vue";
@@ -15,7 +16,6 @@ import {
   LAZER_DEFAULT_WIN_CONDITION,
   LAZER_WIN_CONDITION_TEMPLATES,
   defaultLazerModsForCategory,
-  defaultModsForCategory,
   serializeLazerMappool,
   useMappool,
   lazerWinConditionSource,
@@ -23,6 +23,7 @@ import {
 import { useServerConnection } from "../../composables/useServerConnection";
 const props = defineProps({ visible: Boolean });
 const emit = defineEmits(["update:visible"]);
+const toast = useToast();
 const { mappools, addMappool, updateMappool, deleteMappool } = useMappool("lazer");
 const { requestApi } = useServerConnection();
 const editing = ref(null);
@@ -161,9 +162,7 @@ function applyCategoryRename(pool, category) {
     slots: pool.slots.map((slot, index, allSlots) => {
       if (slot.category !== category) return slot;
       const number = allSlots.slice(0, index + 1).filter((item) => item.category === category).length;
-      const previousDefaults = defaultModsForCategory(category);
-      const shouldApplyCategoryDefaults = !slot.mods?.length || JSON.stringify(slot.mods) === JSON.stringify(previousDefaults);
-      return { ...slot, category: name, slotId: `${name}${number}`, ...(shouldApplyCategoryDefaults ? { mods: defaultModsForCategory(name) } : {}) };
+      return { ...slot, category: name, slotId: `${name}${number}` };
     }),
   });
   const next = new Set(expandedCategories.value);
@@ -244,7 +243,7 @@ function newPool() {
     ruleset: "osu",
     freeModMultipliers: [],
     categories: [category],
-    slots: [{ slotId: `${category}1`, category, beatmapId: 0, mods: [...defaultMods.requiredMods], ...defaultMods }],
+    slots: [{ slotId: `${category}1`, category, beatmapId: 0, ...defaultMods }],
   });
 }
 function closePoolEditor() {
@@ -305,8 +304,7 @@ function isFreemodSlot(slot) {
   const category = String(slot.category || "")
     .trim()
     .toLowerCase();
-  const hasFreemodMod = (slot.mods || []).some((mod) => String(mod).trim().toLowerCase() === "freemod");
-  return category === "fm" || category === "freemod" || hasFreemodMod;
+  return category === "fm" || category === "freemod";
 }
 function editSlot(pool, slot) {
   clearTimeout(slotEditCloseTimer);
@@ -317,23 +315,11 @@ function editSlot(pool, slot) {
     winTemplate: slot.freeMod || inferredFreeMod ? "freemod" : condition?.template || (condition?.source ? "custom" : "score"),
     winReverse: condition?.reverse === true,
     freeMod: slot.freeMod === true || inferredFreeMod,
-    slot: { ...slot, mods: [...slot.mods] },
+    slot: { ...slot },
   };
   slotEditVisible.value = true;
 }
 function openSlotMods(pool, slot) {
-  // Older Lazer mappools only stored the legacy `mods` array. Infer the new
-  // configuration once so the picker reflects what is already on the slot.
-  if (!(Array.isArray(slot.requiredMods) && slot.requiredMods.length) && !(Array.isArray(slot.allowedMods) && slot.allowedMods.length)) {
-    const defaults = defaultLazerModsForCategory(slot.category);
-    const legacyMods = new Set((slot.mods || []).map((mod) => String(mod).toUpperCase()));
-    const requiredMods = defaults.requiredMods.filter((mod) => legacyMods.has(mod));
-    const allowedMods = defaults.allowedMods.filter((mod) => legacyMods.has(mod));
-    if (requiredMods.length || allowedMods.length) {
-      slot.requiredMods = requiredMods;
-      slot.allowedMods = allowedMods;
-    }
-  }
   slotModsTarget.value = slot;
   slotModsRuleset.value = { osu: 0, taiko: 1, fruits: 2, mania: 3 }[pool.ruleset] ?? 0;
   slotModsVisible.value = true;
@@ -343,7 +329,6 @@ function applySlotMods(value) {
   slotModsTarget.value.requiredMods = Array.isArray(value.required_mods) ? value.required_mods.map((mod) => mod.acronym).filter(Boolean) : [];
   slotModsTarget.value.allowedMods = Array.isArray(value.allowed_mods) ? value.allowed_mods.map((mod) => mod.acronym).filter(Boolean) : [];
   slotModsTarget.value.freestyle = value.freestyle === true;
-  slotModsTarget.value.mods = [...slotModsTarget.value.requiredMods];
   // Keep the local mappool state in sync immediately; this modal is local-only.
   const pool = mappools.value.find((item) => item.slots.some((itemSlot) => itemSlot.slotId === slotModsTarget.value.slotId));
   if (pool) updateMappool(pool.id, { slots: [...pool.slots] });
@@ -496,7 +481,7 @@ function addCategory(pool) {
   const defaultMods = defaultLazerModsForCategory(name);
   updateMappool(pool.id, {
     categories: [...(pool.categories || []), name],
-    slots: [...pool.slots, { slotId: `${name}1`, category: name, beatmapId: 0, mods: [...defaultMods.requiredMods], ...defaultMods }],
+    slots: [...pool.slots, { slotId: `${name}1`, category: name, beatmapId: 0, ...defaultMods }],
   });
   const next = new Set(expandedCategories.value);
   next.add(categoryKey(pool, name));
@@ -510,7 +495,7 @@ function addSlot(pool, category) {
   let number = 1;
   while (used.has(`${category}${number}`)) number += 1;
   const defaultMods = defaultLazerModsForCategory(category);
-  updateMappool(pool.id, { slots: [...pool.slots, { slotId: `${category}${number}`, category, beatmapId: 0, mods: [...defaultMods.requiredMods], ...defaultMods }] });
+  updateMappool(pool.id, { slots: [...pool.slots, { slotId: `${category}${number}`, category, beatmapId: 0, ...defaultMods }] });
 }
 function previewKey(pool, slot) {
   return `${pool.id}:${slot.slotId}`;
@@ -612,7 +597,7 @@ function importBulkMaps({ maps }) {
   if (!pool || !maps?.length) return;
 
   const categories = [...(pool.categories || [])];
-  const slots = pool.slots.map((slot) => ({ ...slot, mods: [...(slot.mods || [])] }));
+  const slots = pool.slots.map((slot) => ({ ...slot, requiredMods: [...(slot.requiredMods || [])], allowedMods: [...(slot.allowedMods || [])] }));
   const nextNumbers = new Map();
   const ensureCategory = (name) => {
     if (categories.some((category) => category.toLowerCase() === name.toLowerCase())) return categories.find((category) => category.toLowerCase() === name.toLowerCase());
@@ -638,7 +623,6 @@ function importBulkMaps({ maps }) {
     const emptySlot = slots.find((slot) => slot.category === category && Number(slot.beatmapId) <= 0);
     const value = {
       beatmapId: Number(map.id),
-      mods: [...defaultLazerModsForCategory(category).requiredMods],
       ...defaultLazerModsForCategory(category),
       preview: map.preview,
     };
@@ -655,9 +639,13 @@ function importPool(event) {
     .text()
     .then((text) => {
       const value = JSON.parse(text);
+      if (value?.client !== "lazer") {
+        toast.add({ severity: "error", summary: "Import failed", detail: "This file is not a Lazer mappool.", life: 4000 });
+        return;
+      }
       addMappool({ ...value, id: crypto.randomUUID() });
     })
-    .catch(() => {});
+    .catch(() => toast.add({ severity: "error", summary: "Import failed", detail: "The selected file is not valid mappool JSON.", life: 4000 }));
 }
 watch(editing, (value) => {
   if (value) poolEditVisible.value = true;
