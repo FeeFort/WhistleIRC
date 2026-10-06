@@ -1,8 +1,114 @@
 import { formatLogRecord } from "./loggerFormat.js";
-import type { LogFieldsInput, LogLevel, LoggerOptions, LoggerRuntimeOptions, LoggerState, LogScope, StartupBannerInfo, TraceOperation, TraceOperationDetails } from "./types.js";
+import { appendFileSync, mkdirSync } from "node:fs";
+import { homedir } from "node:os";
+import path from "node:path";
+import { randomUUID } from "node:crypto";
+import { stripVTControlCharacters } from "node:util";
+import type {
+  LogFieldsInput,
+  LogLevel,
+  LoggerOptions,
+  LoggerRuntimeOptions,
+  LoggerState,
+  LogScope,
+  StartupBannerInfo,
+  TraceOperation,
+  TraceOperationDetails,
+  LogFileSink,
+  LogSink,
+  FileLoggingOptions,
+} from "./types.js";
 
 // Levels go from most severe to most detailed
 export const LOG_LEVELS = ["CRITICAL", "ERROR", "WARN", "INFO", "DEBUG", "TRACE"] as const;
+
+export function resolveFileLoggingOptions(
+  args: readonly string[] = process.argv.slice(2),
+  environment: Readonly<Record<string, string | undefined>> = process.env,
+  platform: string = process.platform,
+  home = homedir(),
+): FileLoggingOptions {
+  const separator = args.indexOf("--");
+  const flags = separator < 0 ? args : args.slice(0, separator);
+  let directory = environment.WHISTLEIRC_LOG_DIR;
+  for (let index = 0; index < flags.length; index++) {
+    const arg = flags[index];
+    if (arg === "--log-dir") {
+      const value = flags[++index];
+      if (!value || value.startsWith("--")) throw new Error("--log-dir requires a directory path");
+      directory = value;
+    } else if (arg.startsWith("--log-dir=")) {
+      directory = arg.slice("--log-dir=".length);
+      if (!directory) throw new Error("--log-dir requires a directory path");
+    }
+  }
+  if (!directory) {
+    if (platform === "win32") directory = path.join(environment.LOCALAPPDATA || path.join(home, "AppData", "Local"), "WhistleIRC", "logs");
+    else if (platform === "darwin") directory = path.join(home, "Library", "Logs", "WhistleIRC");
+    else directory = path.join(environment.XDG_STATE_HOME && path.isAbsolute(environment.XDG_STATE_HOME) ? environment.XDG_STATE_HOME : path.join(home, ".local", "state"), "WhistleIRC", "logs");
+  }
+  return { enabled: !flags.includes("--no-file-log"), directory: path.resolve(directory) };
+}
+
+export function createRuntimeFileSink(options: FileLoggingOptions): LogFileSink | undefined {
+  if (!options.enabled) return undefined;
+  let sink: LogFileSink | undefined;
+  let disabled = false;
+  return (record) => {
+    if (disabled) return;
+    try {
+      if (!sink) {
+        mkdirSync(options.directory, { recursive: true });
+        const name = `whistleirc-${new Date().toISOString().replace(/[:.]/g, "-")}-${process.pid}-${randomUUID()}.jsonl`;
+        sink = createJsonFileSink(path.join(options.directory, name));
+      }
+      sink(record);
+    } catch (error) {
+      disabled = true;
+      process.stderr.write(`File logging disabled: ${error instanceof Error ? error.message : String(error)}\n`);
+    }
+  };
+}
+
+function jsonValue(value: unknown, seen = new WeakSet<object>()): unknown {
+  if (typeof value === "string") return stripVTControlCharacters(value);
+  if (typeof value === "bigint") return String(value);
+  if (value instanceof Date) return value.toISOString();
+  if (value === null || typeof value !== "object") return value;
+  if (seen.has(value)) return "[Circular]";
+  seen.add(value);
+  try {
+    if (value instanceof Error) {
+      const result: Record<string, unknown> = { name: jsonValue(value.name), message: jsonValue(value.message) };
+      if (value.stack) result.stack = jsonValue(value.stack);
+      for (const [key, item] of Object.entries(value)) result[key] = jsonValue(item, seen);
+      if (value.cause !== undefined) result.cause = jsonValue(value.cause, seen);
+      if (value instanceof AggregateError) result.errors = jsonValue(value.errors, seen);
+      return result;
+    }
+    if (Array.isArray(value)) return value.map((item) => jsonValue(item, seen));
+    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, jsonValue(item, seen)]));
+  } finally {
+    seen.delete(value);
+  }
+}
+
+export function createJsonFileSink(filePath: string): LogFileSink {
+  return (record) => {
+    const line = JSON.stringify({
+      timestamp: record.timestamp.toISOString(),
+      level: record.level,
+      scope: record.scope,
+      component: record.component,
+      message: stripVTControlCharacters(record.message),
+      fields: jsonValue(record.fields),
+      ...(record.operation ? { operation: record.operation } : {}),
+      ...(record.kind ? { kind: record.kind } : {}),
+      ...(record.banner ? { banner: jsonValue(record.banner) } : {}),
+    });
+    appendFileSync(filePath, `${line}\n`, "utf8");
+  };
+}
 
 export function resolveLoggerOptions(
   args: readonly string[] = process.argv.slice(2),
@@ -22,12 +128,17 @@ export class Logger {
 
   constructor(options: LoggerOptions = {}, scope: LogScope = "core", component = "server") {
     const colors = options.colors ?? resolveLoggerOptions([]).colors;
+    const terminalSink: LogSink =
+      options.sink ?? ((record) => process.stderr.write(formatLogRecord(record, { colors, level: this.state.level, isTTY: Boolean(process.stderr.isTTY), columns: process.stderr.columns })));
     this.state = {
       operationSequence: 0,
       bannerShown: false,
       level: options.level ?? "INFO",
       colors,
-      sink: options.sink ?? ((record) => process.stderr.write(formatLogRecord(record, { colors, level: this.state.level, isTTY: Boolean(process.stderr.isTTY), columns: process.stderr.columns }))),
+      sink: (record) => {
+        terminalSink(record);
+        options.fileSink?.(record);
+      },
       now: options.now ?? (() => new Date()),
       monotonicNow: options.monotonicNow ?? (() => performance.now()),
     };
@@ -141,4 +252,4 @@ export class Logger {
   }
 }
 
-export const logger = new Logger(resolveLoggerOptions());
+export const logger = new Logger({ ...resolveLoggerOptions(), fileSink: createRuntimeFileSink(resolveFileLoggingOptions()) });
