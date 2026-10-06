@@ -9,10 +9,12 @@ const props = defineProps({
   visible: { type: Boolean, default: false },
   disabled: { type: Boolean, default: false },
   loading: { type: Boolean, default: false },
+  initialQueueMode: { type: String, default: "HostOnly" },
   initialMatchType: { type: String, default: "team_versus" },
   initialMaxParticipants: { type: Number, default: null },
 });
 const emit = defineEmits(["update:visible", "send"]);
+const queueMode = ref("HostOnly");
 const matchType = ref("team_versus");
 const maxParticipants = ref(16);
 const maxParticipantsLabel = computed(() => (maxParticipants.value >= 17 ? "∞" : String(maxParticipants.value)));
@@ -20,7 +22,13 @@ const gameModeOptions = [
   { label: "HeadToHead", value: "head_to_head" },
   { label: "Team VS", value: "team_versus" },
 ];
+const queueModeOptions = [
+  { label: "Host only", value: "HostOnly" },
+  { label: "All players", value: "AllPlayers" },
+  { label: "All players (round robin)", value: "AllPlayersRoundRobin" },
+];
 function reset() {
+  queueMode.value = ["HostOnly", "AllPlayers", "AllPlayersRoundRobin"].includes(props.initialQueueMode) ? props.initialQueueMode : "HostOnly";
   matchType.value = ["head_to_head", "team_versus"].includes(props.initialMatchType) ? props.initialMatchType : "team_versus";
   const initialMaxParticipants = Number(props.initialMaxParticipants);
   maxParticipants.value = !Number.isFinite(initialMaxParticipants) || initialMaxParticipants <= 0 ? 17 : Math.min(17, Math.max(1, initialMaxParticipants));
@@ -31,6 +39,7 @@ function close() {
 function send() {
   if (props.disabled || props.loading) return;
   emit("send", {
+    queue_mode: queueMode.value,
     match_type: matchType.value,
     max_participants: maxParticipants.value >= 17 ? 0 : maxParticipants.value,
   });
@@ -57,8 +66,16 @@ watch(
   >
     <div class="lobby-setup-dialog__body">
       <label class="lobby-setup-dialog__field">
+        <span>Queue mode</span>
+        <div class="lazer-lobby-setup-dialog__select-control">
+          <SelectButton v-model="queueMode" :options="queueModeOptions" optionLabel="label" optionValue="value" :allowEmpty="false" :disabled="disabled || loading" />
+        </div>
+      </label>
+      <label class="lobby-setup-dialog__field">
         <span>Game mode</span>
-        <SelectButton v-model="matchType" :options="gameModeOptions" optionLabel="label" optionValue="value" :allowEmpty="false" :disabled="disabled || loading" />
+        <div class="lazer-lobby-setup-dialog__select-control">
+          <SelectButton v-model="matchType" :options="gameModeOptions" optionLabel="label" optionValue="value" :allowEmpty="false" :disabled="disabled || loading" />
+        </div>
       </label>
       <div class="lobby-setup-dialog__field">
         <div class="lobby-setup-dialog__slider-label">
@@ -126,15 +143,26 @@ watch(
   text-transform: uppercase;
   letter-spacing: 0.03em;
 }
-.lobby-setup-dialog__field :deep(.p-selectbutton) {
-  display: flex;
-  width: 100%;
+.lazer-lobby-setup-dialog__select-control :deep(.p-selectbutton) {
+  display: inline-flex;
 }
-.lobby-setup-dialog__field :deep(.p-selectbutton .p-togglebutton) {
-  flex: 1 1 0;
-  min-width: 0;
-  padding: 0.48rem 0.35rem;
-  font-size: 0.7rem;
+.lazer-lobby-setup-dialog__select-control :deep(.p-selectbutton .p-togglebutton-content) {
+  border-radius: 0;
+  background: transparent !important;
+  box-shadow: none;
+}
+.lazer-lobby-setup-dialog__select-control :deep(.p-selectbutton .p-togglebutton) {
+  min-width: 4.2rem;
+  padding: 0.45rem 0.6rem;
+  border-color: var(--app-border);
+  background: var(--app-control);
+  color: var(--app-muted);
+  font-size: 0.72rem;
+}
+.lazer-lobby-setup-dialog__select-control :deep(.p-selectbutton .p-togglebutton.p-togglebutton-checked) {
+  border-color: rgba(var(--app-primary-rgb), 0.35);
+  background: rgba(var(--app-primary-rgb), 0.16);
+  color: var(--app-primary-bright);
 }
 .lobby-setup-dialog__slider-label {
   display: flex;

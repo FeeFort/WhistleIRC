@@ -703,6 +703,7 @@ watch(
       if (pendingRoom && Number(pendingRoom.room_id) === pendingSettings.roomId) {
         pendingRoom.max_participants = pendingSettings.maxParticipants;
         if (pendingSettings.matchType) pendingRoom.state = { ...pendingRoom.state, type: pendingSettings.matchType };
+        if (pendingSettings.queueMode) pendingRoom.queue_mode = pendingSettings.queueMode;
       }
       pendingLazerLobbySettings.value = null;
       lazerLobbySetupLoading.value = false;
@@ -3065,9 +3066,11 @@ function applyLazerLobbySetup(settings) {
   const roomId = Number(activeLazerRoom.value.room_id);
   const maxParticipants = Number(settings.max_participants);
   const matchType = settings.match_type;
-  pendingLazerLobbySettings.value = { roomId, maxParticipants, matchType };
+  const queueMode = settings.queue_mode;
+  pendingLazerLobbySettings.value = { roomId, maxParticipants, matchType, queueMode };
   lazerLobbySetupLoading.value = true;
   const sent = changeLazerRoomSettings(roomId, {
+    queue_mode: queueMode,
     match_type: matchType,
     max_participants: maxParticipants,
   });
@@ -4114,6 +4117,7 @@ function handleLazerSendResult(result) {
         v-model:visible="lobbySetupDialogOpen"
         :disabled="Boolean(activeLazerRoom?.closed)"
         :loading="lazerLobbySetupLoading"
+        :initial-queue-mode="activeLazerRoom?.queue_mode || 'HostOnly'"
         :initial-match-type="activeLazerRoom?.state?.type || 'team_versus'"
         :initial-max-participants="activeLazerRoom?.max_participants ?? null"
         @send="applyLazerLobbySetup"
