@@ -23,7 +23,7 @@ export async function applyMacosUpdate(parentPid: number, assetPath: string): Pr
   await waitForExit(parentPid);
   const appRoot = process.execPath.slice(0, process.execPath.indexOf(".app/") + 4);
   if (!appRoot.endsWith(".app")) throw new Error("The current application bundle could not be located.");
-  const extractDirectory = await mkdtemp(path.join(os.tmpdir(), "whistleirc-install-"));
+  const extractDirectory = await mkdtemp(path.join(os.tmpdir(), "whistleref-install-"));
   try {
     await execFile("ditto", ["-x", "-k", assetPath, extractDirectory]);
     const sourceApp = path.join(extractDirectory, path.basename(appRoot));

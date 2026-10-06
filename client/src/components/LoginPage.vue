@@ -110,7 +110,7 @@ watch(
     <section class="login-card" aria-labelledby="login-title">
       <div class="login-card__brand">
         <span class="login-card__brand-mark">Whistle</span>
-        <span>IRC</span>
+        <span>Ref</span>
       </div>
 
       <div v-if="showSetup" class="login-setup">

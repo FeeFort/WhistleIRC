@@ -1,4 +1,4 @@
-const DATABASE_NAME = "whistleirc-auth";
+const DATABASE_NAME = "whistleref-auth";
 const DATABASE_VERSION = 1;
 const CREDENTIALS_STORE = "credentials";
 const KEYS_STORE = "keys";

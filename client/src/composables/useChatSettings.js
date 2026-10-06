@@ -18,7 +18,7 @@ export const DEFAULT_CHAT_SETTINGS = {
   fullSlots: false,
 };
 
-const STORAGE_KEY = "feeirc-chat-settings";
+const STORAGE_KEY = "whistleref-chat-settings";
 
 function loadSettings() {
   try {

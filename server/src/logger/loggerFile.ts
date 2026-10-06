@@ -45,7 +45,7 @@ export function createRuntimeFileSink(options: FileLoggingOptions): LogFileSink 
   async function cleanup(): Promise<void> {
     const files = [];
     for (const name of await readdir(options.directory)) {
-      if (!/^whistleirc-.*\.jsonl$/.test(name)) continue;
+      if (!/^whistleref-.*\.jsonl$/.test(name)) continue;
       const file = path.join(options.directory, name);
       const info = await stat(file);
       if (info.isFile()) files.push({ file, size: info.size, modified: info.mtimeMs });
@@ -67,7 +67,7 @@ export function createRuntimeFileSink(options: FileLoggingOptions): LogFileSink 
     if (!current || nextDate !== date || (options.maxFileBytes !== undefined && bytes > 0 && bytes + size > options.maxFileBytes)) {
       activeFiles.delete(current);
       await mkdir(options.directory, { recursive: true, mode: 0o700 });
-      current = path.join(options.directory, `whistleirc-${nextDate}-${process.pid}-${randomUUID()}.jsonl`);
+      current = path.join(options.directory, `whistleref-${nextDate}-${process.pid}-${randomUUID()}.jsonl`);
       activeFiles.add(current);
       date = nextDate;
       bytes = 0;

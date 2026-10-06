@@ -77,16 +77,16 @@ test("TRACE files retain stacks and retention removes expired logs", async (t) =
   await new Promise((resolve) => setTimeout(resolve, 10));
   sink({ ...record, timestamp: new Date("2026-10-07") });
   await sink.flush();
-  assert.equal(readdirSync(directory).filter((name) => name.startsWith("whistleirc-")).length, 1);
+  assert.equal(readdirSync(directory).filter((name) => name.startsWith("whistleref-")).length, 1);
   assert.ok(readdirSync(directory).includes("trace.jsonl"));
 });
 
 test("file logging paths and CLI overrides", () => {
-  assert.equal(resolveFileLoggingOptions([], {}, "linux", "/tmp/home").directory, "/tmp/home/.local/state/WhistleIRC/logs");
-  assert.equal(resolveFileLoggingOptions([], { XDG_STATE_HOME: "/tmp/state" }, "linux", "/tmp/home").directory, "/tmp/state/WhistleIRC/logs");
-  assert.equal(resolveFileLoggingOptions([], {}, "darwin", "/tmp/home").directory, "/tmp/home/Library/Logs/WhistleIRC");
-  assert.equal(resolveFileLoggingOptions([], { LOCALAPPDATA: "/tmp/local" }, "win32", "/tmp/home").directory, "/tmp/local/WhistleIRC/logs");
-  assert.equal(resolveFileLoggingOptions(["--log-dir", "/tmp/cli"], { WHISTLEIRC_LOG_DIR: "/tmp/env" }).directory, "/tmp/cli");
+  assert.equal(resolveFileLoggingOptions([], {}, "linux", "/tmp/home").directory, "/tmp/home/.local/state/WhistleRef/logs");
+  assert.equal(resolveFileLoggingOptions([], { XDG_STATE_HOME: "/tmp/state" }, "linux", "/tmp/home").directory, "/tmp/state/WhistleRef/logs");
+  assert.equal(resolveFileLoggingOptions([], {}, "darwin", "/tmp/home").directory, "/tmp/home/Library/Logs/WhistleRef");
+  assert.equal(resolveFileLoggingOptions([], { LOCALAPPDATA: "/tmp/local" }, "win32", "/tmp/home").directory, "/tmp/local/WhistleRef/logs");
+  assert.equal(resolveFileLoggingOptions(["--log-dir", "/tmp/cli"], { WHISTLEREF_LOG_DIR: "/tmp/env" }).directory, "/tmp/cli");
   assert.equal(resolveFileLoggingOptions(["--log-dir=/tmp/equal"]).directory, "/tmp/equal");
   assert.equal(resolveFileLoggingOptions(["--no-file-log"]).enabled, false);
   assert.equal(resolveFileLoggingOptions(["--", "--no-file-log"]).enabled, true);

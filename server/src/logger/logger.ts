@@ -29,7 +29,7 @@ export function resolveFileLoggingOptions(
 ): FileLoggingOptions {
   const separator = args.indexOf("--");
   const flags = separator < 0 ? args : args.slice(0, separator);
-  let directory = environment.WHISTLEIRC_LOG_DIR;
+  let directory = environment.WHISTLEREF_LOG_DIR;
   for (let index = 0; index < flags.length; index++) {
     const arg = flags[index];
     if (arg === "--log-dir") {
@@ -42,9 +42,9 @@ export function resolveFileLoggingOptions(
     }
   }
   if (!directory) {
-    if (platform === "win32") directory = path.join(environment.LOCALAPPDATA || path.join(home, "AppData", "Local"), "WhistleIRC", "logs");
-    else if (platform === "darwin") directory = path.join(home, "Library", "Logs", "WhistleIRC");
-    else directory = path.join(environment.XDG_STATE_HOME && path.isAbsolute(environment.XDG_STATE_HOME) ? environment.XDG_STATE_HOME : path.join(home, ".local", "state"), "WhistleIRC", "logs");
+    if (platform === "win32") directory = path.join(environment.LOCALAPPDATA || path.join(home, "AppData", "Local"), "WhistleRef", "logs");
+    else if (platform === "darwin") directory = path.join(home, "Library", "Logs", "WhistleRef");
+    else directory = path.join(environment.XDG_STATE_HOME && path.isAbsolute(environment.XDG_STATE_HOME) ? environment.XDG_STATE_HOME : path.join(home, ".local", "state"), "WhistleRef", "logs");
   }
   return { enabled: !flags.includes("--no-file-log"), directory: path.resolve(directory) };
 }
