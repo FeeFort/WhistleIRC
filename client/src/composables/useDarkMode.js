@@ -3,9 +3,9 @@ import { nextTick, ref } from "vue";
 export const DEFAULT_PRIMARY_COLOR = "#a970ff";
 export const THEME_TRANSITION_DURATION = 220;
 const THEME_TRANSITION_CLEANUP_BUFFER = 32;
-const storedTheme = localStorage.getItem("feeirc-theme");
+const storedTheme = localStorage.getItem("whistleref-theme");
 const isDark = ref(storedTheme !== "light");
-const primaryColor = ref(localStorage.getItem("feeirc-primary") || DEFAULT_PRIMARY_COLOR);
+const primaryColor = ref(localStorage.getItem("whistleref-primary") || DEFAULT_PRIMARY_COLOR);
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
@@ -92,14 +92,14 @@ function applyTheme(nextIsDark = isDark.value) {
 
 function toggleDark() {
   const nextIsDark = !isDark.value;
-  localStorage.setItem("feeirc-theme", nextIsDark ? "dark" : "light");
+  localStorage.setItem("whistleref-theme", nextIsDark ? "dark" : "light");
   transitionTheme(nextIsDark);
 }
 
 function setPrimaryColor(color) {
   if (!/^#[0-9a-f]{6}$/i.test(color)) return;
   primaryColor.value = color;
-  localStorage.setItem("feeirc-primary", color);
+  localStorage.setItem("whistleref-primary", color);
   transitionTheme(isDark.value, false);
 }
 

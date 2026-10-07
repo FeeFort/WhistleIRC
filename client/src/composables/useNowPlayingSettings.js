@@ -1,6 +1,6 @@
 import { ref, watch } from "vue";
 
-const STORAGE_KEY = "feeirc-now-playing-settings";
+const STORAGE_KEY = "whistleref-now-playing-settings";
 const showNowPlaying = ref(localStorage.getItem(STORAGE_KEY) !== "false");
 const showProgressBar = ref(localStorage.getItem(`${STORAGE_KEY}-progress`) !== "false");
 const showProgressTimeLabel = ref(localStorage.getItem(`${STORAGE_KEY}-progress-label`) !== "false");

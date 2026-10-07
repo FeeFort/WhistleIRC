@@ -18,7 +18,7 @@ let totalTests = 0;
 let failedTests = 0;
 
 const fileWidth = Math.max(...testFiles.map((file) => file.length));
-console.log(`\n${colors.bold.cyan("◆ WhistleIRC · Server tests")}`);
+console.log(`\n${colors.bold.cyan("◆ WhistleRef · Server tests")}`);
 console.log(`${colors.dim(`Running ${testFiles.length} test files`)}\n`);
 
 for (const file of testFiles) {

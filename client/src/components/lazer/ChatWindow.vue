@@ -50,7 +50,6 @@ const props = defineProps({
   roomClosed: { type: Boolean, default: false },
   nowPlaying: { type: Object, default: null },
   playlistItems: { type: Array, default: () => [] },
-  playlistHistory: { type: Array, default: () => [] },
   currentPlaylistItemId: { type: Number, default: null },
   showProgressBar: { type: Boolean, default: true },
   showProgressTimeLabel: { type: Boolean, default: true },
@@ -614,7 +613,7 @@ function forwardCommand(command) {
     </div>
 
     <NowPlaying :map="nowPlaying" :team-red-name="teamRedName" :team-blue-name="teamBlueName" :show-progress-bar="showProgressBar" :show-progress-time-label="showProgressTimeLabel" />
-    <NextMap :room-id="roomId" :items="playlistItems" :history-items="playlistHistory" :current-item-id="currentPlaylistItemId" :disabled="roomClosed" />
+    <NextMap :room-id="roomId" :items="playlistItems" :current-item-id="currentPlaylistItemId" :disabled="roomClosed" />
 
     <div ref="listEl" class="chat-log" @scroll="onScroll" @wheel="onWheel">
       <div class="chat-log__inner">

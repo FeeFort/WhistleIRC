@@ -56,7 +56,7 @@ import { useNowPlayingSettings } from "./composables/useNowPlayingSettings";
 import { NOTIFICATION_SOUNDS, NOTIFICATION_TRIGGER_OPTIONS, getNotificationSoundUrl, useNotifications } from "./composables/useNotifications";
 
 const commandScrollToken = ref(0);
-const savedLogin = localStorage.getItem("feeirc-remembered-login") || "";
+const savedLogin = localStorage.getItem("whistleref-remembered-login") || "";
 const currentUser = ref("");
 const refereeUser = computed(() => currentUser.value);
 const isAuthenticated = ref(false);
@@ -101,6 +101,9 @@ const lazerLobbyStates = reactive({});
 const lazerCountdowns = reactive({});
 const lazerMatchStartCountdowns = reactive({});
 const lazerMatchPlaylistItems = reactive({});
+const lazerMatchTeams = new Map();
+const pendingLazerMappoolSlots = new Map();
+const lazerMatchMappoolSlots = new Map();
 const lazerCompletedBeatmaps = reactive({});
 const lazerConnectionState = ref("disconnected");
 const lazerSyncState = ref("idle");
@@ -111,6 +114,7 @@ const lobbyContexts = reactive({});
 const pendingPartChannels = new Set();
 const pendingLobbySeed = ref(null);
 const pendingLobbyCreatedViaApp = ref(false);
+const pendingLazerLobbySeed = ref(null);
 const pendingJoinChannel = ref(null);
 const lazerPlayersDialogOpen = ref(false);
 const lazerRefereesDialogOpen = ref(false);
@@ -153,6 +157,7 @@ const {
   makeLazerRoom,
   joinLazerRoom,
   addLazerPlaylistItem,
+  editLazerCurrentPlaylistItem,
   sendLazerChatMessage,
   rollLazer,
   leaveLazerRoom,
@@ -173,12 +178,12 @@ const loginToastGroup = "irc-login";
 const launchedAfterUpdate = new URLSearchParams(window.location.search).has("updated");
 const { activePreset } = useLobbyMessages();
 const { getActivePool, getMapState, setMapState, getQualificationMode, hasQualificationMode, setQualificationMode } = useMappool();
-const { getActivePool: getLazerActivePool } = useMappool("lazer");
+const { getActivePool: getLazerActivePool, getMapState: getLazerMapState, setMapState: setLazerMapState } = useMappool("lazer");
 const { soundEnabled, toastEnabled, ignoreBanchoBot, sound, soundTrigger, toastTrigger } = useNotifications();
 const { showNowPlaying, showProgressBar, showProgressTimeLabel } = useNowPlayingSettings();
 const nowPlayingByLobby = reactive({});
 const lazerNowPlayingFinishedTimeouts = new Map();
-const PLAYER_PROFILE_CACHE_KEY = "whistleirc-lobby-player-profiles";
+const PLAYER_PROFILE_CACHE_KEY = "whistleref-lobby-player-profiles";
 const primaryColorDraft = ref(primaryColor.value);
 const banchoBotColorDraft = ref(banchoBotColor.value);
 const redTeamColorDraft = ref(redTeamColor.value);
@@ -519,15 +524,9 @@ watch(
           player.team = lazerEventPayload.team ?? null;
         }
       } else if (lazerEvent.eventType === "PlaylistItemChanged" && room && lazerEventPayload.playlist_item) {
-        const changedItem = lazerEventPayload.playlist_item;
-        const history = Array.isArray(room.playlistHistory) ? [...room.playlistHistory] : [];
-        const historyIndex = history.findIndex((item) => Number(item.id) === Number(changedItem.id));
-        if (historyIndex === -1) history.push(changedItem);
-        else history[historyIndex] = changedItem;
-        room.playlistHistory = history;
-        room.playlist = getActiveLazerPlaylist(history);
-        restoreLazerSinglePlaylistItem(room);
-        syncLazerNowPlaying(room);
+        // Playlist rendering is driven exclusively by the next lazer_room_state
+        // snapshot. PlaylistItemChanged is only a notification and must not
+        // create a local playlist copy that can drift from the server state.
       } else if (lazerEvent.eventType === "MatchStarted") {
         clearLazerNowPlayingFinished(lazerEventRoomId);
         clearLazerCountdown(lazerEventRoomId);
@@ -536,7 +535,12 @@ watch(
           const playlistItemId = Number(lazerEventPayload.playlist_item_id) || Number(getLazerCurrentPlaylistItem(room)?.id);
           room.current_playlist_item_id = playlistItemId;
           lazerMatchPlaylistItems[lazerEventRoomId] = playlistItemId;
+          const pendingSlot = pendingLazerMappoolSlots.get(lazerEventRoomId);
+          if (pendingSlot) lazerMatchMappoolSlots.set(lazerEventRoomId, pendingSlot);
+          pendingLazerMappoolSlots.delete(lazerEventRoomId);
           const currentItem = room.playlist.find((item) => Number(item.id) === playlistItemId);
+          const matchTeams = lazerEventPayload.teams;
+          lazerMatchTeams.set(lazerEventRoomId, matchTeams && typeof matchTeams === "object" ? new Map(Object.entries(matchTeams).map(([userId, team]) => [Number(userId), team])) : new Map());
           if (currentItem && room.playlist.length === 1) lazerSinglePlaylistMatches.set(lazerEventRoomId, { ...currentItem });
           else lazerSinglePlaylistMatches.delete(lazerEventRoomId);
           syncLazerNowPlaying(room);
@@ -557,8 +561,6 @@ watch(
             required_mods: abortedItem.required_mods,
             allowed_mods: abortedItem.allowed_mods,
             freestyle: abortedItem.freestyle,
-            attempts: 0,
-            timeoutId: null,
           });
         }
         clearLazerNowPlayingFinished(lazerEventRoomId);
@@ -570,11 +572,13 @@ watch(
         }
       } else if (lazerEvent.eventType === "MatchCompleted") {
         const completedPlaylistItemId = Number(lazerMatchPlaylistItems[lazerEventRoomId]) || Number(getLazerCurrentPlaylistItem(room)?.id);
-        const completedPlaylistItem = room?.playlistHistory?.find((item) => Number(item.id) === completedPlaylistItemId) || room?.playlist?.find((item) => Number(item.id) === completedPlaylistItemId);
+        const completedPlaylistItem = room?.playlist?.find((item) => Number(item.id) === completedPlaylistItemId);
         if (completedPlaylistItem?.beatmap_id) lazerCompletedBeatmaps[lazerEventRoomId] = Number(completedPlaylistItem.beatmap_id);
         if (room && Number.isInteger(completedPlaylistItemId) && completedPlaylistItemId > 0) {
-          void loadLazerMatchResult(room, completedPlaylistItemId);
+          void loadLazerMatchResult(room, completedPlaylistItemId, lazerMatchTeams.get(lazerEventRoomId), lazerMatchMappoolSlots.get(lazerEventRoomId));
         }
+        lazerMatchTeams.delete(lazerEventRoomId);
+        lazerMatchMappoolSlots.delete(lazerEventRoomId);
         delete lazerMatchPlaylistItems[lazerEventRoomId];
         const map = nowPlayingByLobby[lazerEventChatId];
         const completedItem = lazerSinglePlaylistMatches.get(lazerEventRoomId);
@@ -586,8 +590,6 @@ watch(
             required_mods: completedItem.required_mods,
             allowed_mods: completedItem.allowed_mods,
             freestyle: completedItem.freestyle,
-            attempts: 0,
-            timeoutId: null,
           });
         }
         if (map) {
@@ -663,8 +665,28 @@ watch(
 
     if (event?.type === "ack" && event.received === "lazer_make_room" && event.result) {
       const room = registerLazerRoom(event.result);
+      const seed = pendingLazerLobbySeed.value;
+      pendingLazerLobbySeed.value = null;
+      if (room && seed) {
+        const lobby = lazerLobbyStates[room.id];
+        if (lobby) {
+          lobby.teamAName = seed.teamRed;
+          lobby.teamBName = seed.teamBlue;
+          lobby.qualificationMode = seed.qualificationMode === true;
+          lobby.bestOf = Number.isInteger(seed.bestOf) && seed.bestOf > 0 ? seed.bestOf : null;
+          lobby.matchStatus = getMatchStatus(
+            { bestOf: lobby.bestOf, nextPickTeam: lobby.nextPickTeam, teamRedScore: lobby.teamAScore, teamBlueScore: lobby.teamBScore },
+            lobby.teamAName,
+            lobby.teamBName,
+          );
+        }
+      }
       if (room) activeChat.value = room.id;
       return;
+    }
+
+    if (event?.type === "error" && event.request === "lazer_make_room") {
+      pendingLazerLobbySeed.value = null;
     }
 
     if (event?.type === "lazer_rooms" && Array.isArray(event.roomIds)) {
@@ -1140,7 +1162,7 @@ function handleLogout() {
   currentUser.value = "";
   isAuthenticated.value = false;
   settingsOpen.value = false;
-  localStorage.removeItem("feeirc-remembered-login");
+  localStorage.removeItem("whistleref-remembered-login");
 }
 
 async function checkForUpdates() {
@@ -1258,10 +1280,10 @@ async function handleLogin({ username, password, rememberMe }) {
   if (connectedSuccessfully) {
     if (rememberMe) {
       void saveRememberedCredentials(username, password).catch(() => {});
-      localStorage.setItem("feeirc-remembered-login", username);
+      localStorage.setItem("whistleref-remembered-login", username);
     } else {
       void clearRememberedCredentials();
-      localStorage.removeItem("feeirc-remembered-login");
+      localStorage.removeItem("whistleref-remembered-login");
     }
     currentUser.value = username;
     isAuthenticated.value = true;
@@ -1305,7 +1327,7 @@ async function handleOsuLogout() {
     user: null,
   });
   await clearRememberedCredentials();
-  localStorage.removeItem("feeirc-remembered-login");
+  localStorage.removeItem("whistleref-remembered-login");
 }
 
 function handleCopyCallback() {
@@ -1396,9 +1418,6 @@ onBeforeUnmount(() => {
   }
   for (const timeoutId of lazerNowPlayingFinishedTimeouts.values()) window.clearTimeout(timeoutId);
   lazerNowPlayingFinishedTimeouts.clear();
-  for (const restore of pendingLazerPlaylistRestores.values()) {
-    if (restore.timeoutId) window.clearTimeout(restore.timeoutId);
-  }
   pendingLazerPlaylistRestores.clear();
 });
 
@@ -1414,7 +1433,7 @@ const banchoMessages = ref([
   {
     id: 1,
     type: "system",
-    text: "Welcome to WhistleIRC!",
+    text: "Welcome to WhistleRef!",
   },
 ]);
 const roomClosedByChat = reactive({});
@@ -1527,14 +1546,11 @@ function registerLazerRoom(room) {
   for (const player of room.players || []) loadLazerUserProfile(room.room_id, player.user_id);
   for (const referee of room.referees || []) loadLazerUserProfile(room.room_id, referee.user_id);
   const id = lazerChatId(Number(room.room_id));
-  const previousRoom = lazerRooms[id];
-  const playlistHistory = mergeLazerPlaylistHistory(previousRoom?.playlistHistory, room.playlist);
   const previousState = lazerLobbyStates[id] || {};
   const parsedTeams = parseLazerTeamNames(room.name);
   lazerRooms[id] = {
     ...room,
     playlist: getActiveLazerPlaylist(room.playlist),
-    playlistHistory,
     id,
     label: room.name || `Lazer room #${room.room_id}`,
     source: "lazer",
@@ -1556,37 +1572,20 @@ function registerLazerRoom(room) {
   };
   channelMessages[id] ||= [];
   unreadChats[id] ??= false;
+  // A room snapshot is authoritative for playlist contents. If a one-map
+  // match just completed, restore it only after this snapshot confirms that
+  // no unplayed item remains.
+  restoreLazerSinglePlaylistItem(lazerRooms[id]);
   syncLazerNowPlaying(lazerRooms[id]);
   return lazerRooms[id];
 }
 
-function mergeLazerPlaylistHistory(previous, incoming) {
-  const items = new Map();
-  for (const item of Array.isArray(previous) ? previous : []) {
-    if (Number.isInteger(Number(item?.id))) items.set(Number(item.id), item);
-  }
-  for (const item of Array.isArray(incoming) ? incoming : []) {
-    if (Number.isInteger(Number(item?.id))) items.set(Number(item.id), item);
-  }
-  return [...items.values()].sort((left, right) => Number(left.order) - Number(right.order));
-}
-
 function getActiveLazerPlaylist(playlist) {
   const items = Array.isArray(playlist) ? playlist : [];
-  const unplayedItems = items.filter((item) => !item?.was_played);
-  const source = unplayedItems;
-  const seenBeatmaps = new Set();
-  return source.filter((item) => {
-    const beatmapId = Number(item?.beatmap_id);
-    if (!Number.isInteger(beatmapId) || beatmapId <= 0 || seenBeatmaps.has(beatmapId)) return false;
-    seenBeatmaps.add(beatmapId);
-    return true;
-  });
+  return items.filter((item) => !item?.was_played);
 }
 
 function clearLazerPlaylistRestore(roomId) {
-  const restore = pendingLazerPlaylistRestores.get(Number(roomId));
-  if (restore?.timeoutId) window.clearTimeout(restore.timeoutId);
   pendingLazerPlaylistRestores.delete(Number(roomId));
 }
 
@@ -1598,8 +1597,6 @@ function queueLazerPlaylistRestore(roomId, item) {
     required_mods: item.required_mods,
     allowed_mods: item.allowed_mods,
     freestyle: item.freestyle,
-    attempts: 0,
-    timeoutId: null,
   });
 }
 
@@ -1608,20 +1605,12 @@ function restoreLazerSinglePlaylistItem(room) {
   const restore = pendingLazerPlaylistRestores.get(roomId);
   if (!Number.isInteger(roomId) || roomId <= 0 || !restore || room?.closed) return;
 
-  const items = Array.isArray(room.playlistHistory) ? room.playlistHistory : room.playlist;
+  const items = room.playlist;
   if (!Array.isArray(items) || items.some((item) => !item?.was_played)) {
-    if (restore.timeoutId) window.clearTimeout(restore.timeoutId);
     pendingLazerPlaylistRestores.delete(roomId);
     return;
   }
 
-  if (restore.timeoutId) return;
-  if (restore.attempts >= 3) {
-    pendingLazerPlaylistRestores.delete(roomId);
-    return;
-  }
-
-  restore.attempts += 1;
   addLazerPlaylistItem(roomId, {
     beatmap_id: restore.beatmap_id,
     ruleset_id: restore.ruleset_id,
@@ -1629,18 +1618,7 @@ function restoreLazerSinglePlaylistItem(room) {
     allowed_mods: restore.allowed_mods,
     freestyle: restore.freestyle,
   });
-
-  const retryDelay = restore.attempts === 1 ? 1000 : restore.attempts === 2 ? 2000 : null;
-  if (retryDelay === null) {
-    pendingLazerPlaylistRestores.delete(roomId);
-    return;
-  }
-
-  restore.timeoutId = window.setTimeout(() => {
-    restore.timeoutId = null;
-    const latestRoom = lazerRooms[lazerChatId(roomId)];
-    if (latestRoom) restoreLazerSinglePlaylistItem(latestRoom);
-  }, retryDelay);
+  pendingLazerPlaylistRestores.delete(roomId);
 }
 
 function getLazerCurrentPlaylistItem(room) {
@@ -1682,7 +1660,42 @@ function syncLazerNowPlaying(room, { force = false } = {}) {
     currentMap.rulesetId = playlistItem.ruleset_id;
     return;
   }
+  const localPreview = getLazerMappoolPreview(room.room_id, playlistItem.beatmap_id);
+  if (localPreview) {
+    setLazerNowPlayingFromPreview(chatId, playlistItem, localPreview);
+    return;
+  }
   void loadLazerNowPlayingMap(chatId, room.room_id, playlistItem);
+}
+
+function getLazerMappoolPreview(roomId, beatmapId) {
+  const pool = getLazerActivePool(lazerChatId(roomId));
+  const matchSlotId = lazerMatchMappoolSlots.get(Number(roomId)) || pendingLazerMappoolSlots.get(Number(roomId));
+  const slot = pool?.slots?.find((item) => item.slotId === matchSlotId) || pool?.slots?.find((item) => Number(item.beatmapId) === Number(beatmapId));
+  return slot?.preview || null;
+}
+
+function setLazerNowPlayingFromPreview(chatId, playlistItem, preview) {
+  const beatmapId = Number(playlistItem.beatmap_id);
+  const beatmapsetId = Number(preview.beatmapsetId);
+  const validBeatmapsetId = Number.isInteger(beatmapsetId) && beatmapsetId > 0 ? beatmapsetId : null;
+  setNowPlaying(chatId, {
+    id: beatmapId,
+    beatmapId,
+    playlistItemId: playlistItem.id,
+    title: preview.title,
+    artist: preview.artist,
+    diff: preview.diff,
+    mapperName: preview.author,
+    starRating: preview.starRating,
+    totalSeconds: preview.totalSeconds,
+    beatmapsetId: validBeatmapsetId,
+    coverUrl: validBeatmapsetId ? `https://assets.ppy.sh/beatmaps/${validBeatmapsetId}/covers/card@2x.jpg` : "",
+    rulesetId: playlistItem.ruleset_id,
+    mods: (Array.isArray(playlistItem.required_mods) ? playlistItem.required_mods : []).map((mod) => (typeof mod === "string" ? mod : mod?.acronym)).filter(Boolean),
+    status: "waiting",
+    error: null,
+  });
 }
 
 async function loadLazerNowPlayingMap(chatId, roomId, playlistItem) {
@@ -1777,7 +1790,7 @@ const activeChatTitle = computed(() => {
 watch(
   [isAuthenticated, settingsOpen, activeChatTitle],
   ([authenticated, settingsVisible, title]) => {
-    document.title = authenticated && !settingsVisible && title ? `WhistleIRC — ${title}` : "WhistleIRC";
+    document.title = authenticated && !settingsVisible && title ? `WhistleRef — ${title}` : "WhistleRef";
   },
   { immediate: true },
 );
@@ -1805,6 +1818,7 @@ const activeLobbySize = computed(() => activeLobbyState.value?.size ?? 16);
 const activeLobbyTeamMode = computed(() => activeLobbyState.value?.teamMode || "HeadToHead");
 const activeLobbyScoreMode = computed(() => activeLobbyState.value?.scoreMode || "Score");
 const activeMappoolSlots = computed(() => getActivePool(activeChat.value)?.slots || []);
+const activeLazerMappoolSlots = computed(() => getLazerActivePool(activeChat.value)?.slots || []);
 const activeNowPlaying = computed(() => {
   if (!showNowPlaying.value || activeChatKind.value !== "lobby" || roomClosedByChat[activeChat.value]) return null;
   const map = nowPlayingByLobby[activeChat.value];
@@ -2838,13 +2852,15 @@ function handleSend(text) {
       if (!messageText) return;
       isAction = true;
     } else if (/^\/np$/i.test(command)) {
-      messageText = "is listening to [https://github.com/FeeFort/WhistleIRC WhistleIRC]";
+      messageText = "is listening to [https://github.com/FeeFort/WhistleRef WhistleRef]";
       isAction = true;
     }
 
     const roomId = Number(activeLazerRoom.value?.room_id);
     if (!Number.isInteger(roomId) || roomId <= 0 || activeLazerRoom.value?.closed) return;
-    queueLazerChatMessage(roomId, messageText, isAction);
+    const lazerLobby = activeLazerLobbyState.value;
+    const resolvedText = lazerLobby ? formatLobbyTemplate(messageText, getLazerLobbyTemplateValues(roomId, lazerLobby)) : messageText;
+    queueLazerChatMessage(roomId, resolvedText, isAction);
     return;
   }
   const channel = activeChat.value === "bancho" ? "BanchoBot" : activeDirectChat.value?.label || joinedChannels.value.find((item) => item.id === activeChat.value)?.label;
@@ -3105,7 +3121,8 @@ function handleCommand(command) {
 
 function handleCreateLobby(payload) {
   if (payload.mode === "lazer") {
-    makeLazerRoom(payload.lazer);
+    pendingLazerLobbySeed.value = payload.lobby || null;
+    if (!makeLazerRoom(payload.lazer)) pendingLazerLobbySeed.value = null;
     return;
   }
 
@@ -3114,7 +3131,7 @@ function handleCreateLobby(payload) {
   handleCommand(payload.command);
 }
 
-async function loadLazerMatchResult(room, playlistItemId) {
+async function loadLazerMatchResult(room, playlistItemId, matchTeams = new Map(), mappoolSlotId = null) {
   const roomId = Number(room?.room_id);
   const itemId = Number(playlistItemId);
   if (!Number.isInteger(roomId) || roomId <= 0 || !Number.isInteger(itemId) || itemId <= 0) return;
@@ -3123,19 +3140,20 @@ async function loadLazerMatchResult(room, playlistItemId) {
     const scores = Array.isArray(response?.scores) ? response.scores : [];
     if (!scores.length) return;
 
-    const playersById = new Map((room.players || []).map((player) => [Number(player.user_id), player]));
-    const teamScores = { red: 0, blue: 0 };
-    for (const score of scores) {
-      const player = playersById.get(Number(score.user_id));
-      const team = player?.team;
-      if (team !== "red" && team !== "blue") continue;
-      teamScores[team] += Number(score.total_score) || 0;
-    }
+    const chatId = lazerChatId(roomId);
+    const appendResultMessage = (text) => {
+      appendChatMessage(chatId, {
+        id: nextId++,
+        type: "system",
+        text: String(text),
+      });
+    };
 
+    const playersById = new Map((room.players || []).map((player) => [Number(player.user_id), player]));
     const teamPlayers = { red: [], blue: [] };
     for (const score of scores) {
       const player = playersById.get(Number(score.user_id));
-      const team = player?.team;
+      const team = matchTeams.get(Number(score.user_id)) || player?.team;
       if (team !== "red" && team !== "blue") continue;
       teamPlayers[team].push({
         userId: Number(score.user_id),
@@ -3147,6 +3165,15 @@ async function loadLazerMatchResult(room, playlistItemId) {
         misses: Number(score.statistics?.miss) || 0,
         mods: Array.isArray(score.mods) ? score.mods.map((mod) => String(mod.acronym || mod)).filter(Boolean) : [],
       });
+
+      const accuracy = Number(score.accuracy);
+      const accuracyText = Number.isFinite(accuracy) ? ` | ${(accuracy * 100).toFixed(2)}% acc` : "";
+      const combo = Number(score.max_combo);
+      const comboText = Number.isFinite(combo) ? ` | ${combo}x combo` : "";
+      const mods = Array.isArray(score.mods) ? score.mods.map((mod) => String(mod.acronym || mod)).filter(Boolean) : [];
+      const modsText = mods.length ? ` | ${mods.join("+")}` : "";
+      const teamLabel = team === "red" ? "Red" : "Blue";
+      appendResultMessage(`${score.user?.username || player?.username || `User #${score.user_id}`} [${teamLabel}]: ${Number(score.total_score) || 0}${accuracyText}${comboText}${modsText}`);
     }
     const average = (values) => (values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 0);
     const makeTeam = (team) => ({
@@ -3163,15 +3190,24 @@ async function loadLazerMatchResult(room, playlistItemId) {
     let blueScore = baseBlueScore;
     let winnerTeam = redScore === blueScore ? null : redScore > blueScore ? "red" : "blue";
     const pool = getLazerActivePool(lazerChatId(roomId));
-    const completedBeatmapId = Number(room?.playlistHistory?.find((item) => Number(item.id) === itemId)?.beatmap_id);
-    const condition = pool?.slots?.find((slot) => Number(slot.beatmapId) === completedBeatmapId)?.winCondition;
-    const calculated = await evaluateLazerWinCondition(condition?.source, resultRoom);
+    const completedBeatmapId = Number(room?.playlist?.find((item) => Number(item.id) === itemId)?.beatmap_id) || Number(scores[0]?.beatmap_id);
+    const slot = pool?.slots?.find((item) => item.slotId === mappoolSlotId) || pool?.slots?.find((item) => Number(item.beatmapId) === completedBeatmapId);
+    const condition = slot?.winCondition;
+    const conditionTemplate = String(condition?.template || "score")
+      .trim()
+      .toLowerCase();
+    // Built-in conditions read directly from the Lazer /scores response.
+    // Only a Custom condition evaluates user-provided code.
+    const calculated =
+      conditionTemplate === "custom"
+        ? await evaluateLazerWinCondition(condition?.source, resultRoom)
+        : calculateLazerApiResult(conditionTemplate, resultRoom, condition?.reverse === true, pool?.freeModMultipliers || {});
+    for (const message of calculated?.systemMessages || []) appendResultMessage(message);
     if (calculated?.result) {
       redScore = calculated.result.red;
       blueScore = calculated.result.blue;
       winnerTeam = calculated.winner === "tie" ? null : calculated.winner;
     }
-    const chatId = lazerChatId(roomId);
     const state = lazerLobbyStates[chatId] || (lazerLobbyStates[chatId] = {});
     const previousRedScore = Number(state.teamAScore) || 0;
     const previousBlueScore = Number(state.teamBScore) || 0;
@@ -3183,6 +3219,7 @@ async function loadLazerMatchResult(room, playlistItemId) {
       teamBlueScore: blueScore,
       scoreDifference: Math.abs(redScore - blueScore),
       winnerTeam,
+      metric: conditionTemplate,
     };
     state.nextPickTeam = nextPickTeam;
     if (winnerTeam === "red" && (!winningScore || previousRedScore < winningScore)) state.teamAScore = previousRedScore + 1;
@@ -3190,6 +3227,41 @@ async function loadLazerMatchResult(room, playlistItemId) {
   } catch (error) {
     toast.add({ severity: "error", summary: "Result loading failed", detail: formatLazerWsError(error?.message, "Unable to load the map result."), life: 5000 });
   }
+}
+
+function calculateLazerApiResult(template, room, reverse = false, multipliers = {}) {
+  if (template === "freemod") {
+    const normalizedMultipliers = Object.entries(multipliers || {})
+      .map(([mods, value]) => ({
+        mods: String(mods)
+          .toUpperCase()
+          .split(/[+\s]+/)
+          .filter(Boolean),
+        value: Number(value) || 1,
+      }))
+      .sort((left, right) => right.mods.length - left.mods.length);
+    const total = (team) =>
+      team.players.reduce((sum, player) => {
+        const playerMods = new Set((player.mods || []).map((mod) => String(mod).toUpperCase()));
+        const multiplier = normalizedMultipliers.find((entry) => entry.mods.every((mod) => playerMods.has(mod)))?.value || 1;
+        return sum + player.score * multiplier;
+      }, 0);
+    return makeLazerCalculatedResult(total(room.teamRed), total(room.teamBlue), reverse);
+  }
+  if (template === "accuracy") return makeLazerCalculatedResult(room.teamRed.accuracy, room.teamBlue.accuracy, reverse);
+  if (template === "combo") return makeLazerCalculatedResult(room.teamRed.combo, room.teamBlue.combo, reverse);
+  return makeLazerCalculatedResult(room.teamRed.score, room.teamBlue.score, reverse);
+}
+
+function makeLazerCalculatedResult(red, blue, reverse = false) {
+  const redValue = Number(red);
+  const blueValue = Number(blue);
+  if (!Number.isFinite(redValue) || !Number.isFinite(blueValue)) return null;
+  return {
+    winner: redValue === blueValue ? "tie" : (reverse ? redValue < blueValue : redValue > blueValue) ? "red" : "blue",
+    systemMessages: [],
+    result: { red: redValue, blue: blueValue },
+  };
 }
 
 async function evaluateLazerWinCondition(source, room) {
@@ -3244,7 +3316,7 @@ function resolveBeatmapWinner(teamRedName, teamBlueName, teamRedScore, teamBlueS
   return teamRedScore > teamBlueScore ? teamRedName : teamBlueName;
 }
 
-function getLobbyTemplateValues(lobby, result = {}) {
+function getLobbyTemplateValues(lobby, result = {}, { mappoolMode = "stable", lobbyId = activeChat.value } = {}) {
   const teamRedName = lobby.teamRed || result.teamAName || "Team A";
   const teamBlueName = lobby.teamBlue || result.teamBName || "Team B";
   const teamRedScore = lobby.teamRedScore ?? 0;
@@ -3255,16 +3327,19 @@ function getLobbyTemplateValues(lobby, result = {}) {
   const rawBeatmapTeamBlueScore = Number.isFinite(result.beatmapTeamBlueScore) ? result.beatmapTeamBlueScore : hasLastPlay ? lastPlay.teamBlueScore : "—";
   const explicitWinner = result.beatmapWinner === "red" ? teamRedName : result.beatmapWinner === "blue" ? teamBlueName : result.beatmapWinner === "tie" ? "Draw" : result.beatmapWinner;
   const beatmapWinner = resolveBeatmapWinner(teamRedName, teamBlueName, rawBeatmapTeamRedScore, rawBeatmapTeamBlueScore, explicitWinner);
+  const accuracyMultiplier = result.accuracy === "fraction" ? 100 : 1;
   const accuracySuffix = result.accuracy ? "%" : "";
-  const roundAccuracy = (score) => Math.round((score + Number.EPSILON) * 100) / 100;
+  const roundAccuracy = (score) => Math.round((score * accuracyMultiplier + Number.EPSILON) * 100) / 100;
   const formatBeatmapScore = (score) => (accuracySuffix && Number.isFinite(score) ? `${roundAccuracy(score)}%` : score);
   const beatmapTeamRedScore = formatBeatmapScore(rawBeatmapTeamRedScore);
   const beatmapTeamBlueScore = formatBeatmapScore(rawBeatmapTeamBlueScore);
-  const activeMappool = getActivePool(activeChat.value);
+  const isLazerMappool = mappoolMode === "lazer";
+  const activeMappool = isLazerMappool ? getLazerActivePool(lobbyId) : getActivePool(lobbyId);
+  const getPoolMapState = isLazerMappool ? getLazerMapState : getMapState;
   const availableMaps =
     sortMappoolSlots(activeMappool?.slots, activeMappool?.categories)
       .filter((slot) => {
-        const state = getMapState(activeChat.value, slot.slotId);
+        const state = getPoolMapState(lobbyId, slot.slotId);
         return Number(slot.beatmapId) > 0 && !/^(?:TB|Tiebreaker)\d*$/i.test(String(slot.slotId).trim()) && !state.picked && !state.banned;
       })
       .map((slot) => slot.slotId)
@@ -3289,6 +3364,23 @@ function getLobbyTemplateValues(lobby, result = {}) {
     matchStatus: getMatchStatus(lobby, teamRedName, teamBlueName),
     bestOf: lobby.bestOf ?? "—",
   };
+}
+
+function getLazerLobbyTemplateValues(roomId, lobby, result = {}) {
+  return getLobbyTemplateValues(
+    {
+      teamRed: lobby.teamAName,
+      teamBlue: lobby.teamBName,
+      teamRedScore: lobby.teamAScore,
+      teamBlueScore: lobby.teamBScore,
+      bestOf: lobby.bestOf,
+      nextPickTeam: lobby.nextPickTeam,
+      lastPlay: lobby.lastPlay || {},
+      currentBeatmap: lazerCompletedBeatmaps[roomId] ? { url: `https://osu.ppy.sh/b/${lazerCompletedBeatmaps[roomId]}` } : null,
+    },
+    { ...result, accuracy: lobby.lastPlay?.metric === "accuracy" ? "fraction" : result.accuracy },
+    { mappoolMode: "lazer", lobbyId: lazerChatId(roomId) },
+  );
 }
 
 function handleMappoolPick(map) {
@@ -3322,6 +3414,12 @@ function handleMappoolPick(map) {
   refreshNowPlayingMapAttributes(activeChat.value, nextMap);
 }
 
+function handleLazerMappoolPick(slot) {
+  const roomId = Number(activeLazerRoom.value?.room_id);
+  if (!Number.isInteger(roomId) || roomId <= 0 || !slot?.slotId) return;
+  pendingLazerMappoolSlots.set(roomId, String(slot.slotId));
+}
+
 function rulesetNumber(ruleset) {
   return ({ osu: 0, taiko: 1, fruits: 2, mania: 3 }[ruleset] ?? Number(ruleset)) || 0;
 }
@@ -3353,6 +3451,49 @@ function handleChatMappoolAction({ slotId, action }) {
   handleMappoolPick(slot);
 }
 
+function handleLazerChatMappoolAction({ slotId, action }) {
+  const room = activeLazerRoom.value;
+  if (!room || room.closed) return;
+  const pool = getLazerActivePool(activeChat.value);
+  const slot = pool?.slots?.find((item) => item.slotId === slotId);
+  if (!slot) return;
+  const current = getLazerMapState(activeChat.value, slot.slotId);
+
+  if (current.banned || current.picked) return;
+  if (action === "ban" && current.protected) return;
+
+  if (action === "ban") {
+    setLazerMapState(activeChat.value, slot.slotId, { banned: true, picked: false });
+    return;
+  }
+  if (action === "protect") {
+    if (current.protected) return;
+    setLazerMapState(activeChat.value, slot.slotId, { protected: true });
+    return;
+  }
+
+  const roomId = Number(room.room_id);
+  if (!Number.isInteger(roomId) || roomId <= 0) return;
+  const toMods = (mods) =>
+    (Array.isArray(mods) ? mods : [])
+      .map((mod) => (typeof mod === "string" ? mod : mod?.acronym))
+      .filter(Boolean)
+      .map((acronym) => ({ acronym: String(acronym).toUpperCase() }));
+  const sent = editLazerCurrentPlaylistItem(roomId, {
+    beatmap_id: Number(slot.beatmapId),
+    ruleset_id: rulesetNumber(pool.ruleset),
+    required_mods: toMods(slot.requiredMods || slot.required_mods),
+    allowed_mods: toMods(slot.allowedMods || slot.allowed_mods),
+    freestyle: slot.freestyle === true,
+  });
+  if (!sent) {
+    toast.add({ severity: "error", summary: "Pick failed", detail: "The server connection is not available.", life: 3500 });
+    return;
+  }
+  setLazerMapState(activeChat.value, slot.slotId, { picked: true });
+  handleLazerMappoolPick(slot);
+}
+
 function handleSendResult(result) {
   if (activeChat.value === "bancho") return;
   const lobby = activeLobbyState.value;
@@ -3378,19 +3519,7 @@ function handleLazerSendResult(result) {
   const lobby = activeLazerLobbyState.value;
   if (!Number.isInteger(roomId) || roomId <= 0 || !lobby || activeLazerRoom.value?.closed) return;
 
-  const values = getLobbyTemplateValues(
-    {
-      teamRed: lobby.teamAName,
-      teamBlue: lobby.teamBName,
-      teamRedScore: lobby.teamAScore,
-      teamBlueScore: lobby.teamBScore,
-      bestOf: lobby.bestOf,
-      nextPickTeam: lobby.nextPickTeam,
-      lastPlay: lobby.lastPlay || {},
-      currentBeatmap: lazerCompletedBeatmaps[roomId] ? { url: `https://osu.ppy.sh/b/${lazerCompletedBeatmaps[roomId]}` } : null,
-    },
-    result,
-  );
+  const values = getLazerLobbyTemplateValues(roomId, lobby, result);
 
   const outgoingMessages = activePreset.value?.messages.filter((message) => message.enabled && message.content.trim()) || [
     {
@@ -3453,6 +3582,7 @@ function handleLazerSendResult(result) {
     @logout="handleLogout"
     @open-settings="openSettings"
     @select-chat="selectChat"
+    @open-create-lobby="createLobbyDialogOpen = true"
     @open-add-channel="addChannelDialogOpen = true"
     @close-chat="closeActiveChat"
   >
@@ -3966,14 +4096,16 @@ function handleLazerSendResult(result) {
         :format="activeLazerMatchType"
         :now-playing="activeLazerNowPlaying"
         :playlist-items="activeLazerRoom?.playlist || []"
-        :playlist-history="activeLazerRoom?.playlistHistory || []"
         :current-playlist-item-id="activeLazerCurrentPlaylistItemId"
         :show-progress-bar="showProgressBar"
         :show-progress-time-label="showProgressTimeLabel"
         :team-red-name="activeLazerLobbyState?.teamAName || ''"
         :team-blue-name="activeLazerLobbyState?.teamBName || ''"
+        :mappool-slots="activeLazerMappoolSlots"
+        :get-mappool-state="(slotId) => getLazerMapState(activeChat, slotId)"
         :auto-scroll-token="commandScrollToken"
         @send="handleSend"
+        @mappool-action="handleLazerChatMappoolAction"
         @send-command="handleCommand"
         @start-timer="startLazerCountdown(activeLazerRoom?.room_id, $event)"
         @abort-timer="abortActiveLazerTimer(activeLazerRoom?.room_id)"
@@ -4037,13 +4169,14 @@ function handleLazerSendResult(result) {
           />
         </SidebarSectionCard>
         <LazerPlayerListCard :players="activeLazerDisplayPlayers" :current-user="currentUser" :disabled="Boolean(activeLazerRoom?.closed)" @open-players="lazerPlayersDialogOpen = true" />
-        <SidebarSectionCard title="Playlist" :icon="MapIcon" scrollable>
+        <SidebarSectionCard title="Mappool" :icon="MapIcon" scrollable>
           <LazerMappoolCard
             :disabled="Boolean(activeLazerRoom?.closed)"
             :lobby-id="activeChat"
             :room-id="activeLazerRoom?.room_id"
             :qualification-mode="activeLazerQualificationMode"
             @send-command="handleCommand"
+            @pick-map="handleLazerMappoolPick"
           />
         </SidebarSectionCard>
       </div>

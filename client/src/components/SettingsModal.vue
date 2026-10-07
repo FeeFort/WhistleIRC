@@ -103,15 +103,15 @@ onBeforeUnmount(() => {
             </nav>
             <p v-if="searchQuery.trim() && !Object.values(categoryMatches).some(Boolean)" class="settings-modal__no-results">No matching settings.</p>
             <div class="settings-modal__sidebar-footer">
-              <div class="settings-modal__brand"><span class="settings-modal__brand-mark">Whistle</span><span>IRC</span></div>
+              <div class="settings-modal__brand"><span class="settings-modal__brand-mark">Whistle</span><span>Ref</span></div>
               <span class="settings-modal__version">v{{ serverPackage.version }}</span>
               <div class="settings-modal__links">
-                <a href="https://github.com/FeeFort/WhistleIRC" target="_blank" rel="noreferrer">
+                <a href="https://github.com/FeeFort/WhistleRef" target="_blank" rel="noreferrer">
                   <img :src="githubIcon" alt="" />
                   <span>GitHub</span>
                 </a>
                 <span class="settings-modal__links-separator" aria-hidden="true">•</span>
-                <a href="https://github.com/FeeFort/WhistleIRC/releases" target="_blank" rel="noreferrer">
+                <a href="https://github.com/FeeFort/WhistleRef/releases" target="_blank" rel="noreferrer">
                   <Megaphone :size="14" aria-hidden="true" />
                   <span>What's new</span>
                 </a>

@@ -18,7 +18,7 @@ async function waitForExit(pid: number): Promise<void> {
 export async function applyWindowsUpdate(parentPid: number, assetPath: string): Promise<void> {
   await waitForExit(parentPid);
   const target = process.execPath;
-  const pending = path.join(await mkdtemp(path.join(os.tmpdir(), "whistleirc-install-")), path.basename(target));
+  const pending = path.join(await mkdtemp(path.join(os.tmpdir(), "whistleref-install-")), path.basename(target));
   try {
     await copyFile(assetPath, pending);
     await rename(target, `${target}.previous`);

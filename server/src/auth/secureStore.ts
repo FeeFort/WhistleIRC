@@ -7,12 +7,12 @@ import type { PersistedSession } from "../types.js";
 
 const execFileAsync = promisify(execFile);
 
-const SERVICE_NAME = "whistleirc";
+const SERVICE_NAME = "whistleref";
 const ACCOUNT_NAME = "osu-session";
 
 function getWindowsSecretFilePath(): string {
   const appData = process.env.APPDATA ?? path.join(os.homedir(), "AppData", "Roaming");
-  return path.join(appData, "WhistleIRC", "session.dpapi");
+  return path.join(appData, "WhistleRef", "session.dpapi");
 }
 
 // --- macOS: security CLI ---
@@ -53,7 +53,7 @@ function execFileWithStdin(command: string, args: string[], stdin: string): Prom
 }
 
 async function saveLinux(json: string): Promise<void> {
-  await execFileWithStdin("secret-tool", ["store", "--label=WhistleIRC osu! session", "service", SERVICE_NAME, "account", ACCOUNT_NAME], json);
+  await execFileWithStdin("secret-tool", ["store", "--label=WhistleRef osu! session", "service", SERVICE_NAME, "account", ACCOUNT_NAME], json);
 }
 
 async function loadLinux(): Promise<string | null> {

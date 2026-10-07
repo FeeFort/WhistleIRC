@@ -10,7 +10,7 @@ const source = readFileSync(new URL("../src/index.ts", import.meta.url), "utf8")
 const validation = source.slice(source.indexOf("function isNonEmptyString"), source.indexOf("function sendUpdateError"));
 const dispatch = source.slice(source.indexOf("function handleClientMessage"), source.indexOf('webSocketServer.on("connection"'));
 const replies = [];
-const context = vm.createContext({ sendJson: (_client, reply) => replies.push(JSON.parse(JSON.stringify(reply))) });
+const context = vm.createContext({ wsLog: { warn() {} }, sendJson: (_client, reply) => replies.push(JSON.parse(JSON.stringify(reply))) });
 vm.runInContext(ts.transpileModule(validation + dispatch, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText, context);
 const validate = context.validateMessage;
 

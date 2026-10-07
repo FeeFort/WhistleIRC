@@ -159,7 +159,7 @@ function requestOsu(payload) {
       if (message.type === "ack" && message.received === "osu_logout" && payload.type === "osu_logout") finish(resolve, message);
       if (message.type === "error" && message.request === payload.type) finish(reject, new Error(message.message || "Server error."));
     };
-    const handleError = () => finish(reject, new Error("Unable to connect to the WhistleIRC server."));
+    const handleError = () => finish(reject, new Error("Unable to connect to the WhistleRef server."));
     const handleClose = () => finish(reject, new Error("Server connection closed."));
     const timeoutId = setTimeout(() => finish(reject, new Error("osu! request timed out.")), loginTimeout);
 
@@ -198,7 +198,7 @@ function requestApi(endpoint, method = "GET", body = undefined) {
       if (message.type === "api_response" && message.endpoint === endpoint) finish(resolve, message.response);
       if (message.type === "error" && message.request === "api_request") finish(reject, new Error(message.message || "Server error."));
     };
-    const handleError = () => finish(reject, new Error("Unable to connect to the WhistleIRC server."));
+    const handleError = () => finish(reject, new Error("Unable to connect to the WhistleRef server."));
     const handleClose = () => finish(reject, new Error("Server connection closed."));
     const timeoutId = setTimeout(() => finish(reject, new Error("osu! API request timed out.")), loginTimeout);
 
@@ -390,7 +390,7 @@ export function useServerConnection() {
     });
 
     socketInstance.addEventListener("error", () => {
-      lastError.value = "Unable to connect to the WhistleIRC server.";
+      lastError.value = "Unable to connect to the WhistleRef server.";
       state.value = "error";
       rejectLogin(new Error(lastError.value));
     });

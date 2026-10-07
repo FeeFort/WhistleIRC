@@ -94,7 +94,7 @@ export const DEFAULT_LOBBY_PRESETS = [
   },
 ];
 
-const STORAGE_KEY = "feeirc-lobby-message-presets";
+const STORAGE_KEY = "whistleref-lobby-message-presets";
 
 function uid(prefix = "lobby") {
   return typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `${prefix}_${Date.now()}_${Math.random().toString(16).slice(2)}`;

@@ -15,8 +15,8 @@ for (const failed of [false, true]) {
     const context = vm.createContext({
       shuttingDown: false,
       process: { stdin: { isTTY: false }, exit: (code) => exitCodes.push(code) },
-      console: { log() {}, warn() {}, error() {} },
-      formatLogTime: () => "test",
+      logger: { separator() {}, warn() {}, trace() {}, flush: async () => {} },
+      sessionLog: { warn() {} },
       banchoConnection: { logout() {} },
       webSocketServer: { clients: [], close: (callback) => closures.push(callback) },
       httpServer: { listening: true, close: (callback) => closures.push(callback) },

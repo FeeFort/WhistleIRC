@@ -13,7 +13,7 @@ const __dirname = path.dirname(__filename);
 
 const pkgJson = JSON.parse(fs.readFileSync(path.join(__dirname, "package.json"), "utf-8"));
 const appVersion = pkgJson.version;
-const appName = "WhistleIRC";
+const appName = "WhistleRef";
 const baseName = pkgJson.name;
 const debug = process.argv.includes("--debug") || process.argv.includes("-d");
 
@@ -206,7 +206,7 @@ async function buildMacZip(buildDir, rawBinaryPath, arch) {
 <plist version="1.0">
 <dict>
   <key>CFBundleName</key><string>${appName}</string>
-  <key>CFBundleIdentifier</key><string>sh.feefort.whistleirc</string>
+  <key>CFBundleIdentifier</key><string>sh.feefort.whistleref</string>
   <key>CFBundleExecutable</key><string>${binaryName}</string>
   <key>CFBundleVersion</key><string>${appVersion}</string>
   <key>CFBundlePackageType</key><string>APPL</string>

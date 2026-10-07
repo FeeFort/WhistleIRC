@@ -1,7 +1,7 @@
 import { ref, watch } from "vue";
 
-const STORAGE_KEYS = Object.freeze({ stable: "whistleirc-mappool-state", lazer: "whistleirc-lazer-mappool-state" });
-const MAPPOOLS_KEYS = Object.freeze({ stable: "whistleirc-mappools", lazer: "whistleirc-lazer-mappools" });
+const STORAGE_KEYS = Object.freeze({ stable: "whistleref-mappool-state", lazer: "whistleref-lazer-mappool-state" });
+const MAPPOOLS_KEYS = Object.freeze({ stable: "whistleref-mappools", lazer: "whistleref-lazer-mappools" });
 const DEFAULT_WIN_CONDITION = `const room = await parseRoom();
 system.sendMessage(\`Scores: \${room.teamRed.score} - \${room.teamBlue.score}\`);
 return calculateWinner({ red: room.teamRed.score, blue: room.teamBlue.score }, { onTie: "manual" });`;
@@ -156,19 +156,21 @@ const storedStates = { stable: readStoredState("stable"), lazer: readStoredState
 function readMappools(mode = "stable") {
   try {
     const value = JSON.parse(localStorage.getItem(MAPPOOLS_KEYS[mode] || MAPPOOLS_KEYS.stable) || "[]");
-    return Array.isArray(value) ? value.map(normalizeConfig) : [];
+    return Array.isArray(value) ? value.map((pool) => normalizeConfig(pool, mode)) : [];
   } catch {
     return [];
   }
 }
 const stores = {
   stable: {
+    mode: "stable",
     mappools: ref(readMappools("stable")),
     qualificationModeByLobbyId: ref(storedStates.stable.qualificationModeByLobbyId),
     mapStatesByLobbyId: ref(storedStates.stable.mapStatesByLobbyId),
     activePoolByLobbyId: ref(storedStates.stable.activePoolByLobbyId),
   },
   lazer: {
+    mode: "lazer",
     mappools: ref(readMappools("lazer")),
     qualificationModeByLobbyId: ref(storedStates.lazer.qualificationModeByLobbyId),
     mapStatesByLobbyId: ref(storedStates.lazer.mapStatesByLobbyId),
@@ -240,20 +242,15 @@ function normalizeWinCondition(value) {
   };
 }
 
-function normalizeConfig(value) {
+function normalizeConfig(value, mode = "stable") {
   const source = value || {};
+  const isLazer = mode === "lazer";
   const sourceSlots = Array.isArray(source.slots) ? source.slots : [];
   const sourceCategories = Array.isArray(source.categories) ? source.categories : [];
   const freeModMultipliers = normalizeMultipliers(source.freeModMultipliers);
-  const slots = sourceSlots.map((slot) => ({
-    slotId: String(slot.slotId || crypto.randomUUID()),
-    beatmapId: Number(slot.beatmapId) || 0,
-    category: String(slot.category || categoryFromSlotKey(slot.slotId)),
-    mods: (() => {
-      const normalizedMods = Array.isArray(slot.mods) ? slot.mods.map(String).filter(Boolean) : [];
-      return normalizedMods.length ? normalizedMods : defaultModsForCategory(slot.category || categoryFromSlotKey(slot.slotId));
-    })(),
-    requiredMods: Array.isArray(slot.requiredMods)
+  const slots = sourceSlots.map((slot) => {
+    const category = String(slot.category || categoryFromSlotKey(slot.slotId));
+    const requiredMods = Array.isArray(slot.requiredMods)
       ? slot.requiredMods
           .map((mod) => (typeof mod === "string" ? mod : mod?.acronym))
           .filter(Boolean)
@@ -263,8 +260,8 @@ function normalizeConfig(value) {
             .map((mod) => (typeof mod === "string" ? mod : mod?.acronym))
             .filter(Boolean)
             .map(String)
-        : [],
-    allowedMods: Array.isArray(slot.allowedMods)
+        : [];
+    const allowedMods = Array.isArray(slot.allowedMods)
       ? slot.allowedMods
           .map((mod) => (typeof mod === "string" ? mod : mod?.acronym))
           .filter(Boolean)
@@ -274,19 +271,37 @@ function normalizeConfig(value) {
             .map((mod) => (typeof mod === "string" ? mod : mod?.acronym))
             .filter(Boolean)
             .map(String)
-        : [],
-    freestyle: slot.freestyle === true,
-    preview: normalizePreview(slot.preview),
-    commands: normalizeCommands(slot.commands),
-    freeMod: slot.freeMod === true || slot.winCondition?.template === "freemod",
-    freemodResolved: slot.freemodResolved === true,
-    winCondition:
-      slot.freeMod === true && !slot.winCondition
-        ? { type: "script", version: 1, template: "freemod", reverse: false, source: winConditionSource("freemod", false, freeModMultipliers) }
-        : normalizeWinCondition(slot.winCondition),
-  }));
+        : [];
+    const legacyLazerMods = new Set((Array.isArray(slot.mods) ? slot.mods : []).map((mod) => String(mod).toUpperCase()));
+    const lazerDefaults = defaultLazerModsForCategory(category);
+    const normalizedSlot = {
+      slotId: String(slot.slotId || crypto.randomUUID()),
+      beatmapId: Number(slot.beatmapId) || 0,
+      category,
+      requiredMods: requiredMods.length ? requiredMods : lazerDefaults.requiredMods.filter((mod) => legacyLazerMods.has(mod)),
+      allowedMods: allowedMods.length ? allowedMods : lazerDefaults.allowedMods.filter((mod) => legacyLazerMods.has(mod)),
+      freestyle: slot.freestyle === true,
+      preview: normalizePreview(slot.preview),
+      freeMod: slot.freeMod === true || slot.winCondition?.template === "freemod",
+      freemodResolved: slot.freemodResolved === true,
+      winCondition:
+        slot.freeMod === true && !slot.winCondition
+          ? { type: "script", version: 1, template: "freemod", reverse: false, source: winConditionSource("freemod", false, freeModMultipliers) }
+          : normalizeWinCondition(slot.winCondition),
+    };
+    if (isLazer) return normalizedSlot;
+    return {
+      ...normalizedSlot,
+      mods: (() => {
+        const normalizedMods = Array.isArray(slot.mods) ? slot.mods.map(String).filter(Boolean) : [];
+        return normalizedMods.length ? normalizedMods : defaultModsForCategory(category);
+      })(),
+      commands: normalizeCommands(slot.commands),
+    };
+  });
   const categories = [...new Set([...sourceCategories.map(String).filter(Boolean), ...slots.map((slot) => slot.category)])];
   return {
+    client: isLazer ? "lazer" : "stable",
     id: String(source.id || crypto.randomUUID()),
     name: String(source.name || "Untitled mappool"),
     stage: String(source.stage || "Unspecified stage"),
@@ -299,8 +314,9 @@ function normalizeConfig(value) {
 }
 
 function serializeMappool(value) {
-  const poolValue = normalizeConfig(value);
+  const poolValue = normalizeConfig(value, "stable");
   return {
+    client: "stable",
     id: poolValue.id,
     name: poolValue.name,
     stage: poolValue.stage,
@@ -326,10 +342,28 @@ function serializeMappool(value) {
 }
 
 function serializeLazerMappool(value) {
-  const serialized = serializeMappool(value);
-  delete serialized.globalCommands;
-  serialized.slots = serialized.slots.map(({ commands, ...slot }) => slot);
-  return serialized;
+  const poolValue = normalizeConfig(value, "lazer");
+  return {
+    client: "lazer",
+    id: poolValue.id,
+    name: poolValue.name,
+    stage: poolValue.stage,
+    ruleset: poolValue.ruleset,
+    freeModMultipliers: { ...poolValue.freeModMultipliers },
+    categories: [...poolValue.categories],
+    slots: poolValue.slots.map((slot) => ({
+      slotId: slot.slotId,
+      beatmapId: slot.beatmapId,
+      category: slot.category,
+      requiredMods: [...slot.requiredMods],
+      allowedMods: [...slot.allowedMods],
+      ...(slot.freestyle ? { freestyle: true } : {}),
+      ...(slot.preview ? { preview: { ...slot.preview } } : {}),
+      ...(slot.freeMod ? { freeMod: true } : {}),
+      ...(slot.freemodResolved ? { freemodResolved: true } : {}),
+      ...(slot.winCondition ? { winCondition: { ...slot.winCondition } } : {}),
+    })),
+  };
 }
 
 function normalizePreview(value) {
@@ -347,13 +381,13 @@ function normalizePreview(value) {
 }
 
 function addMappool(store, value) {
-  const poolValue = normalizeConfig(value);
+  const poolValue = normalizeConfig(value, store.mode);
   store.mappools.value.push(poolValue);
   return poolValue;
 }
 function updateMappool(store, id, value) {
   const index = store.mappools.value.findIndex((item) => item.id === id);
-  if (index >= 0) store.mappools.value[index] = normalizeConfig({ ...store.mappools.value[index], ...value, id });
+  if (index >= 0) store.mappools.value[index] = normalizeConfig({ ...store.mappools.value[index], ...value, id }, store.mode);
 }
 function deleteMappool(store, id) {
   store.mappools.value = store.mappools.value.filter((item) => item.id !== id);

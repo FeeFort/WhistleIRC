@@ -1,15 +1,15 @@
 <div align="center">
 
-![WhistleIRC Logo](assets/full-logo.png)
+![WhistleRef Logo](assets/full-logo.png)
 
 </div>
 
-WhistleIRC is an IRC client designed specifically for osu! tournament referees who want all their tools in one place.
+WhistleRef is an IRC client designed specifically for osu! tournament referees who want all their tools in one place.
 
 It connects to osu!bancho IRC and gives you the things you actually need during a match: custom shortcuts, lobby controls, score tracking, automatic result messages, timers, and more. It works whether you create the lobby yourself or join one that is already running.
 
 > [!WARNING]
-> This project is in **early state** and **active development**. Expect bugs, missing functionality and frequent updates. Please open an issue on [GitHub](https://github.com/FeeFort/WhistleIRC/issues) if you've noticed a bug or have any suggestions.
+> This project is in **early state** and **active development**. Expect bugs, missing functionality and frequent updates. Please open an issue on [GitHub](https://github.com/FeeFort/WhistleRef/issues) if you've noticed a bug or have any suggestions.
 > Alternatively, you can contact `@dr1ma` or `@tracexr` on [Discord](https://discord.com/) if you have any questions regarding this project.
 
 ## Features
@@ -24,21 +24,21 @@ It connects to osu!bancho IRC and gives you the things you actually need during 
 
 ## How to download?
 
-Check the [Releases](https://github.com/FeeFort/WhistleIRC/releases) section and download the latest version for your OS and architecture! After that, move to the [First-time setup](#first-time-setup).
+Check the [Releases](https://github.com/FeeFort/WhistleRef/releases) section and download the latest version for your OS and architecture! After that, move to the [First-time setup](#first-time-setup).
 
 ## First-time setup
 
 ### 1. Add your osu! app credentials
 
-Open your [osu! account settings](https://osu.ppy.sh/home/account/edit#oauth) and create an OAuth application. Name of the application is not important, but if you're unsure what to put in there, you can use `WhistleIRC`.
+Open your [osu! account settings](https://osu.ppy.sh/home/account/edit#oauth) and create an OAuth application. Name of the application is not important, but if you're unsure what to put in there, you can use `WhistleRef`.
 
-Copy the application's **Client ID** and **Client Secret** into WhistleIRC. They are saved only in your browser's local storage together with the rest of the WhistleIRC authorization data.
+Copy the application's **Client ID** and **Client Secret** into WhistleRef. They are saved only in your browser's local storage together with the rest of the WhistleRef authorization data.
 
-osu! will also ask for a callback URL. Use the exact address shown in WhistleIRC's yellow notice:
+osu! will also ask for a callback URL. Use the exact address shown in WhistleRef's yellow notice:
 
 `http://localhost:3000/`
 
-You can click the address to copy it. WhistleIRC will show a small confirmation toast when it is copied.
+You can click the address to copy it. WhistleRef will show a small confirmation toast when it is copied.
 
 ![Adding osu! app credentials](assets/oauth-credentials.png)
 
@@ -46,9 +46,9 @@ Click **Save and continue** once both fields are filled in.
 
 ### 2. Log in from osu!
 
-Check the callback URL and click **Login from osu!**. A new page on `osu.ppy.sh` will open. Approve WhistleIRC there and you will be sent back to the app.
+Check the callback URL and click **Login from osu!**. A new page on `osu.ppy.sh` will open. Approve WhistleRef there and you will be sent back to the app.
 
-WhistleIRC uses osu!'s OAuth authorization flow. It does not ask for your osu! password and never accesses it. After authorization, it saves your osu! user ID, username, and avatar locally in the browser.
+WhistleRef uses osu!'s OAuth authorization flow. It does not ask for your osu! password and never accesses it. After authorization, it saves your osu! user ID, username, and avatar locally in the browser.
 The access token stays on the server and never reaches the browser.
 
 ![Logging in from osu!](assets/oauth-login.png)
@@ -61,7 +61,7 @@ Enter the password for Bancho IRC, decide whether you want to enable **Remember 
 
 ![Logging in through IRC](assets/irc-login.png)
 
-After a successful login, you will see the main WhistleIRC workspace.
+After a successful login, you will see the main WhistleRef workspace.
 
 ![Main workspace](assets/workspace.png)
 
@@ -75,7 +75,7 @@ Use the create lobby controls to make a new multiplayer room. Once you join it, 
 
 ### Joining a lobby
 
-Use the channel controls to join a multiplayer lobby that already exists. WhistleIRC reads its current state from Bancho IRC and keeps the players, teams, settings, map, mods, timer, and scores up to date. You can use either mp link or ID.
+Use the channel controls to join a multiplayer lobby that already exists. WhistleRef reads its current state from Bancho IRC and keeps the players, teams, settings, map, mods, timer, and scores up to date. You can use either mp link or ID.
 
 ![Joining a channel](assets/join-channel.png)
 
@@ -95,7 +95,7 @@ You can add your own shortcuts for commands or messages. Here you can use the [v
 
 ### Scores and results
 
-WhistleIRC tracks team scores and match progress automatically. When a map or match is finished, it can calculate the result and send the update to IRC chat. This can be customized however you want in the [settings](#settings) using [variables](#variables).
+WhistleRef tracks team scores and match progress automatically. When a map or match is finished, it can calculate the result and send the update to IRC chat. This can be customized however you want in the [settings](#settings) using [variables](#variables).
 
 <div align="center">
 
@@ -198,7 +198,7 @@ CORS_ORIGIN=http://localhost:3000,http://localhost:5173
 
 ## What is saved locally?
 
-WhistleIRC stores user-specific data in your browser. This can include osu! OAuth data and profile information, remembered IRC credentials, application settings, shortcuts, lobby message presets, and mappool data.
+WhistleRef stores user-specific data in your browser. This can include osu! OAuth data and profile information, remembered IRC credentials, application settings, shortcuts, lobby message presets, and mappool data.
 
 Logging out closes the IRC connection and removes the saved local IRC login. You can also use the logout button next to your osu! profile to disconnect the OAuth profile.
 
@@ -223,17 +223,17 @@ python mappool_builder.py
 
 The script supports arguments `--debug` (which enables additional logging) and `--update /path/to/old/json` (which updates old JSON files to match new schema)
 
-The generated `mappool.json` can then be imported into WhistleIRC.
+The generated `mappool.json` can then be imported into WhistleRef.
 
 ## Troubleshooting
 
 ### The browser cannot connect
 
-Check that the WhistleIRC server is running and that you are using the same port. The default port is `3000`.
+Check that the WhistleRef server is running and that you are using the same port. The default port is `3000`.
 
 ### OAuth sends me back to the wrong place
 
-The callback URL in your osu! OAuth application has to be exactly the same as the one shown in WhistleIRC, including the protocol, port, path, and trailing slash. The copy button is the easiest way to avoid a typo.
+The callback URL in your osu! OAuth application has to be exactly the same as the one shown in WhistleRef, including the protocol, port, path, and trailing slash. The copy button is the easiest way to avoid a typo.
 
 ### OAuth works, but IRC login does not
 
@@ -241,7 +241,7 @@ Make sure the IRC password or token is correct. The nickname is locked on purpos
 
 ### It looks like the first-time setup came back
 
-The browser may have lost its site data, or you may be opening WhistleIRC through a different host or port. Try the same address and browser you used before. If the local data is gone, simply complete the setup again.
+The browser may have lost its site data, or you may be opening WhistleRef through a different host or port. Try the same address and browser you used before. If the local data is gone, simply complete the setup again.
 
 ## License
 
