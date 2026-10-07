@@ -71,13 +71,13 @@ After a successful login, you will see the main WhistleRef workspace.
 
 Use the create lobby controls to make a new multiplayer room. Once you join it, the same referee tools will be available there too. Alternatively, you can use the `!mp make` command to BanchoBot to create a lobby.
 
-![Creating a lobby](assets/create-lobby.png)
+![Creating a lobby](assets/create-lobby-stable.png)
 
 ### Joining a lobby
 
 Use the channel controls to join a multiplayer lobby that already exists. WhistleRef reads its current state from Bancho IRC and keeps the players, teams, settings, map, mods, timer, and scores up to date. You can use either mp link or ID.
 
-![Joining a channel](assets/join-channel.png)
+![Joining a channel](assets/join-channel-stable.png)
 
 ### Shortcuts
 
