@@ -3,6 +3,7 @@ export const config = {
   hubRateLimit: { tokensPerSecond: 1, capacity: 10, concurrency: 4, maxQueue: 100, maxWaitMs: 30_000 },
   hubRequestTimeoutMs: 15_000,
   apiRequestTimeoutMs: 15_000,
+  transportRetry: { attempts: 5, baseDelay: 1_000, maxDelay: 5_000, maxRetryAfter: 20_000 },
   osuWebUrl: "https://osu.ppy.sh",
   redirectUri: "http://localhost:3000/",
   httpHost: process.env.HTTP_HOST || "0.0.0.0",
@@ -13,4 +14,7 @@ export const config = {
   ircHost: "irc.ppy.sh",
   ircPort: 6667,
   authError: "Login or password is incorrect.",
+  retryableNetworkErrors: new Set(["ECONNRESET", "ECONNREFUSED", "ETIMEDOUT", "ENOTFOUND", "EAI_AGAIN", "EPIPE", "ENETUNREACH", "EHOSTUNREACH", "UND_ERR_CONNECT_TIMEOUT", "UND_ERR_SOCKET", "UND_ERR_HEADERS_TIMEOUT", "UND_ERR_BODY_TIMEOUT"]),
+  retryableErrorStatuses: new Set([502, 503, 504]),
 };
+  

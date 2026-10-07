@@ -84,6 +84,10 @@ export interface LoggerState {
   monotonicNow: () => number;
 }
 
+// error
+export type ErrorWithCode = { code: string };
+export type ErrorWithRetryAfter = { retryAfter: number };
+
 // Raw types, basically how osu! api responds
 export interface OsuTokenResponse {
   access_token: string;

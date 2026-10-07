@@ -3,40 +3,33 @@ import { config } from "../config.js";
 import { InternalApiMethod, OsuApiMeResponse, OsuUser } from "../types.js";
 
 import { restRateLimiter } from "../rateLimiter.js";
+import isRetryableError, { hasRetryAfter } from "./retryableErrors.js";
+import OsuApiError from "./osuApiError.js";
 
 const log = logger.child("core", "osuApi");
 
-const OSU_API_URL = "https://osu.ppy.sh/api/v2/";
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
-export class OsuApiError extends Error {
-  constructor(
-    public readonly status: number,
-    public readonly authentication?: string,
-    public readonly apiMessage?: string,
-  ) {
-    super(apiMessage ?? authentication ?? `osu! api returned ${status}`);
-    this.name = "OsuApiError";
-  }
+const OSU_API_URL = `${config.osuWebUrl}/api/v2/`;
 
-  get isUnauthorized(): boolean {
-    return this.status === 401;
-  }
 
-  static async fromResponse(response: Response): Promise<OsuApiError> {
-    const rawBody = await response.text();
+export async function fetchApi(accessToken: string, endpoint: string, method?: InternalApiMethod, body?: Record<string, unknown>): Promise<unknown> {
+  const isGet = !method || method === "GET";
+  const allowedAttempts = isGet ? config.transportRetry.attempts : 1;
 
-    if (!rawBody) {
-      return new OsuApiError(response.status);
-    }
-
+  for (let attempt = 1; attempt <= allowedAttempts; attempt++) {
     try {
-      const parsed = JSON.parse(rawBody) as {
-        authentication?: string;
-        error?: string | null;
-      };
-      return new OsuApiError(response.status, parsed.authentication, parsed.error ?? undefined);
-    } catch {
-      return new OsuApiError(response.status, undefined, rawBody.slice(0, 200));
+      log.debug("API request attempt", { method, endpoint, attempt, allowedAttempts });
+      return await fetchApiOnce(accessToken, endpoint, method, body);
+    } catch (error) {
+      if (attempt >= allowedAttempts || !isRetryableError(error)) throw error;
+
+      const retryAfter = hasRetryAfter(error) ? error.retryAfter : undefined;
+      const delayCap = Math.min(config.transportRetry.maxDelay, config.transportRetry.baseDelay * 2 ** (attempt - 1));
+      const delay = retryAfter ?? Math.round(delayCap / 2 + Math.random() * (delayCap / 2));
+
+      log.debug("API request failed, retrying", { method, endpoint, attempt, allowedAttempts, delayCap, delay, delaySource: retryAfter !== undefined ? "retry-after" : "backoff",error });
+      await sleep(delay);
     }
   }
 }
@@ -47,7 +40,7 @@ export async function fetchMe(accessToken: string): Promise<OsuUser> {
   return { id: raw.id, username: raw.username, avatarUrl: raw.avatar_url };
 }
 
-export async function fetchApi(accessToken: string, endpoint: string, method?: InternalApiMethod, body?: Record<string, unknown>): Promise<unknown> {
+async function fetchApiOnce(accessToken: string, endpoint: string, method?: InternalApiMethod, body?: Record<string, unknown>): Promise<unknown> {
   if (!method) method = "GET";
 
   log.debug("API request queued", { method, endpoint });
