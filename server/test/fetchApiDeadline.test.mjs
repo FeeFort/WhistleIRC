@@ -26,13 +26,20 @@ await test("total timeout aborts an in-flight request before the attempt timeout
   config.transportRetry.totalTimeoutMs = 25;
   config.apiRequestTimeoutMs = 1000;
   let aborted = false;
-  const fetchMock = t.mock.method(globalThis, "fetch", async (_url, { signal }) =>
-    new Promise((_resolve, reject) => {
-      signal.addEventListener("abort", () => {
-        aborted = true;
-        reject(signal.reason);
-      }, { once: true });
-    }),
+  const fetchMock = t.mock.method(
+    globalThis,
+    "fetch",
+    async (_url, { signal }) =>
+      new Promise((_resolve, reject) => {
+        signal.addEventListener(
+          "abort",
+          () => {
+            aborted = true;
+            reject(signal.reason);
+          },
+          { once: true },
+        );
+      }),
   );
   const keepAlive = setInterval(() => {}, 1000);
   try {

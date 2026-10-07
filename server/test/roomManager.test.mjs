@@ -594,11 +594,19 @@ await test("room synchronization", async (t) => {
     const start = statuses.length;
     await roomManager.resync();
     const events = statuses.slice(start).filter((event) => event.type === "lazer_sync_state");
-    assert.deepEqual(events.map((event) => event.state), ["syncing", "retrying", "syncing", "retrying", "syncing", "synced"]);
-    assert.deepEqual(events.filter((event) => event.state === "retrying").map(({ operation, roomId, attempt, maxAttempts, retryIn }) => ({ operation, roomId, attempt, maxAttempts, validDelay: retryIn >= 0 && retryIn <= config.hubRetry.maxDelay })), [
-      { operation: "ListRooms", roomId: undefined, attempt: 2, maxAttempts: config.hubRetry.attempts, validDelay: true },
-      { operation: "JoinRoom", roomId: 104, attempt: 2, maxAttempts: config.hubRetry.attempts, validDelay: true },
-    ]);
+    assert.deepEqual(
+      events.map((event) => event.state),
+      ["syncing", "retrying", "syncing", "retrying", "syncing", "synced"],
+    );
+    assert.deepEqual(
+      events
+        .filter((event) => event.state === "retrying")
+        .map(({ operation, roomId, attempt, maxAttempts, retryIn }) => ({ operation, roomId, attempt, maxAttempts, validDelay: retryIn >= 0 && retryIn <= config.hubRetry.maxDelay })),
+      [
+        { operation: "ListRooms", roomId: undefined, attempt: 2, maxAttempts: config.hubRetry.attempts, validDelay: true },
+        { operation: "JoinRoom", roomId: 104, attempt: 2, maxAttempts: config.hubRetry.attempts, validDelay: true },
+      ],
+    );
     roomManager.removeRoom(104);
   });
 

@@ -379,7 +379,12 @@ class RoomManager {
     else this.pendingJoins.set(roomId, pending);
     pending.promise = (async () => {
       try {
-        const response = roomId === null ? await invokeHub<RoomJoinedResponse>("MakeRoom", request) : onRetry ? await invokeHubWithRetry<RoomJoinedResponse>("JoinRoom", onRetry, roomId) : await invokeHub<RoomJoinedResponse>("JoinRoom", roomId);
+        const response =
+          roomId === null
+            ? await invokeHub<RoomJoinedResponse>("MakeRoom", request)
+            : onRetry
+              ? await invokeHubWithRetry<RoomJoinedResponse>("JoinRoom", onRetry, roomId)
+              : await invokeHub<RoomJoinedResponse>("JoinRoom", roomId);
         roomId = response.room_id;
         if (this.excludedRooms.has(roomId)) pending.cancelled = true;
         if (!pending.cancelled) this.rooms.set(roomId, response);
