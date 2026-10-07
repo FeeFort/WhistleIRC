@@ -54,6 +54,7 @@ import { sortMappoolSlots, useMappool } from "./composables/useMappool";
 import { advanceMappoolChatContext, createMappoolChatContext } from "./composables/useMappoolChat";
 import { useNowPlayingSettings } from "./composables/useNowPlayingSettings";
 import { NOTIFICATION_SOUNDS, NOTIFICATION_TRIGGER_OPTIONS, getNotificationSoundUrl, useNotifications } from "./composables/useNotifications";
+import modsByRuleset from "./assets/mods/mods.json";
 
 const commandScrollToken = ref(0);
 const savedLogin = localStorage.getItem("whistleref-remembered-login") || "";
@@ -2642,6 +2643,124 @@ async function handleLazerLegacyCommand(roomId, input) {
     return;
   }
 
+  if (command === "mods") {
+    const room = lazerRooms[lazerChatId(roomId)];
+    const modDefinitions = getAllLazerMultiplayerMods();
+    const currentRulesetModDefinitions = getLazerMultiplayerMods(room);
+    const rawTokens = args ? args.split(/\s+/).filter(Boolean) : [];
+    if (rawTokens.length === 1 && rawTokens[0] === "0") {
+      const currentItemId = Number(room?.current_playlist_item_id ?? room?.playlist_item_id ?? room?.state?.playlist_item_id);
+      const currentItem =
+        (Number.isInteger(currentItemId) && Array.isArray(room?.playlist) ? room.playlist.find((item) => Number(item?.id) === currentItemId) : null) ||
+        getLazerCurrentPlaylistItem(room);
+      sendLegacyLazerRequest(
+        roomId,
+        "lazer_edit_current_playlist_item",
+        {
+          required_mods: [],
+          allowed_mods: [],
+          freestyle: false,
+          ruleset_id: currentItem?.ruleset_id ?? undefined,
+          beatmap_id: currentItem?.beatmap_id ?? undefined,
+        },
+        { success: "Updated match mods: disabled all mods", failure },
+      );
+      return;
+    }
+    const expandedTokens = [];
+    const zeroWithFreemod = rawTokens.some((token) => token === "0") && rawTokens.every((token) => token === "0" || /^(?:fm|freemod)$/i.test(token));
+    for (const rawToken of rawTokens) {
+      if (zeroWithFreemod && rawToken === "0") continue;
+      if (/^\d+$/.test(rawToken)) {
+        const parsedMask = expandLegacyStableModMask(rawToken);
+        if (!parsedMask) {
+          appendWhistleBotMessage(roomId, `Mod ${rawToken} not found`);
+          return;
+        }
+        expandedTokens.push(...parsedMask);
+      } else {
+        expandedTokens.push(rawToken);
+      }
+    }
+    const tokens = normalizeMapMods(expandedTokens);
+    const wantsFreemod = tokens.some((acronym) => acronym === "FM");
+    const requested = tokens.filter((acronym) => acronym !== "FM");
+    for (const acronym of requested) {
+      const definition = modDefinitions.get(acronym);
+      if (!definition) {
+        appendWhistleBotMessage(roomId, `Mod ${acronym} not found`);
+        return;
+      }
+      const currentRulesetDefinition = currentRulesetModDefinitions.get(acronym);
+      const fullName = definition.Name || acronym;
+      if (!currentRulesetDefinition) {
+        appendWhistleBotMessage(roomId, `Mod ${fullName} is not supported in this ruleset`);
+        return;
+      }
+      if (currentRulesetDefinition.ValidForMultiplayer !== true) {
+        appendWhistleBotMessage(roomId, `Mod ${currentRulesetDefinition.Name || fullName} is not supported in multiplayer rooms`);
+        return;
+      }
+    }
+
+    const conflicts = [];
+    for (let index = 0; index < requested.length; index += 1) {
+      for (let otherIndex = index + 1; otherIndex < requested.length; otherIndex += 1) {
+        const left = modDefinitions.get(requested[index]);
+        const right = modDefinitions.get(requested[otherIndex]);
+        const leftIncompatible = Array.isArray(left?.IncompatibleMods) && left.IncompatibleMods.map((mod) => String(mod).toUpperCase()).includes(requested[otherIndex]);
+        const rightIncompatible = Array.isArray(right?.IncompatibleMods) && right.IncompatibleMods.map((mod) => String(mod).toUpperCase()).includes(requested[index]);
+        if (leftIncompatible || rightIncompatible) conflicts.push(`${requested[index]} + ${requested[otherIndex]}`);
+      }
+    }
+    if (conflicts.length) {
+      appendWhistleBotMessage(roomId, formatLazerModConflictError(conflicts));
+      return;
+    }
+
+    const requiredMods = requested.map((acronym) => ({ acronym }));
+    const requiredConflicts = new Set(requested);
+    for (const requiredAcronym of requested) {
+      const requiredDefinition = modDefinitions.get(requiredAcronym);
+      for (const incompatible of Array.isArray(requiredDefinition?.IncompatibleMods) ? requiredDefinition.IncompatibleMods : []) {
+        requiredConflicts.add(String(incompatible).toUpperCase());
+      }
+    }
+    for (const [acronym, definition] of modDefinitions) {
+      if (requested.some((requiredAcronym) => Array.isArray(definition?.IncompatibleMods) && definition.IncompatibleMods.map((mod) => String(mod).toUpperCase()).includes(requiredAcronym))) {
+        requiredConflicts.add(acronym);
+      }
+    }
+    const allowedMods = wantsFreemod
+      ? [...modDefinitions.values()]
+          .filter((mod) => mod?.ValidForMultiplayer && mod?.ValidForMultiplayerAsFreeMod)
+          .map((mod) => String(mod.Acronym).toUpperCase())
+          .filter((acronym) => !requiredConflicts.has(acronym))
+          .map((acronym) => ({ acronym }))
+      : [];
+    const enabledModNames = requested.map((acronym) => modDefinitions.get(acronym)?.Name || acronym);
+    const summaryParts = [];
+    if (enabledModNames.length) summaryParts.push(`enabled ${enabledModNames.join(", ")}`);
+    summaryParts.push(`${wantsFreemod ? "enabled" : "disabled"} Freemod`);
+    const currentItemId = Number(room?.current_playlist_item_id ?? room?.playlist_item_id ?? room?.state?.playlist_item_id);
+    const currentItem =
+      (Number.isInteger(currentItemId) && Array.isArray(room?.playlist) ? room.playlist.find((item) => Number(item?.id) === currentItemId) : null) ||
+      getLazerCurrentPlaylistItem(room);
+    sendLegacyLazerRequest(
+      roomId,
+      "lazer_edit_current_playlist_item",
+      {
+        required_mods: requiredMods,
+        allowed_mods: allowedMods,
+        freestyle: false,
+        ruleset_id: currentItem?.ruleset_id ?? undefined,
+        beatmap_id: currentItem?.beatmap_id ?? undefined,
+      },
+      { success: `Updated match mods: ${summaryParts.join(", ")}`, failure },
+    );
+    return;
+  }
+
   if (command === "abort") {
     if (nowPlayingByLobby[lazerChatId(roomId)]?.status !== "playing") return appendWhistleBotMessage(roomId, "The match is not in progress");
     sendLegacyLazerRequest(roomId, "lazer_abort_match", {}, { success: "Aborted the match", failure });
@@ -2722,7 +2841,54 @@ const MOD_ALIASES = Object.freeze({
   mirror: "MR",
   fadein: "FI",
 });
+const LEGACY_STABLE_MOD_MASKS = Object.freeze({
+  NF: 1,
+  EZ: 2,
+  TD: 4,
+  HD: 8,
+  HR: 16,
+  SD: 32,
+  DT: 64,
+  RX: 128,
+  HT: 256,
+  FL: 1024,
+  SO: 4096,
+  AP: 8192,
+  NC: 576,
+  PF: 16416,
+  "1K": 67108864,
+  "2K": 268435456,
+  "3K": 134217728,
+  "4K": 32768,
+  "5K": 65536,
+  "6K": 131072,
+  "7K": 262144,
+  "8K": 524288,
+  "9K": 16777216,
+  "10K": 33554432,
+  FI: 1048576,
+  RD: 2097152,
+  MR: 1073741824,
+});
 const MODS_WITHOUT_STAR_RATING_EFFECT = new Set(["FM", "NF", "RX", "SO", "AP", "SD"]);
+
+function expandLegacyStableModMask(value) {
+  const mask = Number(value);
+  if (!Number.isSafeInteger(mask) || mask <= 0) return null;
+  let remaining = mask;
+  const expanded = [];
+  const entries = Object.entries(LEGACY_STABLE_MOD_MASKS).sort(([left], [right]) => {
+    const leftCompound = left === "NC" || left === "PF";
+    const rightCompound = right === "NC" || right === "PF";
+    return Number(rightCompound) - Number(leftCompound) || LEGACY_STABLE_MOD_MASKS[right] - LEGACY_STABLE_MOD_MASKS[left];
+  });
+  for (const [acronym, bitmask] of entries) {
+    if ((remaining & bitmask) !== bitmask) continue;
+    remaining -= bitmask;
+    expanded.push(acronym);
+  }
+  return remaining === 0 ? expanded.reverse() : null;
+}
 
 function normalizeMapMods(value) {
   const values = Array.isArray(value) ? value : String(value || "").split(/\s*,\s*|\s+/);
@@ -2732,6 +2898,34 @@ function normalizeMapMods(value) {
     .filter((mod) => !/^(?:enabled|disabled|none)$/i.test(mod))
     .map((mod) => MOD_ALIASES[mod.toLowerCase()] || mod.toUpperCase())
     .filter((mod, index, mods) => mods.indexOf(mod) === index);
+}
+
+function getLazerMultiplayerMods(room) {
+  const currentItem = getLazerCurrentPlaylistItem(room);
+  const rulesetId = Number(currentItem?.ruleset_id ?? room?.ruleset_id);
+  const ruleset = (Array.isArray(modsByRuleset) ? modsByRuleset : []).find((entry) => Number(entry?.RulesetID) === rulesetId) || modsByRuleset?.[0];
+  const result = new Map();
+  for (const mod of Array.isArray(ruleset?.Mods) ? ruleset.Mods : []) {
+    const acronym = String(mod?.Acronym || "").trim().toUpperCase();
+    if (acronym && !result.has(acronym)) result.set(acronym, mod);
+  }
+  return result;
+}
+
+function getAllLazerMultiplayerMods() {
+  const result = new Map();
+  for (const ruleset of Array.isArray(modsByRuleset) ? modsByRuleset : []) {
+    for (const mod of Array.isArray(ruleset?.Mods) ? ruleset.Mods : []) {
+      const acronym = String(mod?.Acronym || "").trim().toUpperCase();
+      if (acronym && !result.has(acronym)) result.set(acronym, mod);
+    }
+  }
+  return result;
+}
+
+function formatLazerModConflictError(conflicts) {
+  const names = [...new Set(conflicts)].join(", ");
+  return `Mods ${names} conflict with each other.`;
 }
 
 async function refreshNowPlayingMapAttributes(chatId, map) {
