@@ -2651,8 +2651,7 @@ async function handleLazerLegacyCommand(roomId, input) {
     if (rawTokens.length === 1 && rawTokens[0] === "0") {
       const currentItemId = Number(room?.current_playlist_item_id ?? room?.playlist_item_id ?? room?.state?.playlist_item_id);
       const currentItem =
-        (Number.isInteger(currentItemId) && Array.isArray(room?.playlist) ? room.playlist.find((item) => Number(item?.id) === currentItemId) : null) ||
-        getLazerCurrentPlaylistItem(room);
+        (Number.isInteger(currentItemId) && Array.isArray(room?.playlist) ? room.playlist.find((item) => Number(item?.id) === currentItemId) : null) || getLazerCurrentPlaylistItem(room);
       sendLegacyLazerRequest(
         roomId,
         "lazer_edit_current_playlist_item",
@@ -2744,8 +2743,7 @@ async function handleLazerLegacyCommand(roomId, input) {
     summaryParts.push(`${wantsFreemod ? "enabled" : "disabled"} Freemod`);
     const currentItemId = Number(room?.current_playlist_item_id ?? room?.playlist_item_id ?? room?.state?.playlist_item_id);
     const currentItem =
-      (Number.isInteger(currentItemId) && Array.isArray(room?.playlist) ? room.playlist.find((item) => Number(item?.id) === currentItemId) : null) ||
-      getLazerCurrentPlaylistItem(room);
+      (Number.isInteger(currentItemId) && Array.isArray(room?.playlist) ? room.playlist.find((item) => Number(item?.id) === currentItemId) : null) || getLazerCurrentPlaylistItem(room);
     sendLegacyLazerRequest(
       roomId,
       "lazer_edit_current_playlist_item",
@@ -2906,7 +2904,9 @@ function getLazerMultiplayerMods(room) {
   const ruleset = (Array.isArray(modsByRuleset) ? modsByRuleset : []).find((entry) => Number(entry?.RulesetID) === rulesetId) || modsByRuleset?.[0];
   const result = new Map();
   for (const mod of Array.isArray(ruleset?.Mods) ? ruleset.Mods : []) {
-    const acronym = String(mod?.Acronym || "").trim().toUpperCase();
+    const acronym = String(mod?.Acronym || "")
+      .trim()
+      .toUpperCase();
     if (acronym && !result.has(acronym)) result.set(acronym, mod);
   }
   return result;
@@ -2916,7 +2916,9 @@ function getAllLazerMultiplayerMods() {
   const result = new Map();
   for (const ruleset of Array.isArray(modsByRuleset) ? modsByRuleset : []) {
     for (const mod of Array.isArray(ruleset?.Mods) ? ruleset.Mods : []) {
-      const acronym = String(mod?.Acronym || "").trim().toUpperCase();
+      const acronym = String(mod?.Acronym || "")
+        .trim()
+        .toUpperCase();
       if (acronym && !result.has(acronym)) result.set(acronym, mod);
     }
   }
