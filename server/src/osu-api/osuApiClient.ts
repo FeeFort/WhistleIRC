@@ -5,10 +5,9 @@ import { InternalApiMethod, OsuApiMeResponse, OsuUser } from "../types.js";
 import { restRateLimiter } from "../rateLimiter.js";
 import isRetryableError, { hasRetryAfter } from "./retryableErrors.js";
 import OsuApiError from "./osuApiError.js";
+import { backoffDelay, sleep } from "../retry.js";
 
 const log = logger.child("core", "osuApi");
-
-const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 const OSU_API_URL = `${config.osuWebUrl}/api/v2/`;
 
@@ -25,8 +24,9 @@ export async function fetchApi(accessToken: string, endpoint: string, method: In
 
       // On 429 the rate limiter is already paused for Retry-After, so the next acquire() waits by itself.
       const retryAfter = hasRetryAfter(error) ? error.retryAfterMs : undefined;
-      const delayCap = Math.min(config.transportRetry.maxDelay, config.transportRetry.baseDelay * 2 ** (attempt - 1));
-      const delay = retryAfter !== undefined ? 0 : Math.round(delayCap / 2 + Math.random() * (delayCap / 2));
+      const backoff = backoffDelay(attempt, config.transportRetry.baseDelay, config.transportRetry.maxDelay);
+      const delayCap = backoff.delayCap;
+      const delay = retryAfter !== undefined ? 0 : backoff.delay;
       if (performance.now() + (retryAfter ?? delay) >= deadline) throw error;
 
       log.debug("API request failed, retrying", { method, endpoint, attempt, allowedAttempts, delayCap, delay, retryAfter, error });

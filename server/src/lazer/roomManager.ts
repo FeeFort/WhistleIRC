@@ -447,26 +447,10 @@ class RoomManager {
         for (const roomId of liveRoomIds) {
           if (this.excludedRooms.has(roomId)) continue;
           try {
-            // JoinRoom returns a full snapshot and restores hub subscriptions
+            // JoinRoom returns a full snapshot and restores hub subscriptions; invokeHub retries transient failures,
+            // including the hub briefly retaining a referee in the room after reconnect.
             log.debug("Restoring room", { roomId, refresh: this.rooms.has(roomId) });
-            try {
-              await this.joinRoom(roomId);
-            } catch (error) {
-              // The hub can retain a referee in room so we should try again once
-              if (
-                generation !== this.generation ||
-                this.excludedRooms.has(roomId) ||
-                !(error instanceof Error) ||
-                "code" in error ||
-                error.message !== "An unexpected error occurred invoking 'JoinRoom' on the server."
-              )
-                throw error;
-              log.warn("Room join rejected, retrying once", { roomId });
-              // TODO: Integrate this bounded recovery with shared exponential
-              // backoff once available, keeping unknown-outcome requests excluded.
-              await this.joinRoom(roomId);
-              log.info("Room restore successful", { roomId });
-            }
+            await this.joinRoom(roomId);
           } catch (error) {
             if (generation !== this.generation) throw error;
             const failure = new Error(`Failed to refresh room ${roomId}: ${(error as Error).message}`, { cause: error });
