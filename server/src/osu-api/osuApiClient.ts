@@ -12,7 +12,6 @@ const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve,
 
 const OSU_API_URL = `${config.osuWebUrl}/api/v2/`;
 
-
 export async function fetchApi(accessToken: string, endpoint: string, method?: InternalApiMethod, body?: Record<string, unknown>): Promise<unknown> {
   const isGet = !method || method === "GET";
   const allowedAttempts = isGet ? config.transportRetry.attempts : 1;
@@ -28,7 +27,7 @@ export async function fetchApi(accessToken: string, endpoint: string, method?: I
       const delayCap = Math.min(config.transportRetry.maxDelay, config.transportRetry.baseDelay * 2 ** (attempt - 1));
       const delay = retryAfter ?? Math.round(delayCap / 2 + Math.random() * (delayCap / 2));
 
-      log.debug("API request failed, retrying", { method, endpoint, attempt, allowedAttempts, delayCap, delay, delaySource: retryAfter !== undefined ? "retry-after" : "backoff",error });
+      log.debug("API request failed, retrying", { method, endpoint, attempt, allowedAttempts, delayCap, delay, delaySource: retryAfter !== undefined ? "retry-after" : "backoff", error });
       await sleep(delay);
     }
   }
