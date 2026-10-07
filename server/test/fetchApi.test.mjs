@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { fetchApi } from "../src/osu-api/osuApiClient.ts";
 
 await test("fetch succeeds on 1st attempt", async (t) => {
-  const fakeFetch = t.mock.method(globalThis, "fetch", async (url, options) => {
+  const fakeFetch = t.mock.method(globalThis, "fetch", async () => {
     return new Response(JSON.stringify({ id: 727 }), { status: 200 });
   });
 
@@ -14,7 +14,7 @@ await test("fetch succeeds on 1st attempt", async (t) => {
 });
 
 await test("404 does not retry", async (t) => {
-  const fakeFetch = t.mock.method(globalThis, "fetch", async (url, options) => {
+  const fakeFetch = t.mock.method(globalThis, "fetch", async () => {
     return new Response("", { status: 404 });
   });
 
@@ -23,7 +23,7 @@ await test("404 does not retry", async (t) => {
 });
 
 await test("POST does not retry", async (t) => {
-  const fakeFetch = t.mock.method(globalThis, "fetch", async (url, options) => {
+  const fakeFetch = t.mock.method(globalThis, "fetch", async () => {
     throw Object.assign(new TypeError("fetch failed"), { cause: { code: "ENOTFOUND" } });
   });
 

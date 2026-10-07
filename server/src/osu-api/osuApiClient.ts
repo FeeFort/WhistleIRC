@@ -14,12 +14,16 @@ const OSU_API_URL = `${config.osuWebUrl}/api/v2/`;
 export async function fetchApi(accessToken: string, endpoint: string, method: InternalApiMethod = "GET", body?: Record<string, unknown>): Promise<unknown> {
   const allowedAttempts = method === "GET" ? config.transportRetry.attempts : 1;
   const deadline = performance.now() + config.transportRetry.totalTimeoutMs;
+  const totalSignal = AbortSignal.timeout(config.transportRetry.totalTimeoutMs);
+  const timeoutError = () => Object.assign(new Error("API request timed out; its outcome may be unknown."), { code: "REQUEST_TIMEOUT", outcomeUnknown: method !== "GET" });
 
   for (let attempt = 1; ; attempt++) {
     try {
       log.debug("API request attempt", { method, endpoint, attempt, allowedAttempts });
-      return await fetchApiOnce(accessToken, endpoint, method, body);
+      if (totalSignal.aborted) throw timeoutError();
+      return await fetchApiOnce(accessToken, endpoint, method, body, totalSignal);
     } catch (error) {
+      if (totalSignal.aborted) throw timeoutError();
       if (attempt >= allowedAttempts || !isRetryableError(error)) throw error;
 
       // On 429 the rate limiter is already paused for Retry-After, so the next acquire() waits by itself.
@@ -30,7 +34,11 @@ export async function fetchApi(accessToken: string, endpoint: string, method: In
       if (performance.now() + (retryAfter ?? delay) >= deadline) throw error;
 
       log.debug("API request failed, retrying", { method, endpoint, attempt, allowedAttempts, delayCap, delay, retryAfter, error });
-      await sleep(delay);
+      try {
+        await sleep(delay, totalSignal);
+      } catch {
+        throw timeoutError();
+      }
     }
   }
 }
@@ -41,11 +49,12 @@ export async function fetchMe(accessToken: string): Promise<OsuUser> {
   return { id: raw.id, username: raw.username, avatarUrl: raw.avatar_url };
 }
 
-async function fetchApiOnce(accessToken: string, endpoint: string, method: InternalApiMethod, body?: Record<string, unknown>): Promise<unknown> {
+async function fetchApiOnce(accessToken: string, endpoint: string, method: InternalApiMethod, body: Record<string, unknown> | undefined, totalSignal: AbortSignal): Promise<unknown> {
   log.debug("API request queued", { method, endpoint });
-  const release = await restRateLimiter.acquire();
+  const release = await restRateLimiter.acquire(totalSignal);
   const operation = log.traceStart(`${method} ${endpoint}`, () => ({ body: JSON.stringify(body, (key, value) => (/password|token|secret|authorization/i.test(key) ? "[redacted]" : value)) }));
-  const signal = AbortSignal.timeout(config.apiRequestTimeoutMs);
+  const attemptSignal = AbortSignal.timeout(config.apiRequestTimeoutMs);
+  const signal = AbortSignal.any([totalSignal, attemptSignal]);
   try {
     const response = await fetch(OSU_API_URL + endpoint.replace(/^\//, ""), {
       signal,

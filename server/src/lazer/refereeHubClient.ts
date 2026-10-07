@@ -277,8 +277,8 @@ export async function connectToRefereeHub(onEvent: HubEventHandler, onResync: Re
   return hub;
 }
 
-// Only these methods are safe to repeat: they do not mutate room state, so a lost or late response can be re-requested.
-// Every other method (MakeRoom, settings, kicks...) may have been applied even when the call failed or timed out.
+// I realise that JoinRoom can't be really considered idempotent, but it's the only hub method
+// called on lobby refresh, and it can fail due to network issues, so we're retrying it
 const RETRYABLE_HUB_METHODS = new Set(["ListRooms", "JoinRoom"]);
 
 function isRetryableHubError(error: unknown): boolean {
@@ -352,7 +352,7 @@ async function invokeHubOnce<T>(methodName: string, ...args: unknown[]): Promise
     }
     if (["ListRooms", "JoinRoom", "MakeRoom"].includes(methodName)) {
       if (!isHubResponse(methodName, result) || (methodName === "JoinRoom" && (result as { room_id: number }).room_id !== args[0])) {
-        // MakeRoom is never repeated: an invalid response may follow successful creation.
+        // MakeRoom is never repeated: an invalid response may follow successful creation
         throw Object.assign(new Error(`Invalid ${methodName} response from referee hub.`), {
           code: "INVALID_RESPONSE",
           outcomeUnknown: methodName === "MakeRoom",
