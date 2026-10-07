@@ -86,7 +86,7 @@ export interface LoggerState {
 
 // error
 export type ErrorWithCode = { code: string };
-export type ErrorWithRetryAfter = { retryAfter: number };
+export type ErrorWithRetryAfter = { retryAfterMs: number };
 
 // Raw types, basically how osu! api responds
 export interface OsuTokenResponse {

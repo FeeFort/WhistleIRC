@@ -49,11 +49,15 @@ await test("timeout failures are retryable", () => {
 });
 
 await test("429 failures with small retry-after are retryable", () => {
-  assert.equal(isRetryableError(Object.assign(new Error("rate limit"), { code: "RATE_LIMITED", retryAfter: 10_000 })), true);
+  assert.equal(isRetryableError(Object.assign(new Error("rate limit"), { code: "RATE_LIMITED", retryAfterMs: 10_000 })), true);
 });
 
 await test("429 failures with big retry-after are not retryable", () => {
-  assert.equal(isRetryableError(Object.assign(new Error("rate limit"), { code: "RATE_LIMITED", retryAfter: 60_000 })), false);
+  assert.equal(isRetryableError(Object.assign(new Error("rate limit"), { code: "RATE_LIMITED", retryAfterMs: 60_000 })), false);
+});
+
+await test("body stream failures are retryable", () => {
+  assert.equal(isRetryableError(Object.assign(new TypeError("terminated"), { cause: { code: "UND_ERR_SOCKET" } })), true);
 });
 
 await test("weird inputs are not retryable", () => {

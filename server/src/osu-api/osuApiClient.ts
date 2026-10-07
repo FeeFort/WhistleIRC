@@ -12,22 +12,24 @@ const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve,
 
 const OSU_API_URL = `${config.osuWebUrl}/api/v2/`;
 
-export async function fetchApi(accessToken: string, endpoint: string, method?: InternalApiMethod, body?: Record<string, unknown>): Promise<unknown> {
-  const isGet = !method || method === "GET";
-  const allowedAttempts = isGet ? config.transportRetry.attempts : 1;
+export async function fetchApi(accessToken: string, endpoint: string, method: InternalApiMethod = "GET", body?: Record<string, unknown>): Promise<unknown> {
+  const allowedAttempts = method === "GET" ? config.transportRetry.attempts : 1;
+  const deadline = performance.now() + config.transportRetry.totalTimeoutMs;
 
-  for (let attempt = 1; attempt <= allowedAttempts; attempt++) {
+  for (let attempt = 1; ; attempt++) {
     try {
       log.debug("API request attempt", { method, endpoint, attempt, allowedAttempts });
       return await fetchApiOnce(accessToken, endpoint, method, body);
     } catch (error) {
       if (attempt >= allowedAttempts || !isRetryableError(error)) throw error;
 
-      const retryAfter = hasRetryAfter(error) ? error.retryAfter : undefined;
+      // On 429 the rate limiter is already paused for Retry-After, so the next acquire() waits by itself.
+      const retryAfter = hasRetryAfter(error) ? error.retryAfterMs : undefined;
       const delayCap = Math.min(config.transportRetry.maxDelay, config.transportRetry.baseDelay * 2 ** (attempt - 1));
-      const delay = retryAfter ?? Math.round(delayCap / 2 + Math.random() * (delayCap / 2));
+      const delay = retryAfter !== undefined ? 0 : Math.round(delayCap / 2 + Math.random() * (delayCap / 2));
+      if (performance.now() + (retryAfter ?? delay) >= deadline) throw error;
 
-      log.debug("API request failed, retrying", { method, endpoint, attempt, allowedAttempts, delayCap, delay, delaySource: retryAfter !== undefined ? "retry-after" : "backoff", error });
+      log.debug("API request failed, retrying", { method, endpoint, attempt, allowedAttempts, delayCap, delay, retryAfter, error });
       await sleep(delay);
     }
   }
@@ -39,9 +41,7 @@ export async function fetchMe(accessToken: string): Promise<OsuUser> {
   return { id: raw.id, username: raw.username, avatarUrl: raw.avatar_url };
 }
 
-async function fetchApiOnce(accessToken: string, endpoint: string, method?: InternalApiMethod, body?: Record<string, unknown>): Promise<unknown> {
-  if (!method) method = "GET";
-
+async function fetchApiOnce(accessToken: string, endpoint: string, method: InternalApiMethod, body?: Record<string, unknown>): Promise<unknown> {
   log.debug("API request queued", { method, endpoint });
   const release = await restRateLimiter.acquire();
   const operation = log.traceStart(`${method} ${endpoint}`, () => ({ body: JSON.stringify(body, (key, value) => (/password|token|secret|authorization/i.test(key) ? "[redacted]" : value)) }));
@@ -74,7 +74,6 @@ async function fetchApiOnce(accessToken: string, endpoint: string, method?: Inte
         code: "REQUEST_TIMEOUT",
         outcomeUnknown: method !== "GET",
       });
-    // TODO: Use shared exponential backoff retries for safe API operations.
     throw error;
   } finally {
     release();
@@ -87,7 +86,6 @@ export function checkApiRateLimit(response: Response): void {
     const seconds = header === null ? NaN : Number(header);
     const retryAfterMs = Math.min(2_147_483_647, Math.max(1000, Number.isFinite(seconds) ? seconds * 1000 : (header ? Date.parse(header) - Date.now() : NaN) || 60_000));
     restRateLimiter.pause(retryAfterMs);
-    // TODO: Retry safe API operations with shared exponential backoff and Retry-After.
     throw Object.assign(new Error("osu! API request limit reached. Please try again later."), { code: "RATE_LIMITED", outcomeUnknown: false, retryAfterMs });
   }
 }

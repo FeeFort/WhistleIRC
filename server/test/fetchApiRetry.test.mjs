@@ -51,7 +51,7 @@ await test("all attempts fail", async (t) => {
 
   const assertion = assert.rejects(fetchApi("token", "me"), (error) => error.attempt === config.transportRetry.attempts);
 
-  for (let i = 0; i <= config.transportRetry.attempts - 1; i++) {
+  for (let i = 0; i < config.transportRetry.attempts - 1; i++) {
     const cap = Math.min(config.transportRetry.maxDelay, config.transportRetry.baseDelay * 2 ** i);
     await flush();
     assert.equal(calls, i + 1);
@@ -61,4 +61,26 @@ await test("all attempts fail", async (t) => {
   await flush();
   await assertion;
   assert.equal(calls, config.transportRetry.attempts);
+});
+
+await test("503 is retried", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  t.mock.method(Math, "random", () => 1);
+
+  let calls = 0;
+  t.mock.method(globalThis, "fetch", async () => {
+    calls++;
+    if (calls === 1) return new Response("", { status: 503 });
+    return new Response(JSON.stringify({ ok: true }), { status: 200 });
+  });
+
+  const promise = fetchApi("token", "me");
+  await flush();
+  assert.equal(calls, 1);
+
+  t.mock.timers.tick(config.transportRetry.baseDelay);
+  await flush();
+  assert.equal(calls, 2);
+
+  assert.deepEqual(await promise, { ok: true });
 });
