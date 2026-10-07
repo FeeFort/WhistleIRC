@@ -150,14 +150,11 @@ cd ../server
 npm install
 ```
 
-Start the development client:
+Then start the development instance:
 
 ```bash
-cd server
 npm run start
 ```
-
-Then you'll be automatically redirected to the Vite local server webpage (usually `http://localhost:3000`)
 
 To build:
 
