@@ -580,6 +580,28 @@ await test("room synchronization", async (t) => {
     roomManager.removeRoom(101);
   });
 
+  await t.test("resync reports retry details and clears them after recovery", async () => {
+    let listCalls = 0;
+    let joinCalls = 0;
+    invoke = async (method) => {
+      if (method === "ListRooms") {
+        if (++listCalls === 1) throw new Error("An unexpected error occurred invoking 'ListRooms' on the server.");
+        return { room_ids: [104] };
+      }
+      if (++joinCalls === 1) throw new Error("An unexpected error occurred invoking 'JoinRoom' on the server.");
+      return snapshot(104);
+    };
+    const start = statuses.length;
+    await roomManager.resync();
+    const events = statuses.slice(start).filter((event) => event.type === "lazer_sync_state");
+    assert.deepEqual(events.map((event) => event.state), ["syncing", "retrying", "syncing", "retrying", "syncing", "synced"]);
+    assert.deepEqual(events.filter((event) => event.state === "retrying").map(({ operation, roomId, attempt, maxAttempts, retryIn }) => ({ operation, roomId, attempt, maxAttempts, validDelay: retryIn >= 0 && retryIn <= config.hubRetry.maxDelay })), [
+      { operation: "ListRooms", roomId: undefined, attempt: 2, maxAttempts: config.hubRetry.attempts, validDelay: true },
+      { operation: "JoinRoom", roomId: 104, attempt: 2, maxAttempts: config.hubRetry.attempts, validDelay: true },
+    ]);
+    roomManager.removeRoom(104);
+  });
+
   await t.test("resync never repeats local failures", async () => {
     for (const code of ["REQUEST_CANCELLED", "RATE_LIMIT_WAIT_TIMEOUT", "RATE_LIMIT_QUEUE_FULL"]) {
       let calls = 0;

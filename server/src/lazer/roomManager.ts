@@ -33,7 +33,7 @@ import type {
 } from "../types.js";
 import { config } from "../config.js";
 import { fetchChatMessages } from "./chatApi.js";
-import { invokeHub } from "./refereeHubClient.js";
+import { invokeHub, invokeHubWithRetry } from "./refereeHubClient.js";
 
 const log = logger.child("lazer", "roomManager");
 
@@ -358,7 +358,7 @@ class RoomManager {
     }
   }
 
-  async joinRoom(roomId: number | null, request?: MakeRoomRequest): Promise<RoomState> {
+  async joinRoom(roomId: number | null, request?: MakeRoomRequest, onRetry?: (attempt: number, maxAttempts: number, retryIn: number) => void): Promise<RoomState> {
     log.debug(roomId === null ? "Creating room" : "Joining room", { roomId });
     const generation = this.generation;
     const existing = roomId === null ? undefined : this.pendingJoins.get(roomId);
@@ -379,7 +379,7 @@ class RoomManager {
     else this.pendingJoins.set(roomId, pending);
     pending.promise = (async () => {
       try {
-        const response = roomId === null ? await invokeHub<RoomJoinedResponse>("MakeRoom", request) : await invokeHub<RoomJoinedResponse>("JoinRoom", roomId);
+        const response = roomId === null ? await invokeHub<RoomJoinedResponse>("MakeRoom", request) : onRetry ? await invokeHubWithRetry<RoomJoinedResponse>("JoinRoom", onRetry, roomId) : await invokeHub<RoomJoinedResponse>("JoinRoom", roomId);
         roomId = response.room_id;
         if (this.excludedRooms.has(roomId)) pending.cancelled = true;
         if (!pending.cancelled) this.rooms.set(roomId, response);
@@ -430,7 +430,12 @@ class RoomManager {
       const failedRoomIds: number[] = [];
       let listed = false;
       try {
-        const response = await invokeHub<ListRoomsResponse>("ListRooms");
+        let listRetried = false;
+        const response = await invokeHubWithRetry<ListRoomsResponse>("ListRooms", (attempt, maxAttempts, retryIn) => {
+          listRetried = true;
+          if (generation === this.generation) this.onStatus?.({ type: "lazer_sync_state", state: "retrying", operation: "ListRooms", attempt, maxAttempts, retryIn });
+        });
+        if (listRetried && generation === this.generation) this.onStatus?.({ type: "lazer_sync_state", state: "syncing" });
         if (generation !== this.generation) {
           log.trace("Stale room operation ignored", { generation, currentGeneration: this.generation });
           throw new Error("osu! session ended.");
@@ -450,7 +455,12 @@ class RoomManager {
             // JoinRoom returns a full snapshot and restores hub subscriptions; invokeHub retries transient failures,
             // including the hub briefly retaining a referee in the room after reconnect.
             log.debug("Restoring room", { roomId, refresh: this.rooms.has(roomId) });
-            await this.joinRoom(roomId);
+            let joinRetried = false;
+            await this.joinRoom(roomId, undefined, (attempt, maxAttempts, retryIn) => {
+              joinRetried = true;
+              if (generation === this.generation) this.onStatus?.({ type: "lazer_sync_state", state: "retrying", operation: "JoinRoom", roomId, attempt, maxAttempts, retryIn });
+            });
+            if (joinRetried && generation === this.generation) this.onStatus?.({ type: "lazer_sync_state", state: "syncing" });
           } catch (error) {
             if (generation !== this.generation) throw error;
             const failure = new Error(`Failed to refresh room ${roomId}: ${(error as Error).message}`, { cause: error });

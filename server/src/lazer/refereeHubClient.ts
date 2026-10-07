@@ -289,6 +289,10 @@ function isRetryableHubError(error: unknown): boolean {
 }
 
 export async function invokeHub<T = unknown>(methodName: string, ...args: unknown[]): Promise<T> {
+  return invokeHubWithRetry<T>(methodName, () => {}, ...args);
+}
+
+export async function invokeHubWithRetry<T = unknown>(methodName: string, onRetry: (attempt: number, maxAttempts: number, retryIn: number) => void, ...args: unknown[]): Promise<T> {
   const allowedAttempts = RETRYABLE_HUB_METHODS.has(methodName) ? config.hubRetry.attempts : 1;
   const generation = connectionGeneration;
   const signal = sessionAbort.signal;
@@ -299,6 +303,7 @@ export async function invokeHub<T = unknown>(methodName: string, ...args: unknow
       if (attempt >= allowedAttempts || !isRetryableHubError(error) || generation !== connectionGeneration || signal.aborted) throw error;
       const { delayCap, delay } = backoffDelay(attempt, config.hubRetry.baseDelay, config.hubRetry.maxDelay);
       log.debug("Hub request failed, retrying", { methodName, attempt, allowedAttempts, delayCap, delay, error });
+      onRetry(attempt + 1, allowedAttempts, delay);
       try {
         await sleep(delay, signal);
       } catch {
